@@ -13,6 +13,7 @@
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { HeroIllustration } from '@/components/HeroIllustration';
 
 // ─── Feature bullet data ────────────────────────────────────────────────────
 const FEATURES = [
@@ -61,33 +62,15 @@ export default function WelcomeScreen() {
           </Text>
         </View>
 
-        {/* ── Hero illustration area ──────────────────────────────────────── */}
+        {/* ── Hero illustration ────────────────────────────────────────────── */}
+        {/* SVG scene: sunny park with soft-play building and trees */}
         <View
-          className="w-full rounded-3xl bg-sandDark items-center justify-center my-6 overflow-hidden"
+          className="w-full rounded-3xl my-6 overflow-hidden"
           style={{ height: 200 }}
           accessible={false}
           importantForAccessibility="no-hide-descendants"
         >
-          {/* Soft colour blobs — purely decorative */}
-          <View
-            className="absolute bg-coral rounded-full opacity-10"
-            style={{ width: 140, height: 140, top: -30, left: -30 }}
-          />
-          <View
-            className="absolute bg-sky rounded-full opacity-10"
-            style={{ width: 100, height: 100, bottom: -20, right: -10 }}
-          />
-          <View
-            className="absolute bg-sun rounded-full opacity-20"
-            style={{ width: 80, height: 80, bottom: 10, left: 40 }}
-          />
-
-          {/* Central emoji cluster */}
-          <View className="flex-row items-end" style={{ gap: 8 }}>
-            <Text style={{ fontSize: 48, lineHeight: 60 }}>🎠</Text>
-            <Text style={{ fontSize: 64, lineHeight: 76 }}>🌳</Text>
-            <Text style={{ fontSize: 48, lineHeight: 60 }}>☕</Text>
-          </View>
+          <HeroIllustration />
         </View>
 
         {/* ── Headline + sub-headline ─────────────────────────────────────── */}
