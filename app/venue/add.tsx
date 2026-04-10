@@ -1,29 +1,77 @@
 /**
  * Add Venue screen — lets any logged-in user submit a new venue.
  * All submissions go into moderation_status='pending' for admin review.
+ *
+ * Address flow: GooglePlacesAutocomplete → extracts lat/lng + city + postcode
+ * from the Google Places Details response. Raw coordinates are NEVER shown
+ * to the user and are not logged (UK GDPR data minimisation).
+ *
+ * UK GDPR Art.13 transparency: a disclosure note is shown beneath the search
+ * field explaining that the search query is sent to Google Maps.
  */
-import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  StyleSheet,
+} from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
+import {
+  GooglePlacesAutocomplete,
+  GooglePlacesAutocompleteRef,
+} from 'react-native-google-places-autocomplete';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
 import type { Category } from '@/types';
 
+// UK bounding box — used to reject coordinates that fall outside Great Britain.
+// lat: 49.9 (south tip) – 60.9 (north tip of mainland Scotland)
+// lng: -8.2 (west Ireland coast) – 1.8 (east coast of England)
+const UK_BOUNDS = { minLat: 49.9, maxLat: 60.9, minLng: -8.2, maxLng: 1.8 };
+
+function isInsideUK(lat: number, lng: number): boolean {
+  return (
+    lat >= UK_BOUNDS.minLat &&
+    lat <= UK_BOUNDS.maxLat &&
+    lng >= UK_BOUNDS.minLng &&
+    lng <= UK_BOUNDS.maxLng
+  );
+}
+
 export default function AddVenueScreen() {
   const user = useUser();
-  const [loading, setLoading]     = useState(false);
-  const [name, setName]           = useState('');
-  const [description, setDesc]    = useState('');
+
+  // Ref lets us programmatically clear the autocomplete input if needed
+  const placesRef = useRef<GooglePlacesAutocompleteRef>(null);
+
+  const [loading, setLoading]       = useState(false);
+  const [name, setName]             = useState('');
+  const [description, setDesc]      = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [city, setCity]           = useState('');
-  const [postcode, setPostcode]   = useState('');
-  const [address, setAddress]     = useState('');
-  const [phone, setPhone]         = useState('');
-  const [website, setWebsite]     = useState('');
-  const [minAge, setMinAge]       = useState('0');
-  const [maxAge, setMaxAge]       = useState('12');
+  const [phone, setPhone]           = useState('');
+  const [website, setWebsite]       = useState('');
+  const [minAge, setMinAge]         = useState('0');
+  const [maxAge, setMaxAge]         = useState('12');
+
+  // Address fields — populated automatically when user picks a Places result
+  const [address, setAddress]       = useState('');   // full address string
+  const [city, setCity]             = useState('');   // auto-filled, read-only
+  const [postcode, setPostcode]     = useState('');   // auto-filled, read-only
+
+  // Coordinates — null until a valid Places result is selected.
+  // We store them in state but NEVER display them to the user.
+  const [latitude, setLatitude]     = useState<number | null>(null);
+  const [longitude, setLongitude]   = useState<number | null>(null);
+
+  // Inline error shown if user tries to submit without selecting an address
+  const [addressError, setAddressError] = useState('');
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
@@ -33,35 +81,80 @@ export default function AddVenueScreen() {
     },
   });
 
+  // Called when the user taps a result in the Places dropdown.
+  // 'details' contains the full place data including geometry + address_components.
+  function handlePlaceSelected(
+    data: { description: string },
+    details: {
+      geometry: { location: { lat: number; lng: number } };
+      address_components: Array<{ long_name: string; types: string[] }>;
+    } | null
+  ) {
+    if (!details) return;
+
+    const lat = details.geometry.location.lat;
+    const lng = details.geometry.location.lng;
+
+    // Validate the coordinate falls within the UK before accepting it
+    if (!isInsideUK(lat, lng)) {
+      setAddressError('Please enter a UK address');
+      return;
+    }
+
+    // Extract city: Google uses 'postal_town' for UK towns/cities, falling back to 'locality'
+    const cityComponent = details.address_components.find((c) =>
+      c.types.includes('postal_town') || c.types.includes('locality')
+    );
+
+    // Extract postcode
+    const postcodeComponent = details.address_components.find((c) =>
+      c.types.includes('postal_code')
+    );
+
+    setLatitude(lat);
+    setLongitude(lng);
+    setAddress(data.description);
+    setCity(cityComponent?.long_name ?? '');
+    setPostcode(postcodeComponent?.long_name ?? '');
+    setAddressError(''); // clear any previous error
+  }
+
   async function handleSubmit() {
-    if (!name || !city || !postcode) {
-      Alert.alert('Please fill in the venue name, city and postcode.');
+    // Validate: address must have been selected from the dropdown
+    if (latitude === null || longitude === null) {
+      setAddressError('Please search for and select an address');
+      return;
+    }
+
+    // Double-check UK bounds (guards against state manipulation)
+    if (!isInsideUK(latitude, longitude)) {
+      setAddressError('Please enter a UK address');
+      return;
+    }
+
+    if (!name) {
+      Alert.alert('Please fill in the venue name.');
       return;
     }
 
     setLoading(true);
 
-    // TODO: Use Google Geocoding API to convert address → lat/lng
-    // For now we use placeholder coordinates — replace with real geocoding
-    const latitude  = 51.5074;
-    const longitude = -0.1278;
-
     const { error } = await supabase.from('venues').insert({
-      name:             name.trim(),
-      description:      description.trim() || null,
-      category_id:      categoryId || null,
-      address_line1:    address.trim() || null,
-      city:             city.trim(),
-      postcode:         postcode.trim().toUpperCase(),
-      latitude,
+      name:              name.trim(),
+      description:       description.trim() || null,
+      category_id:       categoryId || null,
+      address_line1:     address.trim() || null,
+      city:              city.trim(),
+      postcode:          postcode.trim().toUpperCase(),
+      latitude,           // real coordinates from Places API (never hardcoded)
       longitude,
-      phone:            phone.trim() || null,
-      website:          website.trim() || null,
-      min_age:          parseInt(minAge, 10),
-      max_age:          parseInt(maxAge, 10),
-      submitted_by:     user!.id,
+      phone:             phone.trim() || null,
+      website:           website.trim() || null,
+      min_age:           parseInt(minAge, 10),
+      max_age:           parseInt(maxAge, 10),
+      submitted_by:      user!.id,
       moderation_status: 'pending',   // goes to admin review first
-      is_published:     false,
+      is_published:      false,
     });
 
     setLoading(false);
@@ -79,6 +172,11 @@ export default function AddVenueScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-sand">
+      {/*
+        keyboardShouldPersistTaps="handled" is important here — without it,
+        tapping a Places dropdown result on iOS dismisses the keyboard
+        before the tap is registered, so the selection never fires.
+      */}
       <ScrollView className="px-4" keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View className="flex-row items-center justify-between pt-4 pb-2">
@@ -87,22 +185,36 @@ export default function AddVenueScreen() {
             <Text className="text-grey text-base">Cancel</Text>
           </TouchableOpacity>
         </View>
-        <Text className="text-grey mb-6">Know a great family-friendly place? Add it here and help other parents discover it!</Text>
+        <Text className="text-grey mb-6">
+          Know a great family-friendly place? Add it here and help other parents discover it!
+        </Text>
 
         {/* Form */}
         <View className="gap-4">
+
+          {/* Venue name */}
           <View>
             <Text className="text-charcoal font-bold mb-1">Venue name *</Text>
-            <TextInput className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal" value={name} onChangeText={setName} placeholder="e.g. Sunshine Soft Play" />
+            <TextInput
+              className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal"
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. Sunshine Soft Play"
+            />
           </View>
 
+          {/* Category chips */}
           <View>
             <Text className="text-charcoal font-bold mb-1">Category</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="gap-2">
               {categories.map((cat) => (
                 <TouchableOpacity
                   key={cat.id}
-                  className={`mr-2 px-4 py-2 rounded-full border-2 ${categoryId === cat.id ? 'border-coral bg-coral' : 'border-greyLighter bg-white'}`}
+                  className={`mr-2 px-4 py-2 rounded-full border-2 ${
+                    categoryId === cat.id
+                      ? 'border-coral bg-coral'
+                      : 'border-greyLighter bg-white'
+                  }`}
                   onPress={() => setCategoryId(cat.id)}
                 >
                   <Text className={categoryId === cat.id ? 'text-white font-bold' : 'text-charcoal'}>
@@ -113,45 +225,142 @@ export default function AddVenueScreen() {
             </ScrollView>
           </View>
 
+          {/* Description */}
           <View>
             <Text className="text-charcoal font-bold mb-1">Description</Text>
-            <TextInput className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal" value={description} onChangeText={setDesc} placeholder="What makes this place great for families?" multiline numberOfLines={3} />
+            <TextInput
+              className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal"
+              value={description}
+              onChangeText={setDesc}
+              placeholder="What makes this place great for families?"
+              multiline
+              numberOfLines={3}
+            />
           </View>
 
+          {/* ------------------------------------------------------------------ */}
+          {/* Address search — replaces the old plain TextInput                  */}
+          {/* GooglePlacesAutocomplete sends the user's typed query to Google     */}
+          {/* Maps and returns a list of matching UK addresses to choose from.    */}
+          {/* fetchDetails={true} tells it to also fetch lat/lng for the result.  */}
+          {/* ------------------------------------------------------------------ */}
           <View>
-            <Text className="text-charcoal font-bold mb-1">Street address</Text>
-            <TextInput className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal" value={address} onChangeText={setAddress} placeholder="e.g. 12 High Street" />
+            <Text className="text-charcoal font-bold mb-1">Street address *</Text>
+
+            {/*
+              We wrap the autocomplete in a View with a fixed zIndex so the
+              dropdown appears on top of the form fields below it.
+              Without this, the dropdown can appear behind other elements.
+            */}
+            <View style={styles.autocompleteContainer}>
+              <GooglePlacesAutocomplete
+                ref={placesRef}
+                placeholder="Start typing an address…"
+                fetchDetails={true}   // required — gives us lat/lng in the callback
+                onPress={handlePlaceSelected}
+                query={{
+                  key: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+                  language: 'en',
+                  components: 'country:gb',   // restrict results to the UK
+                }}
+                styles={{
+                  textInputContainer: styles.placesInputContainer,
+                  textInput:          styles.placesTextInput,
+                  listView:           styles.placesListView,
+                  row:                styles.placesRow,
+                  description:        styles.placesDescription,
+                }}
+                enablePoweredByContainer={false}  // hides the "Powered by Google" logo
+                debounce={300}   // wait 300 ms after the user stops typing before searching
+                minLength={3}    // don't search until at least 3 characters are typed
+              />
+            </View>
+
+            {/* UK GDPR Art.13 transparency disclosure — required because we send
+                user input to a third-party service (Google Maps). */}
+            <Text style={styles.privacyNote}>
+              Address search is powered by Google Maps. Your search is sent to Google to find results.
+            </Text>
+
+            {/* Inline validation error — shown if user submits without selecting */}
+            {addressError !== '' && (
+              <Text className="text-red-500 text-sm mt-1">{addressError}</Text>
+            )}
           </View>
 
+          {/* City & Postcode — read-only, auto-filled from the Places selection */}
           <View className="flex-row gap-3">
             <View className="flex-1">
-              <Text className="text-charcoal font-bold mb-1">City *</Text>
-              <TextInput className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal" value={city} onChangeText={setCity} placeholder="e.g. Manchester" />
+              <Text className="text-charcoal font-bold mb-1">City</Text>
+              {/*
+                editable={false} makes this read-only so the user can see the
+                auto-filled value but cannot accidentally change it.
+                The slightly darker background (sandDark) signals it's not editable.
+              */}
+              <TextInput
+                style={styles.readOnlyInput}
+                value={city}
+                editable={false}
+                placeholder="Auto-filled"
+                placeholderTextColor="#B2BEC3"
+              />
             </View>
             <View className="flex-1">
-              <Text className="text-charcoal font-bold mb-1">Postcode *</Text>
-              <TextInput className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal" value={postcode} onChangeText={setPostcode} placeholder="e.g. M1 1AA" autoCapitalize="characters" />
+              <Text className="text-charcoal font-bold mb-1">Postcode</Text>
+              <TextInput
+                style={styles.readOnlyInput}
+                value={postcode}
+                editable={false}
+                placeholder="Auto-filled"
+                placeholderTextColor="#B2BEC3"
+              />
             </View>
           </View>
 
+          {/* Phone */}
           <View>
             <Text className="text-charcoal font-bold mb-1">Phone number</Text>
-            <TextInput className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal" value={phone} onChangeText={setPhone} placeholder="e.g. 0161 123 4567" keyboardType="phone-pad" />
+            <TextInput
+              className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal"
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="e.g. 0161 123 4567"
+              keyboardType="phone-pad"
+            />
           </View>
 
+          {/* Website */}
           <View>
             <Text className="text-charcoal font-bold mb-1">Website</Text>
-            <TextInput className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal" value={website} onChangeText={setWebsite} placeholder="e.g. https://example.com" keyboardType="url" autoCapitalize="none" />
+            <TextInput
+              className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal"
+              value={website}
+              onChangeText={setWebsite}
+              placeholder="e.g. https://example.com"
+              keyboardType="url"
+              autoCapitalize="none"
+            />
           </View>
 
+          {/* Age range */}
           <View className="flex-row gap-3">
             <View className="flex-1">
               <Text className="text-charcoal font-bold mb-1">Min age</Text>
-              <TextInput className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal" value={minAge} onChangeText={setMinAge} keyboardType="number-pad" />
+              <TextInput
+                className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal"
+                value={minAge}
+                onChangeText={setMinAge}
+                keyboardType="number-pad"
+              />
             </View>
             <View className="flex-1">
               <Text className="text-charcoal font-bold mb-1">Max age</Text>
-              <TextInput className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal" value={maxAge} onChangeText={setMaxAge} keyboardType="number-pad" />
+              <TextInput
+                className="bg-white border border-greyLighter rounded-xl px-4 py-3 text-charcoal"
+                value={maxAge}
+                onChangeText={setMaxAge}
+                keyboardType="number-pad"
+              />
             </View>
           </View>
 
@@ -164,8 +373,76 @@ export default function AddVenueScreen() {
               ? <ActivityIndicator color="#fff" />
               : <Text className="text-white font-bold text-lg">Submit venue</Text>}
           </TouchableOpacity>
+
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+// StyleSheet for parts that need precise pixel values or cannot use NativeWind classes
+// (GooglePlacesAutocomplete has its own 'styles' prop that expects RN style objects)
+const styles = StyleSheet.create({
+  // Outer wrapper — zIndex ensures the dropdown floats above fields below it
+  autocompleteContainer: {
+    zIndex: 10,
+    // The autocomplete listView is absolutely positioned by the library.
+    // We need overflow visible so it isn't clipped.
+    overflow: 'visible',
+  },
+  placesInputContainer: {
+    borderWidth: 1,
+    borderColor: '#DFE6E9',   // greyLighter
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 0,
+  },
+  placesTextInput: {
+    color: '#2D3436',          // charcoal
+    fontSize: 15,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 0,
+    height: 48,
+  },
+  placesListView: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#DFE6E9',
+    marginTop: 4,
+    // Enough shadow to show above other elements
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  placesRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  placesDescription: {
+    color: '#2D3436',   // charcoal
+    fontSize: 14,
+  },
+  // UK GDPR Art.13 disclosure — small, unobtrusive grey note
+  privacyNote: {
+    color: '#636E72',   // grey
+    fontSize: 11,
+    marginTop: 6,
+    lineHeight: 15,
+  },
+  // Read-only display fields for auto-filled city and postcode
+  readOnlyInput: {
+    backgroundColor: '#F5EDE0',  // sandDark — signals non-editable
+    borderWidth: 1,
+    borderColor: '#DFE6E9',      // greyLighter
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    color: '#2D3436',            // charcoal
+    fontSize: 15,
+  },
+});
