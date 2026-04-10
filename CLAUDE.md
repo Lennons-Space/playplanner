@@ -184,8 +184,10 @@ For each issue: Identify location, risk/exploit, severity (considering family im
 Whenever a task would be done better, faster, or in parallel by a specialised agent, say so **before starting**. Name the agent(s) explicitly and explain why they are the right fit. If two agents can work alongside each other (e.g. one researching while the other codes), say that too.
 
 **Available agents and when to suggest them:**
+- `elite-engineer` — production-grade code implementation, complex features, GDPR-sensitive areas (location, auth, reviews, profiles). Top pick for any significant new feature — writes at senior-engineer quality with full privacy/security reasoning.
 - `agent-arch` — architectural decisions, build order, tech stack trade-offs, feature planning across multiple layers
-- `Main-coder` — implementing features, folder structure, secure patterns for mobile/web (suggest for any significant new feature)
+- `Main-coder` — implementing features, folder structure, secure patterns for mobile/web
+- `archivist` — reviewing/reorganising the file and folder structure; isolating sensitive modules (location, consent, auth); preparing for compliance audits or DPIAs. Use before adding major new features.
 - `secom-reviewer` — after any code touching auth, location, profiles, groups, reviews, payments, or children's data (suggest proactively after meaningful changes)
 - `Ui-agent` — screen wireframes, navigation flows, family-safety UI, accessibility, ICO Children's Code design review
 - `Explore` — fast codebase searches across multiple files or patterns
