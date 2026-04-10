@@ -1,0 +1,83 @@
+{
+  "expo": {
+    "name": "Play Planner",
+    "slug": "play-planner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "playplanner",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FF6B6B"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.playplanner.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Play Planner uses your location to show nearby child-friendly venues.",
+        "NSLocationAlwaysUsageDescription": "Play Planner uses your location to show nearby child-friendly venues.",
+        "NSCameraUsageDescription": "Play Planner needs camera access to let you upload photos of venues.",
+        "NSPhotoLibraryUsageDescription": "Play Planner needs photo library access to let you upload venue photos."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#FF6B6B"
+      },
+      "package": "com.playplanner.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "$(GOOGLE_MAPS_API_KEY_ANDROID)"
+        }
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Play Planner uses your location to show nearby venues."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Play Planner needs photo access to upload venue photos.",
+          "cameraPermission": "Play Planner needs camera access to take venue photos."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#FF6B6B"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      }
+    }
+  }
+}
