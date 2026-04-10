@@ -1,13 +1,24 @@
 /**
  * Search tab — text search + category grid
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocation } from '@/hooks/location';
 import { useVenueSearch } from '@/hooks/useVenues';
 import type { Venue } from '@/types';
+
+// Delays updating the value until the user stops typing for `delayMs` ms.
+// Prevents firing a database query on every single keystroke.
+function useDebounce<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 // TODO: Replace with real SearchBar component
 function SearchBar({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -24,9 +35,11 @@ function SearchBar({ value, onChange }: { value: string; onChange: (v: string) =
 }
 
 export default function SearchScreen() {
-  const [query, setQuery]  = useState('');
-  const { coords }         = useLocation();
-  const { data: results = [], isLoading } = useVenueSearch(query, coords);
+  const [query, setQuery]       = useState('');
+  const debouncedQuery          = useDebounce(query, 300);
+  const { coords }              = useLocation();
+  // debouncedQuery is used for the actual DB call — fires only after 300ms pause
+  const { data: results = [], isLoading } = useVenueSearch(debouncedQuery, coords);
 
   return (
     <SafeAreaView className="flex-1 bg-sand" edges={['top']}>

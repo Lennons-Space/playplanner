@@ -1,6 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import type { Venue, VenueFilters, Coordinates } from '@/types';
+import type { Venue, VenueFilters, Coordinates, VenuePhoto } from '@/types';
+
+/**
+ * Sanitise a user-typed search string before it is used in a SQL ILIKE pattern.
+ *
+ * WHY THIS IS NEEDED (SQL wildcard injection):
+ * In SQL, ILIKE uses '%' as "match anything" and '_' as "match one character".
+ * If a user types "soft%play" or "kids_zone", those characters are treated as
+ * wildcards, which can make the query return wrong results — and in some edge
+ * cases could be used to probe the database. The backslash tells Postgres to
+ * treat the character as a literal rather than a wildcard.
+ *
+ * Example: "soft%play" → "soft\%play" (matches only the literal string)
+ */
+function escapeLikePattern(input: string): string {
+  return input.replace(/[%_\\]/g, '\\$&');
+}
 
 /** Fetch a single venue by ID with all related data */
 export function useVenue(id: string) {
@@ -21,6 +37,18 @@ export function useVenue(id: string) {
         .eq('moderation_status', 'approved')
         .single();
       if (error) throw error;
+
+      // Security: filter out any photos that have not been approved by a moderator.
+      // Without this filter, an attacker who uploads a photo and bypasses the
+      // moderation queue could surface unapproved content (e.g. inappropriate images)
+      // to all users viewing the venue. We enforce approval client-side here as a
+      // second line of defence — the primary control is the RLS policy on venue_photos.
+      if (data?.photos) {
+        data.photos = (data.photos as VenuePhoto[]).filter(
+          (photo) => photo.is_approved === true
+        );
+      }
+
       return data as Venue;
     },
     enabled: !!id,
@@ -61,10 +89,11 @@ export function useVenueSearch(query: string, coords: Coordinates) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('venues')
-        .select('*, category:categories(*), photos:venue_photos(url, is_cover)')
+        .select('*, category:categories(*), photos:venue_photos(url, is_cover, is_approved)')
         .eq('is_published', true)
         .eq('moderation_status', 'approved')
-        .ilike('name', `%${query}%`)
+        // escapeLikePattern prevents SQL wildcard injection — see function above.
+        .ilike('name', `%${escapeLikePattern(query)}%`)
         .limit(30);
       if (error) throw error;
       return (data ?? []) as Venue[];

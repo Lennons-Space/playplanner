@@ -203,15 +203,20 @@ export interface VenueFilters {
   premiumOnly: boolean;
 }
 
+// TODO: facilityIds and premiumOnly are kept in the type for forward-compatibility,
+// but are NOT wired up to the get_nearby_venues SQL RPC yet. They are set to their
+// "inactive" defaults here so they never affect the badge count or filter results.
+// Once the RPC supports these parameters, add them back to activeFilterCount in
+// filterStore.ts and ensure the RPC call in useNearbyVenues passes them through.
 export const DEFAULT_FILTERS: VenueFilters = {
   categoryIds: [],
-  facilityIds: [],
+  facilityIds: [],    // TODO: not yet supported by RPC — do not count in badge
   minAge: null,
   maxAge: null,
   priceRange: [],
   maxDistanceKm: 10,
   openNow: false,
-  premiumOnly: false,
+  premiumOnly: false, // TODO: not yet supported by RPC — do not count in badge
 };
 
 // ---- Location ----

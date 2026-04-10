@@ -1,5 +1,5 @@
 import '../global.css';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -10,8 +10,6 @@ import { useAuthListener } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 
 SplashScreen.preventAutoHideAsync();
-
-const queryClient = new QueryClient();
 
 function RootLayoutInner() {
   useAuthListener(); // starts listening to Supabase auth events
@@ -34,6 +32,22 @@ function RootLayoutInner() {
 }
 
 export default function RootLayout() {
+  // QueryClient inside component so it is not shared across hot reloads in dev.
+  // retry:1 avoids hammering Supabase on transient errors; staleTime prevents
+  // unnecessary refetches every time the user switches tabs.
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: 1,
+        staleTime: 1000 * 60,      // 1 min — data stays fresh across tab switches
+        gcTime:    1000 * 60 * 5,  // 5 min — cache kept in memory
+      },
+      mutations: {
+        retry: 0,
+      },
+    },
+  }));
+
   const [fontsLoaded] = useFonts({
     'Nunito-Regular':   require('../assets/fonts/Nunito-Regular.ttf'),
     'Nunito-Medium':    require('../assets/fonts/Nunito-Medium.ttf'),

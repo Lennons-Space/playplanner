@@ -13,6 +13,15 @@ import { Colors } from '@/constants/theme';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+/** Returns a user-friendly message based on the error type. */
+function getErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  if (message.includes('network') || message.includes('fetch')) {
+    return 'Could not load venue. Check your connection.';
+  }
+  return 'Venue not found.';
+}
+
 export default function VenueDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useUser();
@@ -47,6 +56,12 @@ export default function VenueDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ['favourite', user?.id, id] });
       queryClient.invalidateQueries({ queryKey: ['favourites', user?.id] });
     },
+    onError: () => {
+      Alert.alert(
+        'Favourites error',
+        'Could not update favourites. Please check your connection and try again.'
+      );
+    },
   });
 
   if (isLoading) {
@@ -60,7 +75,9 @@ export default function VenueDetailScreen() {
   if (error || !venue) {
     return (
       <SafeAreaView className="flex-1 bg-sand items-center justify-center px-6">
-        <Text className="text-charcoal font-bold text-lg text-center">Venue not found</Text>
+        <Text className="text-charcoal font-bold text-lg text-center">
+          {error ? getErrorMessage(error) : 'Venue not found.'}
+        </Text>
         <TouchableOpacity className="mt-4" onPress={() => router.back()}>
           <Text className="text-coral">← Go back</Text>
         </TouchableOpacity>
