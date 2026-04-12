@@ -10,27 +10,44 @@
 
 // ---- Mock Supabase BEFORE importing the store ----
 // This must come before any import that touches supabase.
-const mockSignOut = jest.fn().mockResolvedValue({ error: null });
-const mockSelect = jest.fn().mockReturnThis();
-const mockEq = jest.fn().mockReturnThis();
-const mockSingle = jest.fn().mockResolvedValue({ data: null, error: null });
-
-jest.mock('@/lib/supabase', () => ({
-  supabase: {
-    auth: {
-      signOut: mockSignOut,
-    },
-    from: jest.fn(() => ({
-      select: mockSelect,
-      eq: mockEq,
-      single: mockSingle,
-    })),
-  },
-}));
-
 import { useAuthStore } from './authStore';
+import { supabase } from '@/lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
 import type { Profile } from '../types';
+
+// jest.mock() is hoisted by Jest before variable assignments.
+// Variables declared OUTSIDE the factory are undefined when the factory runs.
+//
+// Solution: create all jest.fn() instances INSIDE the factory, then export
+// them alongside the supabase object so tests can reference them via require().
+jest.mock('@/lib/supabase', () => {
+  // Stable mock instances — created once, reused by every call to from().
+  const _mockSignOut = jest.fn().mockResolvedValue({ error: null });
+  const _mockSingle  = jest.fn().mockResolvedValue({ data: null, error: null });
+  const _mockEq      = jest.fn().mockReturnThis();
+  const _mockSelect  = jest.fn().mockReturnThis();
+
+  // Attach inner mocks directly onto the supabase object so the imported
+  // `supabase` reference gives access to them for assertions and overrides.
+  const supabaseObj = {
+    auth: { signOut: _mockSignOut },
+    from: jest.fn(() => ({
+      select: _mockSelect,
+      eq:     _mockEq,
+      single: _mockSingle,
+    })),
+    _mockSignOut,
+    _mockSingle,
+  };
+
+  return { supabase: supabaseObj };
+});
+
+// Grab stable references to the inner mocks from the imported (mocked) module.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _s          = supabase as any;
+const mockSignOut = _s._mockSignOut as jest.Mock;
+const mockSingle  = _s._mockSingle  as jest.Mock;
 
 // ---- Test fixtures ----
 
@@ -139,14 +156,12 @@ describe('setSession', () => {
     useAuthStore.getState().setSession(fakeSession);
 
     // fetchProfile is called internally — it queries 'profiles'
-    const { supabase } = require('@/lib/supabase');
     expect(supabase.from).toHaveBeenCalledWith('profiles');
   });
 
   // setSession(null) should NOT trigger fetchProfile
   it('does not call fetchProfile when session is null', () => {
-    const { supabase } = require('@/lib/supabase');
-    supabase.from.mockClear();
+    (supabase.from as jest.Mock).mockClear();
 
     useAuthStore.getState().setSession(null);
 
@@ -184,8 +199,7 @@ describe('fetchProfile', () => {
 
   // If there is no user, fetchProfile should do nothing (guard clause)
   it('does nothing if no user is set', async () => {
-    const { supabase } = require('@/lib/supabase');
-    supabase.from.mockClear();
+    (supabase.from as jest.Mock).mockClear();
 
     await useAuthStore.getState().fetchProfile();
 

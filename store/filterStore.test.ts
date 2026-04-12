@@ -146,10 +146,12 @@ describe('activeFilterCount', () => {
     expect(useFilterStore.getState().activeFilterCount()).toBe(1);
   });
 
-  // Adding facilities should add 1
-  it('counts non-empty facilityIds as 1 active filter', () => {
+  // facilityIds are stored but intentionally excluded from the count
+  // (the venue RPC doesn't filter on them yet — counting would show a
+  // non-zero badge while search results are unchanged, which is misleading)
+  it('does not count facilityIds (RPC not yet wired up)', () => {
     useFilterStore.getState().setFilters({ facilityIds: ['fac-1'] });
-    expect(useFilterStore.getState().activeFilterCount()).toBe(1);
+    expect(useFilterStore.getState().activeFilterCount()).toBe(0);
   });
 
   // minAge alone counts as 1
@@ -176,18 +178,19 @@ describe('activeFilterCount', () => {
     expect(useFilterStore.getState().activeFilterCount()).toBe(1);
   });
 
-  // Multiple filters active at once — verify they all add up
+  // Multiple filters active at once — verify they all add up.
+  // facilityIds is present but must NOT increment the count (excluded).
   it('counts all active filters correctly when several are set', () => {
     useFilterStore.getState().setFilters({
       openNow: true,           // +1
       maxDistanceKm: 25,       // +1
       categoryIds: ['cat-1'],  // +1
-      facilityIds: ['fac-1'],  // +1
+      facilityIds: ['fac-1'],  //  0 (excluded — RPC not yet wired up)
       minAge: 2,               // +1
       maxAge: 10,              // +1
       priceRange: ['free'],    // +1
     });
-    expect(useFilterStore.getState().activeFilterCount()).toBe(7);
+    expect(useFilterStore.getState().activeFilterCount()).toBe(6);
   });
 
   // After reset, count goes back to 0
@@ -195,5 +198,156 @@ describe('activeFilterCount', () => {
     useFilterStore.getState().setFilters({ openNow: true, maxDistanceKm: 50 });
     useFilterStore.getState().resetFilters();
     expect(useFilterStore.getState().activeFilterCount()).toBe(0);
+  });
+});
+
+// ======================================================================
+// filterStore — regression
+//
+// These tests lock in fixes for specific bugs found in the review.
+// Each test has a comment explaining what real-world failure it guards.
+// ======================================================================
+describe('filterStore — regression', () => {
+
+  // ── setFilters ────────────────────────────────────────────────────────
+
+  // Regression: if setFilters ever replaced the whole object instead of
+  // merging, setting openNow would silently wipe categoryIds, priceRange,
+  // and every other field the user had already chosen.
+  it('setFilters with a partial update merges — does not wipe other fields', () => {
+    // Establish a non-default baseline across several fields
+    useFilterStore.getState().setFilters({
+      categoryIds:    ['cat-softplay'],
+      priceRange:     ['free', 'budget'],
+      minAge:         2,
+      maxAge:         8,
+      maxDistanceKm:  25,
+      openNow:        false,
+    });
+
+    // Now apply a single-field partial update
+    useFilterStore.getState().setFilters({ openNow: true });
+
+    const f = useFilterStore.getState().filters;
+    // The partial update must be applied…
+    expect(f.openNow).toBe(true);
+    // …and every other field must be untouched
+    expect(f.categoryIds).toEqual(['cat-softplay']);
+    expect(f.priceRange).toEqual(['free', 'budget']);
+    expect(f.minAge).toBe(2);
+    expect(f.maxAge).toBe(8);
+    expect(f.maxDistanceKm).toBe(25);
+    expect(f.premiumOnly).toBe(DEFAULT_FILTERS.premiumOnly);
+    expect(f.facilityIds).toEqual(DEFAULT_FILTERS.facilityIds);
+  });
+
+  // ── resetFilters ──────────────────────────────────────────────────────
+
+  // Regression: if resetFilters only cleared some fields (e.g. forgot
+  // categoryIds or minAge), stale filter values would silently persist and
+  // the map would keep showing wrong results after the user hit Reset.
+  it('resetFilters restores every field to DEFAULT_FILTERS exactly', () => {
+    // Dirty every field that DEFAULT_FILTERS defines
+    useFilterStore.getState().setFilters({
+      categoryIds:   ['cat-1', 'cat-2'],
+      facilityIds:   ['fac-1'],
+      minAge:        3,
+      maxAge:        12,
+      priceRange:    ['moderate', 'premium'],
+      maxDistanceKm: 1,
+      openNow:       true,
+      premiumOnly:   true,
+    });
+
+    useFilterStore.getState().resetFilters();
+
+    // Every field must exactly match the canonical defaults
+    expect(useFilterStore.getState().filters).toEqual(DEFAULT_FILTERS);
+  });
+
+  // ── activeFilterCount ─────────────────────────────────────────────────
+
+  // Regression: if activeFilterCount returned > 0 at startup (e.g. it
+  // accidentally counted a default value), the filter badge would show a
+  // non-zero count before the user had touched anything, which is misleading.
+  it('activeFilterCount returns 0 when all filters are at defaults', () => {
+    // Store was reset to DEFAULT_FILTERS in beforeEach
+    expect(useFilterStore.getState().activeFilterCount()).toBe(0);
+  });
+
+  // Regression: if categoryIds was not counted, selecting categories would
+  // never increment the badge and users would not know filters are active.
+  it('activeFilterCount increments by 1 when categoryIds is non-empty', () => {
+    useFilterStore.getState().setFilters({ categoryIds: ['cat-parks'] });
+    expect(useFilterStore.getState().activeFilterCount()).toBe(1);
+  });
+
+  // Regression: priceRange not counted → user sets price filter, badge
+  // stays at 0, user thinks filter was not applied.
+  it('activeFilterCount increments by 1 when priceRange is non-empty', () => {
+    useFilterStore.getState().setFilters({ priceRange: ['free'] });
+    expect(useFilterStore.getState().activeFilterCount()).toBe(1);
+  });
+
+  // Regression: minAge not counted → age filter silently applied with no
+  // badge feedback; parent confused why results look different.
+  it('activeFilterCount increments by 1 when minAge is set', () => {
+    useFilterStore.getState().setFilters({ minAge: 2 });
+    expect(useFilterStore.getState().activeFilterCount()).toBe(1);
+  });
+
+  // Regression: maxAge not counted → same hidden-filter confusion as minAge.
+  it('activeFilterCount increments by 1 when maxAge is set', () => {
+    useFilterStore.getState().setFilters({ maxAge: 10 });
+    expect(useFilterStore.getState().activeFilterCount()).toBe(1);
+  });
+
+  // Regression: openNow not counted → "Open now" toggle has no visual
+  // confirmation in the badge; user reopens sheet confused why it was on.
+  it('activeFilterCount increments by 1 when openNow is true', () => {
+    useFilterStore.getState().setFilters({ openNow: true });
+    expect(useFilterStore.getState().activeFilterCount()).toBe(1);
+  });
+
+  // Regression: maxDistanceKm change not counted → user changes distance
+  // from the 10 km default, sees no badge increment, assumes it did nothing.
+  it('activeFilterCount increments by 1 when maxDistanceKm differs from the default', () => {
+    useFilterStore.getState().setFilters({ maxDistanceKm: 5 });
+    expect(useFilterStore.getState().activeFilterCount()).toBe(1);
+  });
+
+  // Regression: if the count logic forgets the exclusion and starts counting
+  // facilityIds, the badge would increment for a filter that the RPC ignores,
+  // showing "2 filters active" while search results are unchanged — deceptive.
+  it('activeFilterCount does NOT count facilityIds (excluded — RPC not yet wired up)', () => {
+    useFilterStore.getState().setFilters({ facilityIds: ['fac-parking', 'fac-cafe'] });
+    // facilityIds must not contribute to the badge count
+    expect(useFilterStore.getState().activeFilterCount()).toBe(0);
+  });
+
+  // Regression: same exclusion for premiumOnly — counting it before the RPC
+  // supports it would show an incremented badge with no effect on results.
+  it('activeFilterCount does NOT count premiumOnly (excluded — RPC not yet wired up)', () => {
+    useFilterStore.getState().setFilters({ premiumOnly: true });
+    // premiumOnly must not contribute to the badge count
+    expect(useFilterStore.getState().activeFilterCount()).toBe(0);
+  });
+
+  // Regression: all six counted fields together must each contribute exactly
+  // 1, giving a total of 6. If any field is double-counted or skipped the
+  // badge number shown to parents would be wrong.
+  it('activeFilterCount adds up all six counted fields when set simultaneously', () => {
+    useFilterStore.getState().setFilters({
+      categoryIds:   ['cat-1'],   // +1
+      priceRange:    ['free'],    // +1
+      minAge:        2,           // +1
+      maxAge:        10,          // +1
+      openNow:       true,        // +1
+      maxDistanceKm: 1,           // +1 (differs from default of 10)
+      // These two must NOT contribute even when set alongside the rest:
+      facilityIds:   ['fac-1'],
+      premiumOnly:   true,
+    });
+    expect(useFilterStore.getState().activeFilterCount()).toBe(6);
   });
 });
