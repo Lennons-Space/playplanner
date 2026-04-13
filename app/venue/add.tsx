@@ -36,6 +36,43 @@ import type { Category } from '@/types';
 // lng: -8.2 (west Ireland coast) – 1.8 (east coast of England)
 const UK_BOUNDS = { minLat: 49.9, maxLat: 60.9, minLng: -8.2, maxLng: 1.8 };
 
+// Input length limits — prevents oversized payloads reaching the database.
+// These match the varchar() constraints in the DB schema (or sensible defaults
+// where the column is text-unbounded, to limit UI abuse).
+const LIMITS = {
+  name:        100,
+  description: 1000,
+  phone:       20,
+  website:     300,
+};
+
+// Validates a URL is well-formed and uses http:// or https://.
+// Returns null if valid, or an error string to show the user.
+function validateWebsiteUrl(value: string): string | null {
+  if (!value) return null; // empty is fine — website is optional
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return 'Website must start with http:// or https://';
+    }
+    return null;
+  } catch {
+    return 'Please enter a valid website URL (e.g. https://example.com)';
+  }
+}
+
+// Validates the age range fields.
+// Returns null if valid, or an error string to show the user.
+function validateAgeRange(minAge: string, maxAge: string): string | null {
+  const min = parseInt(minAge, 10);
+  const max = parseInt(maxAge, 10);
+  if (isNaN(min) || isNaN(max)) return 'Please enter valid ages (numbers only)';
+  if (min < 0 || max < 0)       return 'Ages cannot be negative';
+  if (min > 18 || max > 18)     return 'Maximum age cannot exceed 18';
+  if (min > max)                 return 'Minimum age cannot be greater than maximum age';
+  return null;
+}
+
 function isInsideUK(lat: number, lng: number): boolean {
   return (
     lat >= UK_BOUNDS.minLat &&
@@ -87,7 +124,7 @@ export default function AddVenueScreen() {
     data: { description: string },
     details: {
       geometry: { location: { lat: number; lng: number } };
-      address_components: Array<{ long_name: string; types: string[] }>;
+      address_components: { long_name: string; types: string[] }[];
     } | null
   ) {
     if (!details) return;
@@ -132,8 +169,39 @@ export default function AddVenueScreen() {
       return;
     }
 
-    if (!name) {
-      Alert.alert('Please fill in the venue name.');
+    // Venue name is required
+    if (!name.trim()) {
+      // Two-argument form: Alert.alert(title, message) — single-arg form silently
+      // fails on Android in some Expo versions.
+      Alert.alert('Missing details', 'Please fill in the venue name.');
+      return;
+    }
+
+    // Length limit checks — prevents oversized strings reaching the database.
+    if (name.trim().length > LIMITS.name) {
+      Alert.alert('Name too long', `Venue name must be ${LIMITS.name} characters or fewer.`);
+      return;
+    }
+    if (description.trim().length > LIMITS.description) {
+      Alert.alert('Description too long', `Description must be ${LIMITS.description} characters or fewer.`);
+      return;
+    }
+    if (phone.trim().length > LIMITS.phone) {
+      Alert.alert('Phone number too long', `Please enter a valid phone number.`);
+      return;
+    }
+
+    // URL validation — must be http(s) if provided
+    const websiteError = validateWebsiteUrl(website.trim());
+    if (websiteError) {
+      Alert.alert('Invalid website', websiteError);
+      return;
+    }
+
+    // Age range validation
+    const ageError = validateAgeRange(minAge, maxAge);
+    if (ageError) {
+      Alert.alert('Invalid age range', ageError);
       return;
     }
 
@@ -149,6 +217,7 @@ export default function AddVenueScreen() {
       latitude,           // real coordinates from Places API (never hardcoded)
       longitude,
       phone:             phone.trim() || null,
+      // website.trim() has already been validated above — safe to insert
       website:           website.trim() || null,
       min_age:           parseInt(minAge, 10),
       max_age:           parseInt(maxAge, 10),
@@ -160,7 +229,11 @@ export default function AddVenueScreen() {
     setLoading(false);
 
     if (error) {
-      Alert.alert('Error', error.message);
+      // Do NOT expose the raw Supabase error message to the user — it may contain
+      // internal schema details (table names, column names, constraint names).
+      // Log it for debugging and show a generic user-facing message instead.
+      console.error('Venue insert error:', error.code, error.hint);
+      Alert.alert('Submission failed', 'Something went wrong. Please check your details and try again.');
     } else {
       Alert.alert(
         'Venue submitted!',
@@ -171,7 +244,7 @@ export default function AddVenueScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-sand">
+    <SafeAreaView className="flex-1 bg-slate">
       {/*
         keyboardShouldPersistTaps="handled" is important here — without it,
         tapping a Places dropdown result on iOS dismisses the keyboard
@@ -200,6 +273,7 @@ export default function AddVenueScreen() {
               value={name}
               onChangeText={setName}
               placeholder="e.g. Sunshine Soft Play"
+              maxLength={LIMITS.name}
             />
           </View>
 
@@ -212,7 +286,7 @@ export default function AddVenueScreen() {
                   key={cat.id}
                   className={`mr-2 px-4 py-2 rounded-full border-2 ${
                     categoryId === cat.id
-                      ? 'border-coral bg-coral'
+                      ? 'border-sky bg-sky'
                       : 'border-greyLighter bg-white'
                   }`}
                   onPress={() => setCategoryId(cat.id)}
@@ -235,6 +309,7 @@ export default function AddVenueScreen() {
               placeholder="What makes this place great for families?"
               multiline
               numberOfLines={3}
+              maxLength={LIMITS.description}
             />
           </View>
 
@@ -339,6 +414,7 @@ export default function AddVenueScreen() {
               placeholder="e.g. https://example.com"
               keyboardType="url"
               autoCapitalize="none"
+              maxLength={LIMITS.website}
             />
           </View>
 
@@ -365,7 +441,7 @@ export default function AddVenueScreen() {
           </View>
 
           <TouchableOpacity
-            className="bg-coral rounded-2xl py-4 items-center mt-2 mb-10"
+            className="bg-sky rounded-2xl py-4 items-center mt-2 mb-10"
             onPress={handleSubmit}
             disabled={loading}
           >

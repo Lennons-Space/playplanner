@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import * as Location from 'expo-location';
 import type { Coordinates } from '@/types';
 import { FALLBACK_LOCATION } from '@/constants/location';
-import { recordLocationConsentGranted } from '@/services/consent/locationConsent';
-import { coarsenCoordinates } from '@/services/location/coordinates';
+import { coarsenCoordinates, isValidCoordinate } from '@/services/location/coordinates';
 
 interface LocationState {
   coords: Coordinates;
@@ -49,15 +48,21 @@ export function useLocation(): LocationState {
         return;
       }
 
-      // Log consent to the database — required by GDPR Art.7.
-      // Non-blocking: we catch and discard errors so a logging failure never
-      // stops the user from using the map.
-      recordLocationConsentGranted().catch(() => undefined);
-
       try {
         const loc = await Location.getCurrentPositionAsync({
+          // Balanced accuracy (~10–100m) is sufficient for venue discovery and
+          // draws less battery than High (which requests full GPS satellite fix).
+          // maximumAge: 30s allows the OS to reuse a recent fix — fast and
+          // GDPR-compliant because coordinates are still rounded to 3dp below.
           accuracy: Location.Accuracy.Balanced,
+          maximumAge: 30_000,
         });
+        if (!isValidCoordinate(loc.coords.latitude, loc.coords.longitude)) {
+          if (active) {
+            setState({ coords: FALLBACK_LOCATION, hasPermission: true, isLoading: false, error: 'Could not get location' });
+          }
+          return;
+        }
         if (active) {
           setState({
             // Round to 3 decimal places (~111m) before storing — GDPR Art.5(1)(c) data minimisation.

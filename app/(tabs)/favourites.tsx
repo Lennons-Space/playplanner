@@ -100,7 +100,7 @@ export default function FavouritesScreen() {
   // ── Not signed in ───────────────────────────────────────────────────────────
   if (!user) {
     return (
-      <SafeAreaView className="flex-1 bg-sand items-center justify-center px-8" edges={['top']}>
+      <SafeAreaView className="flex-1 bg-slate items-center justify-center px-8" edges={['top']}>
         <Text style={{ fontSize: 56, marginBottom: 16 }}>💛</Text>
         <Text
           className="text-charcoal text-xl text-center"
@@ -116,7 +116,7 @@ export default function FavouritesScreen() {
         </Text>
         <TouchableOpacity
           className="rounded-2xl py-4 px-8"
-          style={{ backgroundColor: Colors.coral }}
+          style={{ backgroundColor: Colors.sky }}
           onPress={() => router.push('/(auth)/login')}
           accessibilityRole="button"
           accessibilityLabel="Sign in to save favourites"
@@ -134,7 +134,7 @@ export default function FavouritesScreen() {
           accessibilityRole="button"
         >
           <Text
-            className="text-coral text-sm"
+            className="text-sky text-sm"
             style={{ fontFamily: 'Nunito-Bold' }}
           >
             Create an account
@@ -147,8 +147,8 @@ export default function FavouritesScreen() {
   // ── Loading ─────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <SafeAreaView className="flex-1 bg-sand items-center justify-center" edges={['top']}>
-        <ActivityIndicator color={Colors.coral} size="large" />
+      <SafeAreaView className="flex-1 bg-slate items-center justify-center" edges={['top']}>
+        <ActivityIndicator color={Colors.sky} size="large" />
       </SafeAreaView>
     );
   }
@@ -156,7 +156,7 @@ export default function FavouritesScreen() {
   // ── Error ───────────────────────────────────────────────────────────────────
   if (isError) {
     return (
-      <SafeAreaView className="flex-1 bg-sand items-center justify-center px-8" edges={['top']}>
+      <SafeAreaView className="flex-1 bg-slate items-center justify-center px-8" edges={['top']}>
         <Text style={{ fontSize: 48, marginBottom: 12 }}>⚠️</Text>
         <Text
           className="text-charcoal text-lg text-center"
@@ -176,7 +176,7 @@ export default function FavouritesScreen() {
 
   // ── Signed-in list view ─────────────────────────────────────────────────────
   return (
-    <SafeAreaView className="flex-1 bg-sand" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-slate" edges={['top']}>
       <View className="px-4 pt-4 pb-2">
         <Text
           className="text-2xl text-charcoal"
@@ -198,6 +198,11 @@ export default function FavouritesScreen() {
         data={favourites}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, gap: 12 }}
+        // removeClippedSubviews: unmounts list items that scroll off-screen,
+        // reducing memory use and preventing janky scrolling on longer lists.
+        // Note: getItemLayout is intentionally omitted here — venue card heights
+        // are variable (venue names can wrap to multiple lines).
+        removeClippedSubviews
         ListEmptyComponent={
           <View className="items-center mt-20">
             <Text style={{ fontSize: 56, marginBottom: 12 }}>💛</Text>

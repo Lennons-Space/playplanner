@@ -12,7 +12,9 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfile } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { PREMIUM_PRICE_MONTHLY_DISPLAY } from '@/constants/pricing';
 
 interface MenuItemProps {
   icon: string;
@@ -42,6 +44,7 @@ function MenuItem({ icon, label, onPress, badge }: MenuItemProps) {
 export default function ProfileScreen() {
   const profile = useProfile();
   const signOut = useAuthStore((s) => s.signOut);
+  const queryClient = useQueryClient();
 
   // Tracks whether the account deletion call is in progress.
   // Prevents the user tapping "Delete" twice and sending two requests.
@@ -50,7 +53,7 @@ export default function ProfileScreen() {
   function confirmSignOut() {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: signOut },
+      { text: 'Sign out', style: 'destructive', onPress: () => { queryClient.clear(); signOut(); } },
     ]);
   }
 
@@ -80,12 +83,21 @@ export default function ProfileScreen() {
             setDeleting(false);
 
             if (error) {
-              Alert.alert('Could not delete account. Please try again.');
+              Alert.alert('Error', 'Could not delete account. Please try again.');
               return;
             }
 
-            // Clear the local session so Zustand doesn't hold stale user data.
-            await signOut();
+            // Clear the React Query cache and local session so no data from
+            // this deleted account can leak to the next user on the device.
+            queryClient.clear();
+            // signOut is best-effort here: the DB row is already gone so the
+            // session is invalid regardless. We still call it to clear local
+            // state, but a network error must not block navigation.
+            try {
+              await signOut();
+            } catch (signOutError) {
+              console.error('signOut failed after account delete (non-blocking):', signOutError);
+            }
             // Send the user back to the Welcome screen — the account no longer exists.
             router.replace('/(auth)/welcome');
           },
@@ -95,14 +107,19 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-sand" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-slate" edges={['top']}>
       <ScrollView>
         {/* Header */}
-        <View className="bg-coral px-4 pt-4 pb-8 items-center">
+        <View className="bg-sky px-4 pt-4 pb-8 items-center">
           <View className="w-20 h-20 rounded-full bg-white items-center justify-center mb-3">
             <Text className="text-4xl">👤</Text>
           </View>
           <Text className="text-white font-extrabold text-xl">{profile?.full_name ?? 'Parent'}</Text>
+          {profile?.username && (
+            <Text className="text-white text-sm mt-0.5" style={{ opacity: 0.75 }}>
+              @{profile.username}
+            </Text>
+          )}
           {profile?.subscription_tier === 'premium' && (
             <View className="bg-sun rounded-full px-3 py-1 mt-1">
               <Text className="text-charcoal font-bold text-xs">⭐ Premium</Text>
@@ -113,20 +130,23 @@ export default function ProfileScreen() {
         {/* Account section */}
         <Text className="text-grey text-xs font-bold uppercase px-4 pt-5 pb-2">Account</Text>
         <View className="rounded-2xl overflow-hidden mx-4">
-          <MenuItem icon="✏️" label="Edit profile"    onPress={() => {/* TODO */}} />
-          <MenuItem icon="🔔" label="Notifications"   onPress={() => {/* TODO */}} />
-          <MenuItem icon="🔒" label="Privacy settings" onPress={() => {/* TODO */}} />
+          <MenuItem icon="✏️" label="Edit profile"      onPress={() => router.push('/profile/edit')} />
+          <MenuItem icon="⭐" label="My reviews"         onPress={() => router.push('/profile/my-reviews')} />
+          <MenuItem icon="📍" label="My submitted venues" onPress={() => router.push('/profile/my-venues')} />
+          <MenuItem icon="🔔" label="Notifications"      onPress={() => router.push('/profile/notifications')} />
+          <MenuItem icon="🔒" label="Privacy settings"   onPress={() => router.push('/profile/privacy-settings')} />
+          <MenuItem icon="⬇️" label="Download my data"   onPress={() => router.push('/profile/data-download')} />
         </View>
 
         {/* Subscription */}
         <Text className="text-grey text-xs font-bold uppercase px-4 pt-5 pb-2">Subscription</Text>
         <View className="rounded-2xl overflow-hidden mx-4">
-          {profile?.subscription_tier === 'free' ? (
+          {(!profile || profile.subscription_tier === 'free') ? (
             <MenuItem
               icon="⭐"
               label="Upgrade to Premium"
               onPress={() => {/* TODO: open upgrade screen */}}
-              badge="£2.99/mo"
+              badge={PREMIUM_PRICE_MONTHLY_DISPLAY}
             />
           ) : (
             <MenuItem icon="⭐" label="Manage subscription" onPress={() => {/* TODO */}} />

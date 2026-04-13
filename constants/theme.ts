@@ -4,16 +4,19 @@
 // ============================================================
 
 export const Colors = {
-  // Brand
-  coral:      '#FF6B6B',   // primary CTA, nav active
+  // Brand — Direction 2 (Blue Sky Afternoon): sky/teal is primary; coral is action/alert only.
+  coral:      '#FF6B6B',   // action/alert: stars, destructive, status badges
   coralLight: '#FF8E8E',
   coralDark:  '#E05555',
-  sky:        '#4ECDC4',   // secondary accent
+  sky:        '#4ECDC4',   // PRIMARY: CTAs, FAB, profile header, active states
   skyLight:   '#72D9D2',
-  sun:        '#FFE66D',   // highlights, badges
-  mint:       '#A8E6CF',   // success, open badge
+  skyDark:    '#3AB5AC',
+  sun:        '#FFE66D',   // highlights, premium badges
+  mint:       '#7DD4C4',   // updated: more saturated, closer to teal family
   // Neutral
-  sand:       '#FFF9F0',   // background
+  slate:      '#F0F7F7',   // page/screen background (root SafeAreaView)
+  slateDark:  '#E0F0EF',
+  sand:       '#FFF9F0',   // card / inner container background (layered on top of slate)
   sandDark:   '#F5EDE0',   // card background
   white:      '#FFFFFF',
   charcoal:   '#2D3436',   // primary text

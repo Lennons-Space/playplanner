@@ -26,11 +26,14 @@ export function useVenue(id: string) {
       const { data, error } = await supabase
         .from('venues')
         .select(`
-          *,
-          category:categories(*),
-          photos:venue_photos(*),
-          opening_hours(*),
-          facilities:venue_facilities(facility:facilities(*))
+          id, name, description, city, postcode, address_line1, address_line2,
+          phone, website, price_range, min_age, max_age,
+          is_published, is_verified, is_premium, review_count, average_rating,
+          latitude, longitude, claimed_by, submitted_by,
+          category:categories(id, name, icon, color),
+          photos:venue_photos(id, url, is_cover, status, caption, sort_order),
+          opening_hours(id, day_of_week, opens_at, closes_at, is_closed),
+          facilities:venue_facilities(facility:facilities(id, name, icon))
         `)
         .eq('id', id)
         .eq('is_published', true)
@@ -45,12 +48,13 @@ export function useVenue(id: string) {
       // second line of defence — the primary control is the RLS policy on venue_photos.
       if (data?.photos) {
         data.photos = (data.photos as VenuePhoto[]).filter(
-          (photo) => photo.is_approved === true
+          (photo) => photo.status === 'approved'
         );
       }
 
       return data as Venue;
     },
+    staleTime: 60_000, // treat venue data as fresh for 1 min — prevents refetch on every nav back
     enabled: !!id,
   });
 }
@@ -58,7 +62,7 @@ export function useVenue(id: string) {
 /** Fetch venues near a location, with optional filters */
 export function useNearbyVenues(coords: Coordinates, filters: VenueFilters) {
   return useQuery({
-    queryKey: ['venues', 'nearby', coords, filters],
+    queryKey: ['venues', 'nearby', coords.latitude, coords.longitude, filters],
     queryFn: async () => {
       // Use Supabase RPC (stored function) for PostGIS distance query
       const { data, error } = await supabase.rpc('get_nearby_venues', {
@@ -85,11 +89,13 @@ export function useNearbyVenues(coords: Coordinates, filters: VenueFilters) {
 /** Search venues by text query */
 export function useVenueSearch(query: string, coords: Coordinates) {
   return useQuery({
-    queryKey: ['venues', 'search', query, coords],
+    // coords is intentionally excluded from the key — text search is location-agnostic.
+    // Including it caused every GPS tick to invalidate the cache and fire a redundant request.
+    queryKey: ['venues', 'search', query],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('venues')
-        .select('*, category:categories(*), photos:venue_photos(url, is_cover, is_approved)')
+        .select('*, category:categories(*), photos:venue_photos(url, is_cover, status)')
         .eq('is_published', true)
         .eq('moderation_status', 'approved')
         // escapeLikePattern prevents SQL wildcard injection — see function above.
@@ -99,5 +105,6 @@ export function useVenueSearch(query: string, coords: Coordinates) {
       return (data ?? []) as Venue[];
     },
     enabled: query.length >= 2,
+    staleTime: 1000 * 60 * 5, // 5 min — search results don't change by the second
   });
 }

@@ -2,14 +2,20 @@
  * Venue detail screen
  * Shows everything about a single venue: photos, info, hours, reviews.
  */
+import { useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Linking, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVenue } from '@/hooks/useVenues';
+import { useVenueReviews } from '@/hooks/useReviews';
 import { useUser } from '@/hooks/useAuth';
+import { useVenuePhotos } from '@/hooks/useVenuePhotos';
 import { supabase } from '@/lib/supabase';
 import { Colors } from '@/constants/theme';
+import { ReviewCard } from '@/components/reviews/ReviewCard';
+import { VenuePhotoUpload } from '@/components/venue/VenuePhotoUpload';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -23,11 +29,20 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function VenueDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: rawId } = useLocalSearchParams<{ id: string }>();
+  // B7 — Expo Router can produce string[] when a route param appears multiple
+  // times in a deep-link URL. Take the first element to guarantee a string.
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const user = useUser();
   const queryClient = useQueryClient();
 
   const { data: venue, isLoading, error } = useVenue(id);
+
+  // Fetch approved reviews for this venue
+  const { data: reviews, isLoading: reviewsLoading } = useVenueReviews(id);
+
+  // Fetch approved photos for the cover image and upload button
+  const { data: photos = [] } = useVenuePhotos(id);
 
   // Check if this venue is in the user's favourites
   const { data: isFavourited } = useQuery({
@@ -64,36 +79,46 @@ export default function VenueDetailScreen() {
     },
   });
 
+  // Sorted copy — never mutate venue.opening_hours directly as it is the
+  // React Query cache object shared across all consumers of ['venue', id].
+  const sortedHours = useMemo(
+    () => [...(venue?.opening_hours ?? [])].sort((a, b) => a.day_of_week - b.day_of_week),
+    [venue?.opening_hours]
+  );
+
   if (isLoading) {
     return (
-      <SafeAreaView className="flex-1 bg-sand items-center justify-center">
-        <ActivityIndicator color={Colors.coral} size="large" />
+      <SafeAreaView className="flex-1 bg-slate items-center justify-center">
+        <ActivityIndicator color={Colors.sky} size="large" />
       </SafeAreaView>
     );
   }
 
   if (error || !venue) {
     return (
-      <SafeAreaView className="flex-1 bg-sand items-center justify-center px-6">
+      <SafeAreaView className="flex-1 bg-slate items-center justify-center px-6">
         <Text className="text-charcoal font-bold text-lg text-center">
           {error ? getErrorMessage(error) : 'Venue not found.'}
         </Text>
         <TouchableOpacity className="mt-4" onPress={() => router.back()}>
-          <Text className="text-coral">← Go back</Text>
+          <Text className="text-sky">← Go back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
-  const coverPhoto = venue.photos?.find((p) => p.is_cover) ?? venue.photos?.[0];
+  // Prefer a photo marked is_cover, otherwise the first approved photo.
+  // B10/B14 — Also require that url is truthy; an empty string would produce
+  // a broken Image source and a native error on some Android versions.
+  const coverPhoto = photos.find((p) => p.is_cover && p.url) ?? photos.find((p) => p.url);
 
   return (
-    <View className="flex-1 bg-sand">
+    <View className="flex-1 bg-slate">
       <ScrollView>
         {/* Cover photo area */}
         <View className="h-56 bg-sandDark items-center justify-center">
-          {coverPhoto
-            ? null /* TODO: <Image source={{ uri: coverPhoto.url }} className="w-full h-full" /> */
+          {coverPhoto?.url
+            ? <Image source={{ uri: coverPhoto.url }} style={{ width: '100%', height: 220 }} contentFit="cover" transition={200} />
             : <Text className="text-8xl">{venue.category?.icon ?? '📍'}</Text>}
 
           {/* Back button */}
@@ -159,7 +184,7 @@ export default function VenueDetailScreen() {
           <View className="flex-row gap-3 mt-4">
             {venue.phone && (
               <TouchableOpacity
-                className="flex-1 bg-coral rounded-xl py-3 items-center"
+                className="flex-1 bg-sky rounded-xl py-3 items-center"
                 onPress={() => Linking.openURL(`tel:${venue.phone}`)}
               >
                 <Text className="text-white font-bold">📞 Call</Text>
@@ -191,12 +216,10 @@ export default function VenueDetailScreen() {
           )}
 
           {/* Opening hours */}
-          {venue.opening_hours && venue.opening_hours.length > 0 && (
+          {sortedHours.length > 0 && (
             <View className="mt-6">
               <Text className="text-charcoal font-bold text-lg mb-3">Opening hours</Text>
-              {venue.opening_hours
-                .sort((a, b) => a.day_of_week - b.day_of_week)
-                .map((h) => (
+              {sortedHours.map((h) => (
                   <View key={h.id} className="flex-row justify-between py-1 border-b border-greyLighter">
                     <Text className="text-charcoal w-12">{DAYS[h.day_of_week]}</Text>
                     {h.is_closed
@@ -213,16 +236,36 @@ export default function VenueDetailScreen() {
             <Text className="text-grey">{[venue.address_line1, venue.address_line2, venue.city, venue.postcode].filter(Boolean).join(', ')}</Text>
           </View>
 
-          {/* Reviews section — placeholder */}
+          {/* Photo upload — only shown to authenticated users */}
+          {user && <VenuePhotoUpload venueId={id} />}
+
+          {/* Reviews section */}
           <View className="mt-6 mb-10">
             <View className="flex-row justify-between items-center mb-3">
               <Text className="text-charcoal font-bold text-lg">Reviews</Text>
-              <TouchableOpacity onPress={() => {/* TODO: navigate to write review */}}>
-                <Text className="text-coral font-bold">Write a review</Text>
+              {/* Navigate to the write-review screen for this venue */}
+              <TouchableOpacity onPress={() => router.push(`/venue/${id}/review`)}>
+                <Text className="text-sky font-bold">Write a review</Text>
               </TouchableOpacity>
             </View>
-            {/* TODO: ReviewList component */}
-            <Text className="text-grey">Reviews coming soon...</Text>
+
+            {reviewsLoading && (
+              <ActivityIndicator color={Colors.sky} style={{ marginVertical: 16 }} />
+            )}
+
+            {!reviewsLoading && (!reviews || reviews.length === 0) && (
+              <Text className="text-grey text-center py-4">
+                No reviews yet — be the first!
+              </Text>
+            )}
+
+            {!reviewsLoading && reviews && reviews.length > 0 && (
+              <View className="gap-3">
+                {reviews.map((r) => (
+                  <ReviewCard key={r.id} review={r} />
+                ))}
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>

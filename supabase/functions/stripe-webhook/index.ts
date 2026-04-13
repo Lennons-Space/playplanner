@@ -158,6 +158,32 @@ Deno.serve(async (req: Request) => {
           break;
         }
 
+        // Security: verify the profile in client_reference_id actually owns (or has
+        // claimed) this venue. Without this check a malicious actor could craft a
+        // checkout session with any profileId|venueId pair and trigger premium
+        // activation on a venue they do not own.
+        const { data: venueRow, error: ownershipError } = await supabaseAdmin
+          .from('venues')
+          .select('claimed_by')
+          .eq('id', venueId)
+          .single();
+
+        if (ownershipError || !venueRow) {
+          console.error('[stripe-webhook] checkout.session.completed: venue not found', { venueId });
+          return new Response(
+            JSON.stringify({ error: 'Venue not found' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+          );
+        }
+
+        if (venueRow.claimed_by !== null && venueRow.claimed_by !== profileId) {
+          console.error('[stripe-webhook] checkout.session.completed: ownership mismatch — rejecting');
+          return new Response(
+            JSON.stringify({ error: 'Ownership mismatch' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+          );
+        }
+
         // Upsert the subscription record.
         // onConflict: 'stripe_subscription_id' means if Stripe sends this
         // event twice (it retries on network failures), the second call
@@ -423,15 +449,25 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     // ------------------------------------------------------------------
     // 6. Catch-all error handler
-    // Return 500 so Stripe knows to retry. Log the message but never
-    // include raw personal data or stack traces in the response body.
+    // Return 400 for client/input errors (bad IDs, ownership mismatches) so
+    // Stripe does not retry them pointlessly for 3 days.
+    // Return 500 only for server-side failures (DB timeouts, connection errors)
+    // which Stripe should retry. Never expose internal error details in the body.
     // ------------------------------------------------------------------
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[stripe-webhook] Unhandled error:', message);
+
+    const isClientError =
+      message.includes('not found') ||
+      message.includes('ownership') ||
+      message.includes('invalid') ||
+      message.includes('missing') ||
+      message.includes('reference');
+
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
       {
-        status: 500,
+        status: isClientError ? 400 : 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       },
     );

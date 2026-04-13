@@ -28,11 +28,15 @@ export async function writeAuditLog(
   tableNameParam?: string,
   recordId?: string,
 ): Promise<void> {
-  await supabase.from('gdpr_audit_log').insert({
-    user_id:      userId,
-    action,
-    table_name:   tableNameParam,
-    record_id:    recordId,
-    performed_by: userId,
-  });
+  try {
+    await supabase.from('gdpr_audit_log').insert({
+      user_id:      userId,
+      action,
+      table_name:   tableNameParam,
+      record_id:    recordId,
+      performed_by: userId,
+    });
+  } catch (error) {
+    console.warn('PlayPlanner: Failed to write GDPR audit log:', error);
+  }
 }

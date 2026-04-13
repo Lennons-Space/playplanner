@@ -32,7 +32,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!user) return;
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select(
+        'id, username, full_name, avatar_url, bio, is_business_owner, is_admin, ' +
+        'subscription_tier, subscription_expires_at, children_ages, ' +
+        'marketing_consent, postcode, show_in_search, show_reviews_publicly, ' +
+        'terms_accepted_at, created_at, updated_at'
+      )
+      // stripe_customer_id is intentionally excluded — it must never reach client memory.
       .eq('id', user.id)
       .single();
     if (error) {
@@ -47,5 +53,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     await supabase.auth.signOut();
     set({ session: null, user: null, profile: null });
+    // CONTRACT: callers must also call queryClient.clear() immediately after this
+    // to prevent cached venue/profile data from leaking to the next user on a
+    // shared device. The store cannot access queryClient directly (it lives in
+    // React context), so this responsibility belongs to the sign-out UI handler.
   },
 }));

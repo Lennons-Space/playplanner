@@ -30,9 +30,34 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { writeAuditLog } from '@/services/audit/gdprAuditLog';
+import { migratePendingLocationConsent } from '@/services/consent/locationConsent';
 
 // Client-side sanity check — catches obvious typos before hitting the network
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Convert raw Supabase signup errors into safe, user-friendly messages.
+ * Never reveal whether a specific email address is already registered
+ * (email enumeration is an account-discovery attack vector).
+ */
+function getFriendlySignUpError(message: string): string {
+  const m = message.toLowerCase();
+  if (
+    m.includes('already registered') ||
+    m.includes('already exists') ||
+    m.includes('email address is already') ||
+    m.includes('user already registered')
+  ) {
+    return 'Something went wrong. Please try again or sign in instead.';
+  }
+  if (m.includes('network') || m.includes('fetch')) {
+    return 'Could not connect. Please check your internet connection.';
+  }
+  if (m.includes('password') && m.includes('weak')) {
+    return 'Please choose a stronger password.';
+  }
+  return 'Sign up failed. Please check your details and try again.';
+}
 
 /**
  * Simple password strength scorer (0–4).
@@ -127,13 +152,20 @@ export default function RegisterScreen() {
       } catch (auditError) {
         console.error('Audit log write failed (non-blocking):', auditError);
       }
+
+      // Migrate any pre-auth location consent stored locally before account creation.
+      try {
+        await migratePendingLocationConsent(data.user.id);
+      } catch {
+        // Non-blocking — migration will be retried on next login.
+      }
     }
 
     setLoading(false);
     submitLocked.current = false;
 
     if (error) {
-      Alert.alert('Sign up failed', error.message);
+      Alert.alert('Sign up failed', getFriendlySignUpError(error.message));
     } else {
       // data.session is null here — email confirmation is required before the user is active
       Alert.alert(
@@ -145,7 +177,7 @@ export default function RegisterScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-sand">
+    <SafeAreaView className="flex-1 bg-slate">
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -165,7 +197,7 @@ export default function RegisterScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go back to the previous screen"
           >
-            <Text className="text-coral text-base" style={{ fontFamily: 'Nunito-Bold' }}>
+            <Text className="text-sky text-base" style={{ fontFamily: 'Nunito-Bold' }}>
               ← Back
             </Text>
           </TouchableOpacity>
@@ -293,7 +325,7 @@ export default function RegisterScreen() {
               >
                 <View
                   className={`rounded border-2 items-center justify-center flex-shrink-0 ${
-                    marketing ? 'bg-coral border-coral' : 'bg-white border-greyLighter'
+                    marketing ? 'bg-sky border-sky' : 'bg-white border-greyLighter'
                   }`}
                   style={{ width: 24, height: 24 }}
                 >
@@ -326,7 +358,7 @@ export default function RegisterScreen() {
               >
                 <View
                   className={`rounded border-2 items-center justify-center flex-shrink-0 ${
-                    termsAccepted ? 'bg-coral border-coral' : 'bg-white border-greyLighter'
+                    termsAccepted ? 'bg-sky border-sky' : 'bg-white border-greyLighter'
                   }`}
                   style={{ width: 24, height: 24, marginTop: 1 }}
                 >
@@ -339,7 +371,7 @@ export default function RegisterScreen() {
                 <Text className="text-grey text-sm flex-1" style={{ fontFamily: 'Nunito-Regular' }}>
                   I have read and accept the{' '}
                   <Text
-                    className="text-coral"
+                    className="text-sky"
                     style={{ fontFamily: 'Nunito-Bold' }}
                     onPress={() => router.push('/(auth)/terms')}
                     accessibilityRole="link"
@@ -348,7 +380,7 @@ export default function RegisterScreen() {
                   </Text>
                   {' '}and{' '}
                   <Text
-                    className="text-coral"
+                    className="text-sky"
                     style={{ fontFamily: 'Nunito-Bold' }}
                     onPress={() => router.push('/(auth)/privacy')}
                     accessibilityRole="link"
@@ -365,10 +397,10 @@ export default function RegisterScreen() {
 
           {/* ── Primary CTA ───────────────────────────────────────────── */}
           <TouchableOpacity
-            className="w-full bg-coral rounded-2xl items-center justify-center mt-6"
+            className="w-full bg-sky rounded-2xl items-center justify-center mt-6"
             style={{
               height: 52,
-              shadowColor: '#FF6B6B',
+              shadowColor: '#4ECDC4',
               shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.30,
               shadowRadius: 8,
@@ -395,7 +427,7 @@ export default function RegisterScreen() {
           >
             <Text className="text-grey text-base" style={{ fontFamily: 'Nunito-Regular' }}>
               Already have an account?{' '}
-              <Text className="text-coral" style={{ fontFamily: 'Nunito-Bold' }}>Sign in</Text>
+              <Text className="text-sky" style={{ fontFamily: 'Nunito-Bold' }}>Sign in</Text>
             </Text>
           </TouchableOpacity>
 

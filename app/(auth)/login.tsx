@@ -10,7 +10,7 @@
  *    them before signing in (ICO Children's Code Standard 4 — transparency).
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,8 @@ import {
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
+import { useUser } from '@/hooks/useAuth';
+import { migratePendingLocationConsent } from '@/services/consent/locationConsent';
 
 // Client-side sanity check only — real validation happens on the server.
 // Catches obvious typos before hitting the network.
@@ -59,6 +61,17 @@ export default function LoginScreen() {
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading]   = useState(false);
+  const user = useUser();
+
+  // Migrate any pre-auth location consent (stored locally before account creation)
+  // into the database now that we have an authenticated user ID.
+  useEffect(() => {
+    if (user?.id) {
+      migratePendingLocationConsent(user.id).catch(() => {
+        // Non-blocking — migration failure must never impact the login experience.
+      });
+    }
+  }, [user?.id]);
 
   async function handleLogin() {
     if (!email || !password) {
@@ -107,7 +120,7 @@ export default function LoginScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-sand">
+    <SafeAreaView className="flex-1 bg-slate">
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -127,7 +140,7 @@ export default function LoginScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go back to the previous screen"
           >
-            <Text className="text-coral text-base" style={{ fontFamily: 'Nunito-Bold' }}>
+            <Text className="text-sky text-base" style={{ fontFamily: 'Nunito-Bold' }}>
               ← Back
             </Text>
           </TouchableOpacity>
@@ -221,10 +234,10 @@ export default function LoginScreen() {
 
           {/* ── Primary CTA ───────────────────────────────────────────── */}
           <TouchableOpacity
-            className="w-full bg-coral rounded-2xl items-center justify-center mt-6"
+            className="w-full bg-sky rounded-2xl items-center justify-center mt-6"
             style={{
               height: 52,
-              shadowColor: '#FF6B6B',
+              shadowColor: '#4ECDC4',
               shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.30,
               shadowRadius: 8,
@@ -252,7 +265,7 @@ export default function LoginScreen() {
           >
             <Text className="text-grey text-base" style={{ fontFamily: 'Nunito-Regular' }}>
               Don't have an account?{' '}
-              <Text className="text-coral" style={{ fontFamily: 'Nunito-Bold' }}>Sign up free</Text>
+              <Text className="text-sky" style={{ fontFamily: 'Nunito-Bold' }}>Sign up free</Text>
             </Text>
           </TouchableOpacity>
 

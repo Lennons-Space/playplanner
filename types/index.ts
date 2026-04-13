@@ -38,6 +38,10 @@ export interface Profile {
   subscription_expires_at: string | null;
   children_ages: string[] | null;   // age ranges e.g. '2-4', not exact ages (data minimisation)
   marketing_consent: boolean;
+  // Privacy & location preferences (migration 004)
+  postcode: string | null;          // approx location — never full address; user-visible only
+  show_in_search: boolean;          // default false — ICO Children's Code Standard 9
+  show_reviews_publicly: boolean;   // default true — reviews help the community
   terms_accepted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -91,6 +95,8 @@ export interface Venue {
   updated_at: string;
 }
 
+export type PhotoStatus = 'pending' | 'approved' | 'rejected';
+
 export interface VenuePhoto {
   id: string;
   venue_id: string;
@@ -98,10 +104,21 @@ export interface VenuePhoto {
   url: string;
   storage_path: string;
   is_cover: boolean;
-  is_approved: boolean;
+  status: PhotoStatus;
+  moderation_notes: string | null;
+  moderated_by: string | null;
+  moderated_at: string | null;
   caption: string | null;
   sort_order: number;
   created_at: string;
+}
+
+/** A pending VenuePhoto with its venue name — used by the admin moderation queue.
+ *  venue is nullable because the parent venue may have been hard-deleted between
+ *  upload and moderation — queries should filter these out, but the type must
+ *  reflect reality so the render doesn't crash (B9). */
+export interface PendingPhotoWithVenue extends VenuePhoto {
+  venue: { id: string; name: string } | null;
 }
 
 export interface OpeningHours {
@@ -123,8 +140,10 @@ export interface OpeningHours {
 // (stripe_customer_id exists in the DB but is intentionally omitted from the
 // Profile TS interface — it must never be selected client-side.)
 // Use this type everywhere a reviewer / commenter's profile is joined.
+// Matches the public_profiles DB view (migration 004).
+// This type is the TypeScript equivalent of the view's column list — keep them in sync.
 export type PublicProfile = Pick<Profile,
-  'id' | 'username' | 'full_name' | 'avatar_url' | 'bio' | 'is_business_owner'
+  'id' | 'username' | 'full_name' | 'avatar_url' | 'bio' | 'is_business_owner' | 'show_reviews_publicly' | 'created_at'
 >;
 
 export interface Review {

@@ -2,6 +2,7 @@
  * Business Dashboard — for venue owners who have claimed a listing.
  * Shows analytics, lets them edit their venue, post offers, and upgrade plan.
  */
+import { useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +14,17 @@ import type { Venue } from '@/types';
 export default function BusinessDashboard() {
   const user = useUser();
 
+  // Guard: unauthenticated users must not reach the business dashboard.
+  // useEffect is used instead of an early return before the hook calls below —
+  // React requires all hooks to be called unconditionally on every render
+  // (rules of hooks). useEffect fires after render, which is safe here
+  // because the component renders null while the redirect is in flight.
+  useEffect(() => {
+    if (!user) {
+      router.replace('/(auth)/login');
+    }
+  }, [user]);
+
   const { data: claimedVenues = [] } = useQuery({
     queryKey: ['claimed-venues', user?.id],
     queryFn: async () => {
@@ -22,15 +34,20 @@ export default function BusinessDashboard() {
         .eq('claimed_by', user!.id);
       return (data ?? []) as Venue[];
     },
+    // Only run when a user is present — no-op guard for the unauthenticated case
+    // while the useEffect redirect is in-flight.
     enabled: !!user,
   });
 
+  // Render nothing while the redirect is in-flight for unauthenticated users.
+  if (!user) return null;
+
   return (
-    <SafeAreaView className="flex-1 bg-sand" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-slate" edges={['top']}>
       <ScrollView className="px-4">
         <View className="flex-row items-center gap-2 pt-4 pb-2">
           <TouchableOpacity onPress={() => router.back()}>
-            <Text className="text-coral">←</Text>
+            <Text className="text-sky">←</Text>
           </TouchableOpacity>
           <Text className="text-2xl font-extrabold text-charcoal">Business Dashboard</Text>
         </View>
@@ -43,7 +60,7 @@ export default function BusinessDashboard() {
               Find your venue in the app and tap "Claim this listing" to take ownership.
             </Text>
             <TouchableOpacity
-              className="bg-coral rounded-2xl px-6 py-3 mt-6"
+              className="bg-sky rounded-2xl px-6 py-3 mt-6"
               onPress={() => router.push('/(tabs)')}
             >
               <Text className="text-white font-bold">Find my venue</Text>
@@ -74,7 +91,7 @@ export default function BusinessDashboard() {
               {/* Actions */}
               <View className="gap-2">
                 <TouchableOpacity
-                  className="bg-coral rounded-xl py-3 items-center"
+                  className="bg-sky rounded-xl py-3 items-center"
                   onPress={() => {/* TODO: edit venue */}}
                 >
                   <Text className="text-white font-bold">Edit listing</Text>

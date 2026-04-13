@@ -37,7 +37,7 @@ export default function WelcomeScreen() {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView className="flex-1 bg-sand">
+    <SafeAreaView className="flex-1 bg-slate">
 
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingVertical: 32 }}
@@ -48,7 +48,7 @@ export default function WelcomeScreen() {
         {/* ── App name / wordmark ─────────────────────────────────────────── */}
         <View className="items-center mt-4 mb-2">
           <Text
-            className="text-5xl text-coral"
+            className="text-5xl text-sky"
             style={{ fontFamily: 'Nunito-ExtraBold' }}
             accessibilityRole="header"
           >
@@ -161,7 +161,7 @@ export default function WelcomeScreen() {
 
           {/* PRIMARY: Create account */}
           <TouchableOpacity
-            className="w-full bg-coral rounded-2xl items-center justify-center"
+            className="w-full bg-sky rounded-2xl items-center justify-center"
             style={{ height: 52 }}
             onPress={() => router.push('/(auth)/register')}
             accessibilityRole="button"
@@ -177,14 +177,14 @@ export default function WelcomeScreen() {
 
           {/* SECONDARY: Sign in */}
           <TouchableOpacity
-            className="w-full border-2 border-coral rounded-2xl items-center justify-center"
+            className="w-full border-2 border-sky rounded-2xl items-center justify-center"
             style={{ height: 52 }}
             onPress={() => router.push('/(auth)/login')}
             accessibilityRole="button"
             accessibilityLabel="Sign in to your existing account"
           >
             <Text
-              className="text-coral text-lg"
+              className="text-sky text-lg"
               style={{ fontFamily: 'Nunito-Bold' }}
             >
               Sign in

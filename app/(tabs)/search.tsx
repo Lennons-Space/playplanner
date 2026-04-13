@@ -116,7 +116,7 @@ export default function SearchScreen() {
   }, []);
 
   return (
-    <SafeAreaView className="flex-1 bg-sand" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-slate" edges={['top']}>
       {/* ── Header + search bar ─────────────────────────────── */}
       <View className="px-4 pt-4 pb-3">
         <Text
@@ -156,7 +156,7 @@ export default function SearchScreen() {
             className="bg-white rounded-2xl px-4 py-3 flex-row items-center gap-1"
             style={{
               borderWidth: 1,
-              borderColor: activeFilterCount > 0 ? Colors.coral : Colors.greyLighter,
+              borderColor: activeFilterCount > 0 ? Colors.sky : Colors.greyLighter,
             }}
             onPress={handleFiltersPress}
             accessibilityRole="button"
@@ -168,7 +168,7 @@ export default function SearchScreen() {
             {activeFilterCount > 0 && (
               <View
                 className="rounded-full w-5 h-5 items-center justify-center"
-                style={{ backgroundColor: Colors.coral }}
+                style={{ backgroundColor: Colors.sky }}
               >
                 <Text
                   style={{ color: Colors.white, fontSize: 11, fontFamily: 'Nunito-Bold' }}
@@ -194,13 +194,16 @@ export default function SearchScreen() {
       {/* ── Results ──────────────────────────────────────────── */}
       {isLoading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color={Colors.coral} size="large" />
+          <ActivityIndicator color={Colors.sky} size="large" />
         </View>
       ) : (
         <FlatList
           data={displayedVenues}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, gap: 12 }}
+          // removeClippedSubviews: unmounts list items that scroll off-screen,
+          // reducing memory use and preventing janky scrolling on long lists.
+          removeClippedSubviews
           // Improves scroll performance on long lists — the card height is fixed.
           // If card heights ever become variable (e.g. multi-line names), remove this.
           getItemLayout={(_data, index) => ({ length: 86, offset: 86 * index + 12 * index, index })}

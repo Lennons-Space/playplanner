@@ -121,7 +121,7 @@ const Chip = memo(function Chip({
   icon?: string;
   accentColor?: string;
 }) {
-  const bg = selected ? (accentColor ?? Colors.coral) : Colors.sandDark;
+  const bg = selected ? (accentColor ?? Colors.sky) : Colors.sandDark;
   const textColor = selected ? Colors.white : Colors.charcoal;
   const borderColor = selected ? 'transparent' : Colors.greyLighter;
 
@@ -232,7 +232,7 @@ const AgeStepper = memo(function AgeStepper({
             width: 36,
             height: 36,
             borderRadius: 18,
-            backgroundColor: Colors.coral,
+            backgroundColor: Colors.sky,
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -286,7 +286,7 @@ const CategoryChip = memo(function CategoryChip({ cat, selected, onToggle }: Cat
       icon={cat.icon}
       selected={selected}
       onPress={handlePress}
-      accentColor={cat.color ?? Colors.coral}
+      accentColor={cat.color ?? Colors.sky}
     />
   );
 });
@@ -539,7 +539,7 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
               <SectionTitle title="Category" />
 
               {catsLoading && (
-                <ActivityIndicator size="small" color={Colors.coral} />
+                <ActivityIndicator size="small" color={Colors.sky} />
               )}
 
               {catsError && (
@@ -646,8 +646,8 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                   value={draft.openNow}
                   onValueChange={setOpenNow}
                   // Use coral as the "on" track colour to match the app palette.
-                  trackColor={{ false: Colors.greyLighter, true: Colors.coralLight }}
-                  thumbColor={draft.openNow ? Colors.coral : Colors.white}
+                  trackColor={{ false: Colors.greyLighter, true: Colors.skyLight }}
+                  thumbColor={draft.openNow ? Colors.sky : Colors.white}
                   ios_backgroundColor={Colors.greyLighter}
                   accessibilityLabel="Show only venues open right now"
                   accessibilityRole="switch"
@@ -701,7 +701,7 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                   paddingVertical: 14,
                   borderRadius: 999,
                   alignItems: 'center',
-                  backgroundColor: Colors.coral,
+                  backgroundColor: Colors.sky,
                 }}
                 accessibilityLabel="Apply filters"
                 accessibilityRole="button"

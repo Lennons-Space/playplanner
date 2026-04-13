@@ -1,5 +1,7 @@
 import '../global.css';
 import { useEffect, useState } from 'react';
+import { cssInterop } from 'nativewind';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -8,6 +10,10 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useAuthListener } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
+
+// NativeWind v4: third-party components need cssInterop to accept className props.
+// Core react-native components (View, Text, etc.) are handled automatically.
+cssInterop(SafeAreaView, { className: 'style' });
 
 SplashScreen.preventAutoHideAsync();
 
@@ -57,10 +63,16 @@ export default function RootLayout() {
 
   if (!fontsLoaded) return null;
 
+  if (!process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY) {
+    throw new Error(
+      'Missing EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY — copy .env.example to .env and fill in your Stripe publishable key.'
+    );
+  }
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
-        <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}>
+        <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY}>
           <RootLayoutInner />
         </StripeProvider>
       </QueryClientProvider>
