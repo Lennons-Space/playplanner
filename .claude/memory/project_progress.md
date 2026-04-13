@@ -152,6 +152,57 @@ Foundation files created:
 - **Archivist** — full folder structure analysis completed; proposed restructure documented below
 - **secom-reviewer** — full compliance audit of codebase structure: 2 critical issues, 3 high, 4 medium, 2 low
 
+## Session: 2026-04-11 — Location & Filtering Compliance Review
+
+### Security & Compliance Review Completed
+
+**Files reviewed (4 files, 1,182 lines total):**
+1. `components/filters/FilterSheet.tsx` (684 lines) — category filter panel, fully functional
+2. `app/(tabs)/index.tsx` (349 lines) — map screen with consent flow, location centering
+3. `hooks/location/useLocation.ts` (86 lines) — location request hook (Accuracy.High change)
+4. `app/(tabs)/_layout.tsx` (63 lines) — tab bar with safe area fix
+
+**Review results:**
+- ✅ No secrets or hard-coded credentials
+- ✅ Consent gate is solid — location never accessed without explicit user agreement
+- ✅ Coordinates properly rounded to 111m before storage (GDPR data minimisation)
+- ✅ All type checks pass (tsc --noEmit)
+- ✅ No lint errors in reviewed files
+
+**Issues found:**
+
+🔴 **CRITICAL (1):**
+- Consent migration missing on auth: if user grants location consent pre-signup, it's never migrated to DB on registration/login (GDPR Art.7 violation)
+
+🟡 **MEDIUM (3):**
+- Accuracy.High + maximumAge:0 requests excessive GPS precision (should use Balanced + cached reads) — battery drain + data minimisation concern
+- LocationConsentPrompt text "never stored" is incomplete (consent events are stored; fix phrasing)
+- FilterSheet error message says "Pull to retry" with no retry button
+
+🟢 **LOW (1):**
+- useLocation.ts JSDoc misleading (claims it logs consent; it doesn't — parent is responsible)
+
+**Positive patterns identified:**
+- animateToRegion only called post-consent ✓
+- Decline is session-only, not persisted ✓
+- SecureStore for encrypted consent persistence ✓
+- VenueMarker memoized for performance ✓
+- Profile queries exclude sensitive columns ✓
+- RLS correctly scoped ✓
+
+**Compliance summary:**
+- UK/EU GDPR: PARTIAL (consent migration missing)
+- ICO Children's Code: PASS (with text improvement)
+- EDPB guidance: PASS
+- DPIA triggers: YES — geolocation and children's data processing
+
+**Next steps (before merge):**
+1. Fix consent migration in register.tsx and login.tsx (CRITICAL)
+2. Create DPIA document (HIGH — compliance requirement)
+3. Change Accuracy.Balanced + cache reads (MEDIUM)
+4. Fix LocationConsentPrompt text accuracy (MEDIUM)
+5. Clarify useLocation.ts JSDoc (LOW)
+
 ---
 
 ## Critical Compliance Issues to Fix Next Session
@@ -191,24 +242,104 @@ Only import change needed: `app/(tabs)/index.tsx` line 9 — update `useLocation
 
 ---
 
+## Session: 2026-04-12 — Profile Screen Architecture & Security Review
+
+### Tasks completed
+- Full architectural plan for profile section (6 routes designed, build phases defined)
+- Full UI design for all 5 profile screens (self-profile, edit, privacy settings, children's ages, public profile)
+- Full security review of profile-related code
+
+### Critical finding from security review
+- No `public_profiles` database view exists — children_ages and is_admin are column-accessible to any authenticated user who queries another user's profiles row
+- Fix: create `supabase/migrations/003_public_profiles_view.sql` before building any profile screens
+- Full details: `.claude/memory/profile_architecture.md`
+
+### Decisions made
+- Postcode only on profiles (no GPS, no coordinates) — developer's explicit requirement
+- children_ages is private to own user only — never in public_profiles view
+- public_profiles view exposes only: id, username, full_name, avatar_url, bio, is_business_owner
+- Edit profile fields: full_name, username, avatar_url, bio, postcode
+- Privacy settings screen contains: location consent, children's ages link, profile visibility, marketing, GDPR rights
+- New file needed: hooks/useProfile.ts (useUpdateProfile, usePublicProfile, useUpdateChildrenAges, useWithdrawLocationConsent)
+
+## Session: 2026-04-12 (evening) — Styling fixed, DCG installed, DB confirmed
+
+### Completed this session
+
+**NativeWind styling FIXED ✅**
+- Root cause: `SafeAreaView` from `react-native-safe-area-context` was used with `className` across all screens but was never registered with `cssInterop`. NativeWind v4 requires this for any third-party component.
+- Fix: added `cssInterop(SafeAreaView, { className: 'style' })` to `app/_layout.tsx` (lines 3–8)
+- Confirmed working on device — app now shows correct colours, layout, cards, fonts.
+- NativeWind actual installed version is `4.2.3` (not 4.0.1 — the ^ range resolved higher). Fully compatible with RN 0.81.
+
+**All database migrations confirmed applied ✅**
+- Migration 003 (public_profiles view): APPLIED — confirmed via SQL query. View exposes only: id, username, full_name, avatar_url, bio, is_business_owner, show_reviews_publicly, created_at. Excludes children_ages, is_admin, stripe_customer_id. WHERE show_in_search = true.
+- Migration 006 (GDPR audit log policies): APPLIED — 3 policies confirmed: Admins can view all audit logs, Users can log own audit events, Users can view own audit log.
+- All 7 migrations/seeds now confirmed applied. Database is complete.
+
+**Destructive Command Guard (DCG) installed ✅**
+- Tool: github.com/Dicklesworthstone/destructive_command_guard v0.4.3
+- Protects against accidental destructive commands (rm -rf, git reset --hard, git push --force, etc.)
+- Wired into Claude Code as a PreToolUse hook via `dcg install`
+- Binary at: /c/Users/Liame/.local/bin/dcg
+- **Requires Claude Code restart to activate**
+- Install required: MSYS2 + mingw-w64-gcc + mingw-w64-binutils (for dlltool.exe and gcc.exe — the install script forces the GNU Rust toolchain because it detects Git Bash as mingw64)
+
+### Known open issues (carried forward)
+- £9.99/mo on profile screen vs £2.99 on upgrade screen — decide correct price before launch
+- location consent not logged to DB after permission granted (GDPR Art.7 — critical)
+- children_ages TypeScript type is number[] but DB uses text[]
+- profile.tsx: Alert.alert wrong argument count (line 83)
+- LocationConsentPrompt "never stored" wording inaccurate
+- app/profile/children-ages.tsx not built (linked from privacy settings)
+- hooks/useProfile.ts missing: usePublicProfile, useUpdateChildrenAges, useWithdrawLocationConsent
+
+## Session: 2026-04-13 — Review Flow Hardening (COMPLETE)
+
+### What was completed
+- **Review flow confirmed built** — ReviewForm, ReviewCard, review route screen and useReviews hooks were already in place from prior sessions
+- **BODY_MAX confirmed at 500** (data minimisation, easier moderation)
+- **Migration 009 written and applied** — `supabase/migrations/009_reviews_own_venue_policy.sql`
+  - Closes HIGH: INSERT policy blocks own-venue reviews (NOT EXISTS on claimed_by + submitted_by)
+  - Closes HIGH: UPDATE policy now has WITH CHECK — prevents editing approved reviews or status-downgrade attacks
+- **3 new test files written:**
+  - `components/reviews/__tests__/ReviewForm.test.tsx`
+  - `components/reviews/__tests__/ReviewCard.test.tsx`
+  - `app/venue/[id]/__tests__/review.test.tsx`
+- **All mandatory checks PASS:** lint:fix ✓ type-check ✓ test:ci ✓ (254 tests, 22 suites)
+- **secom-reviewer: APPROVED TO SHIP** — security, GDPR, ICO Children's Code all signed off
+
+### Outstanding (carry forward)
+- Rate limiting on reviews (MEDIUM) — 10/day server-side via migration 010
+- DPIA note: if `children_ages` ever added to reviews (currently stubbed []), triggers ICO Children's Code DPIA — must run before activating
+
 ## What Needs to Be Done Next
 
 **Start of next session — pick up here:**
-1. Fix NativeWind styling (app renders but unstyled — colours/layout not applying)
-2. Implement folder restructure (archivist's proposal above)
-3. Fix critical: log location consent to `location_consent_log` after permission granted
-4. Fix critical: restrict `children_ages` column — audit all profile queries
-5. Fix low: `children_ages` type in `types/index.ts` (`number[]` → `string[]`)
+1. Fix location consent logging to DB (GDPR critical — `hooks/location/useLocation.ts`)
+2. Fix `children_ages` type in `types/index.ts` (`number[]` → `string[]`)
+3. Build `app/profile/children-ages.tsx` (missing screen)
+4. Add missing hooks to `hooks/useProfile.ts` (`usePublicProfile`, `useUpdateChildrenAges`, `useWithdrawLocationConsent`)
+5. Rate limit on review submissions — migration 010 (MEDIUM)
 
-**Still to build (components not yet created):**
-- `components/reviews/ReviewForm.tsx` and `ReviewCard.tsx`
-- `components/search/FilterSheet.tsx`
+**Earlier outstanding items:**
+1. Implement folder restructure (archivist's proposal in earlier session)
+
+**Still to build:**
 - `components/map/VenuePin.tsx`
-- `components/venue/VenueCard.tsx`
 - `app/business/upgrade.tsx` — Stripe subscription flow
-- Venue photo upload
+- Venue photo upload (migration 007 applied, VenuePhotoUpload component + moderation tab needed)
 - Geocoding (postcode → lat/lng via Google Geocoding API)
 - Opening hours input in add venue form
+- Facilities selector in add venue form
+- Push notifications logic
+- Social login (Google OAuth)
+- Business claim listing flow
+- Admin analytics view
+- EAS Build / App Store setup
+- GDPR data subject request workflow
+- Consent history UI
+- Groups/social features
 - Facilities selector in add venue form
 
 **Stripe webhooks (needed for subscriptions to work):**
