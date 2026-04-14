@@ -3,6 +3,10 @@ import * as Location from 'expo-location';
 import type { Coordinates } from '@/types';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { coarsenCoordinates, isValidCoordinate } from '@/services/location/coordinates';
+import {
+  recordLocationConsentGranted,
+  recordLocationConsentDenied,
+} from '@/services/consent/locationConsent';
 
 interface LocationState {
   coords: Coordinates;
@@ -45,8 +49,15 @@ export function useLocation(): LocationState {
         if (active) {
           setState({ coords: FALLBACK_LOCATION, hasPermission: false, isLoading: false, error: null });
         }
+        // Non-blocking — fire and forget. Failure must not affect the UX.
+        // Records the OS-level denial for GDPR accountability (ICO Children's Code S10).
+        recordLocationConsentDenied().catch(() => { /* non-fatal */ });
         return;
       }
+
+      // Permission was granted — log consent before touching coordinates.
+      // Non-blocking — failure must not prevent location from working.
+      recordLocationConsentGranted().catch(() => { /* non-fatal */ });
 
       try {
         const loc = await Location.getCurrentPositionAsync({

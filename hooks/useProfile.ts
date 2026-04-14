@@ -236,7 +236,10 @@ export function useUpdateChildrenAges() {
       // Sync the Zustand store so any screen reading from authStore reflects
       // the update immediately without waiting for a navigation event.
       fetchProfile();
-      queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+      // Invalidate both the bare key (profile screen) and the scoped key
+      // (any query keyed by userId). React Query's invalidateQueries with a
+      // prefix key will match all queries whose key starts with 'profile'.
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
     },
   });
 }
@@ -263,7 +266,10 @@ export function useWithdrawLocationConsent() {
     },
 
     onSuccess: () => {
-      // Invalidate any queries that may cache consent status so the UI updates.
+      // Invalidate the profile query so any screen showing consent status
+      // (e.g. the privacy settings screen) re-renders immediately.
+      // Also invalidate locationConsent cache for hooks that track it separately.
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
       queryClient.invalidateQueries({ queryKey: ['locationConsent'] });
     },
   });

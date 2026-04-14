@@ -21,6 +21,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { supabase } from '@/lib/supabase';
 import { LOCATION_CONSENT_VERSION } from '@/constants/location';
+import { writeAuditLog } from '@/services/audit/gdprAuditLog';
 
 const PENDING_CONSENT_KEY = 'pending_location_consent';
 
@@ -52,12 +53,22 @@ export async function recordLocationConsentGranted(): Promise<void> {
     return;
   }
 
-  const { error } = await supabase.from('location_consent_log').insert({
-    user_id:         user.id,
-    consented_at,
-    consent_version: LOCATION_CONSENT_VERSION,
-  });
-  if (error) console.warn('PlayPlanner: Failed to log location consent to database:', error);
+  try {
+    const { error } = await supabase.from('location_consent_log').insert({
+      user_id:         user.id,
+      consented_at,
+      consent_version: LOCATION_CONSENT_VERSION,
+    });
+    if (error) {
+      console.warn('PlayPlanner: Failed to log location consent to database:', error);
+    } else {
+      // GDPR Art.5(2) accountability — write to central audit trail.
+      // Non-blocking: failure here must not affect the user's consent flow.
+      await writeAuditLog(user.id, 'location_consent_granted', 'location_consent_log');
+    }
+  } catch (err) {
+    console.warn('PlayPlanner: Unexpected error recording location consent:', err);
+  }
 }
 
 /**
@@ -117,9 +128,57 @@ export async function recordLocationConsentWithdrawn(): Promise<void> {
     .maybeSingle();
 
   if (existing) {
-    await supabase
-      .from('location_consent_log')
-      .update({ consent_withdrawn_at: new Date().toISOString() })
-      .eq('id', existing.id);
+    try {
+      const { error } = await supabase
+        .from('location_consent_log')
+        .update({ consent_withdrawn_at: new Date().toISOString() })
+        .eq('id', existing.id);
+      if (error) {
+        console.warn('PlayPlanner: Failed to record location consent withdrawal:', error);
+      } else {
+        // GDPR Art.7(3) — withdrawal must be logged just as rigorously as grant.
+        await writeAuditLog(user.id, 'location_consent_withdrawn', 'location_consent_log', existing.id);
+      }
+    } catch (err) {
+      console.warn('PlayPlanner: Unexpected error recording consent withdrawal:', err);
+    }
+  }
+}
+
+/**
+ * Call this when the OS permission dialog is dismissed with "Deny".
+ * This is distinct from `recordLocationConsentWithdrawn` (which is an
+ * in-app settings action). Recording a denial lets us demonstrate to the
+ * ICO that we honoured the refusal and did not re-prompt inappropriately.
+ *
+ * Non-blocking — failure must never affect the user experience.
+ * No coordinates or personal data are ever written.
+ */
+export async function recordLocationConsentDenied(): Promise<void> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      // User is not authenticated. No DB write is possible, but the denial
+      // is implicit — we simply do not request location. Nothing to record.
+      return;
+    }
+
+    // Insert a denial row: consented_at is null, consent_withdrawn_at is null.
+    // This creates a record showing the user was asked and said no.
+    const { error } = await supabase.from('location_consent_log').insert({
+      user_id:              user.id,
+      consented_at:         null,
+      consent_version:      LOCATION_CONSENT_VERSION,
+    });
+    if (error) {
+      console.warn('PlayPlanner: Failed to log location consent denial:', error);
+      return;
+    }
+
+    await writeAuditLog(user.id, 'location_consent_denied', 'location_consent_log');
+  } catch (err) {
+    // Completely non-fatal — denial is already honoured by the hook not
+    // requesting coordinates. This is just the accountability paper trail.
+    console.warn('PlayPlanner: Unexpected error recording location consent denial:', err);
   }
 }

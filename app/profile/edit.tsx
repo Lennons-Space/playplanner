@@ -258,7 +258,7 @@ export default function EditProfileScreen() {
                     style={{ fontFamily: 'Nunito-Regular' }}
                   >
                     {(profile?.children_ages ?? []).length > 0
-                      ? (profile!.children_ages as string[]).join(', ')
+                      ? (profile!.children_ages ?? []).join(', ')
                       : 'Not set — only you can see this'}
                   </Text>
                 </View>

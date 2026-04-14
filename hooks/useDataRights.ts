@@ -176,7 +176,7 @@ export async function buildDataExport(userId: string): Promise<string> {
       bio:                 profileData?.bio                 ?? null,
       postcode:            profileData?.postcode            ?? null,
       // DB column is children_ages — export uses children_age_groups (plain language)
-      children_age_groups: (profileData as any)?.children_ages ?? [],
+      children_age_groups: profileData?.children_ages ?? [],
       show_in_search:      profileData?.show_in_search      ?? false,
       show_reviews_publicly: profileData?.show_reviews_publicly ?? true,
       marketing_consent:   profileData?.marketing_consent   ?? false,

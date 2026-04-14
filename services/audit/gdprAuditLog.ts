@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 export type AuditAction =
   | 'terms_accepted'
   | 'location_consent_granted'
+  | 'location_consent_denied'
   | 'location_consent_withdrawn'
   | 'account_deleted'
   | 'data_export_requested';
