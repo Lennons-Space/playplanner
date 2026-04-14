@@ -10,31 +10,41 @@
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FF6B6B"
+      "backgroundColor": "#4ECDC4"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.playplanner.app",
+      "buildNumber": "1",
+      "config": {
+        "googleMapsApiKey": "$(GOOGLE_MAPS_API_KEY_IOS)"
+      },
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Play Planner uses your location to show nearby child-friendly venues.",
+        "NSLocationWhenInUseUsageDescription": "Play Planner uses your location to show nearby child-friendly venues. Location is only used while you are browsing the map.",
         "NSLocationAlwaysUsageDescription": "Play Planner uses your location to show nearby child-friendly venues.",
         "NSCameraUsageDescription": "Play Planner needs camera access to let you upload photos of venues.",
-        "NSPhotoLibraryUsageDescription": "Play Planner needs photo library access to let you upload venue photos."
+        "NSPhotoLibraryUsageDescription": "Play Planner needs photo library access to let you upload venue photos.",
+        "NSPhotoLibraryAddUsageDescription": "Play Planner saves venue photos to your library.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FF6B6B"
+        "backgroundColor": "#4ECDC4"
       },
       "package": "com.playplanner.app",
+      "versionCode": 1,
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ],
       "config": {
         "googleMaps": {
@@ -53,7 +63,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Play Planner uses your location to show nearby venues."
+          "locationAlwaysAndWhenInUsePermission": "Play Planner uses your location to show nearby venues. Location is only accessed while you are using the map."
         }
       ],
       [
@@ -67,7 +77,7 @@
         "expo-notifications",
         {
           "icon": "./assets/images/notification-icon.png",
-          "color": "#FF6B6B"
+          "color": "#4ECDC4"
         }
       ]
     ],
@@ -75,9 +85,13 @@
       "typedRoutes": true
     },
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "YOUR_EAS_PROJECT_ID"
-      }
-    }
+        "projectId": "4cbd1146-859f-44b6-80dd-52ed7d61800a"
+      },
+      "privacyPolicyUrl": "https://playplanner.app/privacy",
+      "supportUrl": "https://playplanner.app/support"
+    },
+    "owner": "playplanner"
   }
 }
