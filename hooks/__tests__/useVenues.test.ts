@@ -88,14 +88,16 @@ describe('useNearbyVenues', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(mockRpc).toHaveBeenCalledWith('get_nearby_venues', {
-      lat:          LONDON.latitude,
-      lng:          LONDON.longitude,
-      p_radius_km:  BASE_FILTERS.maxDistanceKm,
-      category_ids: null,           // empty array → null (no filter)
-      p_min_age:    null,
-      p_max_age:    null,
-      price_ranges: null,           // empty array → null (no filter)
-      open_now:     false,
+      lat:             LONDON.latitude,
+      lng:             LONDON.longitude,
+      p_radius_km:     BASE_FILTERS.maxDistanceKm,
+      category_ids:    null,    // empty array → null (no filter)
+      p_min_age:       null,
+      p_max_age:       null,
+      price_ranges:    null,    // empty array → null (no filter)
+      open_now:        false,
+      p_facility_ids:  null,    // empty array → null (no filter)
+      p_premium_only:  false,
     });
   });
 

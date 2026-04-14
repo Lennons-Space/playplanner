@@ -140,6 +140,16 @@ export default function MyReviewsScreen() {
                   </Text>
                 ) : null}
 
+                {/* Row 4b: rejection note — shown only when rejected and a reason exists.
+                    GDPR Art.13 transparency: the user is entitled to know why their
+                    content was not approved so they can understand the decision. */}
+                {review.moderation_status === 'rejected' && review.moderation_notes ? (
+                  <View style={styles.rejectionNote}>
+                    <Text style={styles.rejectionLabel}>Reason for rejection</Text>
+                    <Text style={styles.rejectionText}>{review.moderation_notes}</Text>
+                  </View>
+                ) : null}
+
                 {/* Row 5: delete button */}
                 <TouchableOpacity
                   style={styles.deleteButton}
@@ -254,5 +264,27 @@ const styles = StyleSheet.create({
     fontFamily: 'Nunito-Medium',
     fontSize: 12,
     color: '#D63031',
+  },
+  rejectionNote: {
+    backgroundColor: '#FFF3CD',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#D63031',
+  },
+  rejectionLabel: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 11,
+    color: '#D63031',
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  rejectionText: {
+    fontFamily: 'Nunito-Regular',
+    fontSize: 13,
+    color: '#2D3436',
+    lineHeight: 18,
   },
 });

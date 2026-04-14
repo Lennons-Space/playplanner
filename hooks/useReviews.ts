@@ -68,7 +68,7 @@ export function useVenueReviews(venueId: string) {
           helpful_count,
           created_at,
           updated_at,
-          profile:public_profiles(
+          profile:public_profiles!reviews_user_id_fkey(
             id,
             username,
             full_name,
@@ -188,6 +188,57 @@ export function useSubmitReview() {
       // 3. The venue itself — review_count and average_rating are DB-computed aggregates
       //    that a trigger updates on insert. Invalidating forces a fresh fetch.
       queryClient.invalidateQueries({ queryKey: ['venue', payload.venueId] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useModerateReview
+// Admin-only: approve or reject a pending review.
+// ---------------------------------------------------------------------------
+
+interface ModerateReviewPayload {
+  reviewId: string;
+  status: 'approved' | 'rejected';
+  moderation_notes?: string;
+}
+
+/**
+ * Approves or rejects a pending review.
+ * Only callable by admin users — the DB "Admins can update any review" RLS
+ * policy enforces this server-side; this hook is a UI convenience.
+ *
+ * On success: invalidates both the admin pending-reviews query (removes the
+ * item from the queue) and the venue's public review list (if approved, it
+ * should appear immediately for regular users).
+ */
+export function useModerateReview() {
+  const queryClient = useQueryClient();
+  const user = useUser();
+
+  return useMutation({
+    mutationFn: async ({ reviewId, status, moderation_notes }: ModerateReviewPayload) => {
+      const { error } = await supabase
+        .from('reviews')
+        .update({
+          moderation_status: status,
+          moderation_notes:  moderation_notes?.trim() || null,
+          moderated_by:      user!.id,
+          moderated_at:      new Date().toISOString(),
+        })
+        .eq('id', reviewId);
+
+      if (error) {
+        console.error('useModerateReview error:', error.code, error.hint);
+        throw new Error('Could not moderate review. Please try again.');
+      }
+    },
+
+    onSuccess: () => {
+      // Remove from admin queue
+      queryClient.invalidateQueries({ queryKey: ['admin', 'pending-reviews'] });
+      // Public venue review lists may now include/exclude this review
+      queryClient.invalidateQueries({ queryKey: ['reviews'] });
     },
   });
 }

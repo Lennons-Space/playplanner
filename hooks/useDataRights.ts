@@ -30,7 +30,7 @@ export function useMyReviews(userId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('reviews')
-        .select('id, venue_id, rating, title, body, moderation_status, created_at, venues(name, city)')
+        .select('id, venue_id, rating, title, body, moderation_status, moderation_notes, created_at, venues(name, city)')
         .eq('user_id', userId!)
         .order('created_at', { ascending: false });
 

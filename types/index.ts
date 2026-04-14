@@ -157,6 +157,9 @@ export interface Review {
   visit_date: string | null;
   children_ages: string[] | null;
   moderation_status: ModerationStatus;
+  moderation_notes: string | null;  // set by admin on rejection — shown to reviewer (GDPR Art.13)
+  moderated_by: string | null;      // admin user ID — for audit trail (GDPR Art.5(2))
+  moderated_at: string | null;      // timestamp of moderation decision
   helpful_count: number;
   photos?: ReviewPhoto[];
   created_at: string;
@@ -222,20 +225,15 @@ export interface VenueFilters {
   premiumOnly: boolean;
 }
 
-// TODO: facilityIds and premiumOnly are kept in the type for forward-compatibility,
-// but are NOT wired up to the get_nearby_venues SQL RPC yet. They are set to their
-// "inactive" defaults here so they never affect the badge count or filter results.
-// Once the RPC supports these parameters, add them back to activeFilterCount in
-// filterStore.ts and ensure the RPC call in useNearbyVenues passes them through.
 export const DEFAULT_FILTERS: VenueFilters = {
   categoryIds: [],
-  facilityIds: [],    // TODO: not yet supported by RPC — do not count in badge
+  facilityIds: [],
   minAge: null,
   maxAge: null,
   priceRange: [],
-  maxDistanceKm: 10,
+  maxDistanceKm: 32,   // 20 miles — displayed as miles in the UI, stored as km internally
   openNow: false,
-  premiumOnly: false, // TODO: not yet supported by RPC — do not count in badge
+  premiumOnly: false,
 };
 
 // ---- Location ----

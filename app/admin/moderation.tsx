@@ -18,7 +18,20 @@ import { supabase } from '@/lib/supabase';
 import { useIsAdmin } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { useModeratePhoto } from '@/hooks/useVenuePhotos';
+import { useModerateReview } from '@/hooks/useReviews';
 import type { Venue, PendingPhotoWithVenue } from '@/types';
+
+/** Pending review as returned by the admin queue query. */
+interface PendingReview {
+  id: string;
+  rating: number;
+  title: string | null;
+  body: string;
+  created_at: string;
+  venue_id: string;
+  venues: { id: string; name: string } | null;
+  profile: { username: string | null; full_name: string | null } | null;
+}
 
 export default function ModerationScreen() {
   const isAdmin = useIsAdmin();
@@ -27,8 +40,8 @@ export default function ModerationScreen() {
   const authIsLoading = useAuthStore((s) => s.isLoading);
   const queryClient = useQueryClient();
 
-  // Tab switcher: 'venues' | 'photos'
-  const [activeTab, setActiveTab] = useState<'venues' | 'photos'>('venues');
+  // Tab switcher: 'venues' | 'photos' | 'reviews'
+  const [activeTab, setActiveTab] = useState<'venues' | 'photos' | 'reviews'>('venues');
 
   // State for the cross-platform venue rejection modal (Alert.prompt is iOS-only)
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
@@ -40,6 +53,16 @@ export default function ModerationScreen() {
   const [rejectPhotoId, setRejectPhotoId] = useState<string | null>(null);
   const [rejectPhotoVenueId, setRejectPhotoVenueId] = useState<string | null>(null);
   const [rejectPhotoReason, setRejectPhotoReason] = useState('');
+
+  // State for the review rejection modal
+  const [rejectReviewModalVisible, setRejectReviewModalVisible] = useState(false);
+  const [rejectReviewId, setRejectReviewId] = useState<string | null>(null);
+  const [rejectReviewReason, setRejectReviewReason] = useState('');
+
+  // State for the bulk approve modal
+  // bulkSource null = all pending venues; a string = filter by data_source value
+  const [bulkModalVisible, setBulkModalVisible] = useState(false);
+  const [bulkSource, setBulkSource] = useState<string | null>(null);
 
   // B11 — Destructure error and throw; previously only data was checked which
   // silently returned [] when the query failed, showing a false "all clear".
@@ -77,6 +100,108 @@ export default function ModerationScreen() {
     },
     enabled: isAdmin,
   });
+
+  // Pending reviews query — joins venues(name) and public_profiles(username, full_name)
+  // for display in the moderation card. We never log review body content.
+  const { data: pendingReviews = [], isLoading: reviewsLoading } = useQuery({
+    queryKey: ['admin', 'pending-reviews'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('id, rating, title, body, created_at, venue_id, venues(id, name), profile:public_profiles!reviews_user_id_fkey(username, full_name)')
+        .eq('moderation_status', 'pending')
+        .order('created_at', { ascending: true })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as unknown as PendingReview[];
+    },
+    enabled: isAdmin,
+  });
+
+  // Bulk approve count — how many venues will be affected by the current selection.
+  // Only runs when the modal is open (enabled: bulkModalVisible) to avoid
+  // a background COUNT(*) query on every render.
+  const { data: bulkCount = 0 } = useQuery({
+    queryKey: ['admin', 'bulk-count', bulkSource],
+    queryFn: async () => {
+      let q = supabase
+        .from('venues')
+        .select('*', { count: 'exact', head: true })
+        .eq('moderation_status', 'pending');
+      if (bulkSource) q = q.eq('data_source', bulkSource);
+      const { count, error } = await q;
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: isAdmin && bulkModalVisible,
+  });
+
+  // Bulk approve mutation — updates ALL pending venues matching the source filter
+  // in a single DB call. Admins must review a sample first (documented in the UI).
+  // Sets moderated_by + moderated_at so the audit trail is maintained.
+  const bulkApprove = useMutation({
+    mutationFn: async (source: string | null) => {
+      let q = supabase
+        .from('venues')
+        .update({
+          moderation_status: 'approved',
+          is_published:      true,
+          moderated_by:      user!.id,
+          moderated_at:      new Date().toISOString(),
+        })
+        .eq('moderation_status', 'pending');
+      if (source) q = q.eq('data_source', source);
+      const { error } = await q;
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'pending-venues'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'bulk-count'] });
+      setBulkModalVisible(false);
+      Alert.alert('Done', 'Venues approved and live on the map.');
+    },
+    onError: () => {
+      Alert.alert('Bulk approval failed', 'Could not approve venues. Please try again.');
+      setBulkModalVisible(false);
+    },
+  });
+
+  const moderateReview = useModerateReview();
+
+  /** Open the review rejection modal for a specific review */
+  const openReviewRejectModal = (reviewId: string) => {
+    setRejectReviewId(reviewId);
+    setRejectReviewReason('');
+    setRejectReviewModalVisible(true);
+  };
+
+  /** Confirm review rejection — same in-flight guard pattern as photos */
+  const confirmReviewRejection = () => {
+    if (!rejectReviewId) return;
+    moderateReview.mutate(
+      { reviewId: rejectReviewId, status: 'rejected', moderation_notes: rejectReviewReason },
+      {
+        onSuccess: () => {
+          setRejectReviewModalVisible(false);
+          setRejectReviewId(null);
+          setRejectReviewReason('');
+        },
+        onError: () => {
+          Alert.alert('Moderation failed', 'Could not reject review. Please try again.');
+          setRejectReviewModalVisible(false);
+          setRejectReviewId(null);
+          setRejectReviewReason('');
+        },
+      }
+    );
+  };
+
+  /** Cancel review rejection */
+  const cancelReviewRejection = () => {
+    setRejectReviewModalVisible(false);
+    setRejectReviewId(null);
+    setRejectReviewReason('');
+  };
 
   const moderatePhoto = useModeratePhoto();
 
@@ -193,7 +318,7 @@ export default function ModerationScreen() {
     );
   }
 
-  const totalPending = pendingVenues.length + pendingPhotos.length;
+  const totalPending = pendingVenues.length + pendingPhotos.length + pendingReviews.length;
 
   return (
     <SafeAreaView className="flex-1 bg-sand" edges={['top']}>
@@ -275,6 +400,121 @@ export default function ModerationScreen() {
         </View>
       </Modal>
 
+      {/* Review rejection modal */}
+      <Modal
+        visible={rejectReviewModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelReviewRejection}
+      >
+        <View className="flex-1 bg-black/50 items-center justify-center px-6">
+          <View className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <Text className="text-charcoal font-bold text-lg mb-1">Review rejection reason</Text>
+            <Text className="text-grey text-sm mb-4">
+              This note will be shown to the reviewer so they understand the decision.
+            </Text>
+            <TextInput
+              className="border border-greyLighter rounded-xl px-3 py-2 text-charcoal min-h-[80px]"
+              multiline
+              placeholder="e.g. Contains personal information, off-topic content..."
+              value={rejectReviewReason}
+              onChangeText={setRejectReviewReason}
+              autoFocus
+            />
+            <View className="flex-row gap-3 mt-4">
+              <TouchableOpacity
+                className="flex-1 bg-sandDark rounded-xl py-3 items-center"
+                onPress={cancelReviewRejection}
+              >
+                <Text className="text-charcoal font-bold">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 bg-error rounded-xl py-3 items-center"
+                onPress={confirmReviewRejection}
+                disabled={moderateReview.isPending}
+              >
+                {moderateReview.isPending
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text className="text-white font-bold">Reject</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Bulk approve modal */}
+      <Modal
+        visible={bulkModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBulkModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/50 items-center justify-center px-6">
+          <View className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <Text className="text-charcoal font-bold text-lg mb-1">Bulk approve venues</Text>
+            <Text className="text-grey text-sm mb-4">
+              Review a sample of venues manually before approving in bulk.
+            </Text>
+
+            {/* Source filter chips */}
+            <Text className="text-charcoal font-bold text-sm mb-2">Approve from source:</Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {[
+                { label: 'All',           value: null       },
+                { label: 'OpenStreetMap', value: 'osm'      },
+                { label: 'Gov Open Data', value: 'ogl'      },
+                { label: 'User submitted',value: 'user_submitted' },
+                { label: 'Manual',        value: 'manual'   },
+              ].map((opt) => (
+                <TouchableOpacity
+                  key={opt.label}
+                  onPress={() => setBulkSource(opt.value)}
+                  className={`px-3 py-2 rounded-full border ${
+                    bulkSource === opt.value
+                      ? 'bg-sky border-sky'
+                      : 'bg-sandDark border-greyLighter'
+                  }`}
+                >
+                  <Text className={`text-xs font-bold ${bulkSource === opt.value ? 'text-white' : 'text-charcoal'}`}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Count */}
+            <View className="bg-sandDark rounded-xl px-4 py-3 mb-4">
+              <Text className="text-charcoal text-sm text-center">
+                This will approve{' '}
+                <Text className="font-bold">{bulkCount.toLocaleString()}</Text>
+                {' '}venue{bulkCount !== 1 ? 's' : ''} and make{' '}
+                {bulkCount !== 1 ? 'them' : 'it'} visible to parents.
+              </Text>
+            </View>
+
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                className="flex-1 bg-sandDark rounded-xl py-3 items-center"
+                onPress={() => setBulkModalVisible(false)}
+              >
+                <Text className="text-charcoal font-bold">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 bg-success rounded-xl py-3 items-center"
+                disabled={bulkApprove.isPending || bulkCount === 0}
+                onPress={() => bulkApprove.mutate(bulkSource)}
+              >
+                {bulkApprove.isPending
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text className="text-white font-bold">
+                      Approve {bulkCount > 0 ? bulkCount.toLocaleString() : ''}
+                    </Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Header */}
       <View className="flex-row items-center gap-2 px-4 pt-4 pb-2">
         <TouchableOpacity onPress={() => router.back()}>
@@ -292,7 +532,7 @@ export default function ModerationScreen() {
           className={`flex-1 py-2 rounded-xl items-center ${activeTab === 'venues' ? 'bg-coral' : 'bg-sandDark'}`}
           onPress={() => setActiveTab('venues')}
         >
-          <Text className={`font-bold text-sm ${activeTab === 'venues' ? 'text-white' : 'text-charcoal'}`}>
+          <Text className={`font-bold text-xs ${activeTab === 'venues' ? 'text-white' : 'text-charcoal'}`}>
             Venues ({pendingVenues.length})
           </Text>
         </TouchableOpacity>
@@ -300,8 +540,16 @@ export default function ModerationScreen() {
           className={`flex-1 py-2 rounded-xl items-center ${activeTab === 'photos' ? 'bg-coral' : 'bg-sandDark'}`}
           onPress={() => setActiveTab('photos')}
         >
-          <Text className={`font-bold text-sm ${activeTab === 'photos' ? 'text-white' : 'text-charcoal'}`}>
+          <Text className={`font-bold text-xs ${activeTab === 'photos' ? 'text-white' : 'text-charcoal'}`}>
             Photos ({pendingPhotos.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          className={`flex-1 py-2 rounded-xl items-center ${activeTab === 'reviews' ? 'bg-coral' : 'bg-sandDark'}`}
+          onPress={() => setActiveTab('reviews')}
+        >
+          <Text className={`font-bold text-xs ${activeTab === 'reviews' ? 'text-white' : 'text-charcoal'}`}>
+            Reviews ({pendingReviews.length})
           </Text>
         </TouchableOpacity>
       </View>
@@ -312,7 +560,15 @@ export default function ModerationScreen() {
           <ActivityIndicator className="mt-8" color="#FF6B6B" />
         ) : (
           <ScrollView className="px-4">
-            <Text className="text-grey font-bold uppercase text-xs mb-3">Pending venue submissions</Text>
+            <View className="flex-row justify-between items-center mb-3">
+              <Text className="text-grey font-bold uppercase text-xs">Pending venue submissions</Text>
+              <TouchableOpacity
+                className="bg-success rounded-lg px-3 py-1.5"
+                onPress={() => { setBulkSource(null); setBulkModalVisible(true); }}
+              >
+                <Text className="text-white font-bold text-xs">Bulk approve</Text>
+              </TouchableOpacity>
+            </View>
 
             {pendingVenues.length === 0 && (
               <View className="items-center py-12">
@@ -323,7 +579,16 @@ export default function ModerationScreen() {
 
             {pendingVenues.map((venue) => (
               <View key={venue.id} className="bg-white rounded-2xl p-4 mb-4 shadow-sm">
-                <Text className="text-charcoal font-extrabold text-base">{venue.name}</Text>
+                <View className="flex-row items-start justify-between">
+                  <Text className="text-charcoal font-extrabold text-base flex-1 mr-2">{venue.name}</Text>
+                  {(venue as any).data_source && (venue as any).data_source !== 'manual' && (
+                    <View className="bg-sandDark rounded-full px-2 py-0.5">
+                      <Text className="text-grey text-xs font-bold uppercase">
+                        {(venue as any).data_source === 'user_submitted' ? 'user' : (venue as any).data_source}
+                      </Text>
+                    </View>
+                  )}
+                </View>
                 <Text className="text-grey text-sm">{venue.city}, {venue.postcode}</Text>
                 {venue.description && (
                   <Text className="text-charcoal text-sm mt-2" numberOfLines={3}>{venue.description}</Text>
@@ -351,6 +616,79 @@ export default function ModerationScreen() {
               </View>
             ))}
           </ScrollView>
+        )
+      )}
+
+      {/* Reviews tab — FlatList for memory efficiency, same pattern as photos */}
+      {activeTab === 'reviews' && (
+        reviewsLoading ? (
+          <ActivityIndicator className="mt-8" color="#FF6B6B" />
+        ) : (
+          <FlatList
+            data={pendingReviews}
+            keyExtractor={(item) => item.id}
+            contentContainerClassName="px-4"
+            ListHeaderComponent={
+              <Text className="text-grey font-bold uppercase text-xs mb-3">Pending review submissions</Text>
+            }
+            ListEmptyComponent={
+              <View className="items-center py-12">
+                <Text className="text-4xl mb-2">✅</Text>
+                <Text className="text-grey">All caught up! No pending reviews.</Text>
+              </View>
+            }
+            renderItem={({ item: review }) => (
+              <View className="bg-white rounded-2xl p-4 mb-4 shadow-sm">
+                {/* Venue name */}
+                <Text className="text-charcoal font-extrabold text-base">
+                  {review.venues?.name ?? 'Unknown venue'}
+                </Text>
+
+                {/* Reviewer */}
+                <Text className="text-grey text-xs mt-1">
+                  By {review.profile?.full_name ?? review.profile?.username ?? 'Anonymous'} ·{' '}
+                  {new Date(review.created_at).toLocaleDateString('en-GB')}
+                </Text>
+
+                {/* Star rating */}
+                <View className="flex-row mt-2 gap-1">
+                  {[1,2,3,4,5].map((n) => (
+                    <Text key={n} className={n <= review.rating ? 'text-coral' : 'text-greyLighter'}>
+                      {n <= review.rating ? '★' : '☆'}
+                    </Text>
+                  ))}
+                </View>
+
+                {/* Title */}
+                {review.title ? (
+                  <Text className="text-charcoal font-bold text-sm mt-2">{review.title}</Text>
+                ) : null}
+
+                {/* Body — full text visible to admin so they can make a decision */}
+                <Text className="text-charcoal text-sm mt-1 leading-5">{review.body}</Text>
+
+                {/* Approve / Reject buttons */}
+                <View className="flex-row gap-2 mt-3">
+                  <TouchableOpacity
+                    className="flex-1 bg-success rounded-xl py-3 items-center"
+                    disabled={moderateReview.isPending}
+                    onPress={() =>
+                      moderateReview.mutate({ reviewId: review.id, status: 'approved' })
+                    }
+                  >
+                    <Text className="text-white font-bold">✓ Approve</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    className="flex-1 bg-error rounded-xl py-3 items-center"
+                    disabled={moderateReview.isPending}
+                    onPress={() => openReviewRejectModal(review.id)}
+                  >
+                    <Text className="text-white font-bold">✗ Reject</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          />
         )
       )}
 

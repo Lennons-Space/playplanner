@@ -196,8 +196,8 @@ const MapWithLocation = memo(function MapWithLocation({ onFiltersPress }: { onFi
       mapRef.current.animateToRegion(
         {
           ...coords,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
+          latitudeDelta: 0.35,   // ~20 miles visible radius
+          longitudeDelta: 0.35,
         },
         800, // ms — smooth enough to feel intentional, fast enough not to annoy
       );
@@ -215,8 +215,8 @@ const MapWithLocation = memo(function MapWithLocation({ onFiltersPress }: { onFi
           style={{ flex: 1 }}
           initialRegion={{
             ...coords,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
+            latitudeDelta: 0.35,   // ~20 miles visible radius
+            longitudeDelta: 0.35,
           }}
           showsUserLocation={true}
           showsMyLocationButton={false}
@@ -250,6 +250,14 @@ const MapWithLocation = memo(function MapWithLocation({ onFiltersPress }: { onFi
             <Text className="text-white text-3xl font-bold">+</Text>
           </TouchableOpacity>
         </View>
+
+        {/* ODbL attribution — required by OpenStreetMap licence (ODbL 1.0 §4.3).
+            Must be visible whenever OSM-derived data appears on the map. */}
+        <View className="absolute bottom-1 left-0 right-0 items-center" pointerEvents="none">
+          <Text className="text-charcoal text-xs opacity-60">
+            © OpenStreetMap contributors
+          </Text>
+        </View>
       </View>
 
       {/* Venue panel — bottom 1/3 of screen */}
@@ -278,8 +286,8 @@ const LocationFallbackMap = memo(function LocationFallbackMap({ onFiltersPress }
           style={{ flex: 1 }}
           initialRegion={{
             ...FALLBACK_LOCATION,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
+            latitudeDelta: 0.35,   // ~20 miles visible radius
+            longitudeDelta: 0.35,
           }}
           showsUserLocation={false}
           showsMyLocationButton={false}
@@ -312,6 +320,13 @@ const LocationFallbackMap = memo(function LocationFallbackMap({ onFiltersPress }
           >
             <Text className="text-white text-3xl font-bold">+</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* ODbL attribution — required by OpenStreetMap licence (ODbL 1.0 §4.3). */}
+        <View className="absolute bottom-1 left-0 right-0 items-center" pointerEvents="none">
+          <Text className="text-charcoal text-xs opacity-60">
+            © OpenStreetMap contributors
+          </Text>
         </View>
       </View>
 

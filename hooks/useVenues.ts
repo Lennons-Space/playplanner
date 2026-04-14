@@ -74,6 +74,8 @@ export function useNearbyVenues(coords: Coordinates, filters: VenueFilters) {
         p_max_age:      filters.maxAge,           // renamed in SQL function
         price_ranges:   filters.priceRange.length ? filters.priceRange : null,
         open_now:       filters.openNow,
+        p_facility_ids: filters.facilityIds.length ? filters.facilityIds : null,
+        p_premium_only: filters.premiumOnly,
       });
       if (error) throw error;
       // has_hours is returned alongside each venue.
@@ -95,7 +97,15 @@ export function useVenueSearch(query: string, coords: Coordinates) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('venues')
-        .select('*, category:categories(*), photos:venue_photos(url, is_cover, status)')
+        .select(`
+          id, name, city, postcode,
+          average_rating, review_count,
+          is_verified, is_premium,
+          min_age, max_age, price_range,
+          latitude, longitude,
+          category:categories(id, name, icon, color),
+          photos:venue_photos(url, is_cover, status)
+        `)
         .eq('is_published', true)
         .eq('moderation_status', 'approved')
         // escapeLikePattern prevents SQL wildcard injection — see function above.

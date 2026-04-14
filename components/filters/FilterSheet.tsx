@@ -58,7 +58,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useFilterStore } from '@/store/filterStore';
 import { Colors } from '@/constants/theme';
-import type { Category, PriceRange, VenueFilters } from '@/types';
+import type { Category, Facility, PriceRange, VenueFilters } from '@/types';
 import { DEFAULT_FILTERS } from '@/types';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -84,6 +84,16 @@ async function fetchCategories(): Promise<Category[]> {
   return (data ?? []) as Category[];
 }
 
+/** Fetches the list of facilities from Supabase (id, name, slug, icon). */
+async function fetchFacilities(): Promise<Facility[]> {
+  const { data, error } = await supabase
+    .from('facilities')
+    .select('id, name, slug, icon')
+    .order('name');
+  if (error) throw error;
+  return (data ?? []) as Facility[];
+}
+
 // ─── Price chip config ────────────────────────────────────────────────────────
 
 const PRICE_OPTIONS: { value: PriceRange; label: string }[] = [
@@ -95,7 +105,16 @@ const PRICE_OPTIONS: { value: PriceRange; label: string }[] = [
 
 // ─── Distance preset config ───────────────────────────────────────────────────
 
-const DISTANCE_OPTIONS: number[] = [1, 5, 10, 25];
+// Displayed in miles (what UK parents expect); stored internally as km.
+// 5 mi=8km, 10 mi=16km, 20 mi=32km, 30 mi=48km.
+// 32km (20 mi) matches DEFAULT_FILTERS.maxDistanceKm so selecting it
+// does not increment the active-filter badge.
+const DISTANCE_OPTIONS = [
+  { miles: 5,  km: 8  },
+  { miles: 10, km: 16 },
+  { miles: 20, km: 32 },
+  { miles: 30, km: 48 },
+] as const;
 
 // ─── Age stepper limits ───────────────────────────────────────────────────────
 
@@ -380,6 +399,17 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
     queryFn: fetchCategories,
   });
 
+  // ── Facilities query ───────────────────────────────────────────────────────
+  const {
+    data: facilities = [],
+    isLoading: facilitiesLoading,
+  } = useQuery<Facility[], Error>({
+    queryKey: ['facilities'],
+    // Facilities rarely change — stale time of 10 minutes keeps network calls low.
+    staleTime: 10 * 60 * 1000,
+    queryFn: fetchFacilities,
+  });
+
   // ── Draft update helpers ───────────────────────────────────────────────────
 
   const toggleCategory = useCallback((id: string) => {
@@ -425,6 +455,22 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
 
   const setOpenNow = useCallback((v: boolean) => {
     setDraft((prev) => ({ ...prev, openNow: v }));
+  }, []);
+
+  const toggleFacility = useCallback((id: string) => {
+    setDraft((prev) => {
+      const already = prev.facilityIds.includes(id);
+      return {
+        ...prev,
+        facilityIds: already
+          ? prev.facilityIds.filter((f) => f !== id)
+          : [...prev.facilityIds, id],
+      };
+    });
+  }, []);
+
+  const setPremiumOnly = useCallback((v: boolean) => {
+    setDraft((prev) => ({ ...prev, premiumOnly: v }));
   }, []);
 
   // ── Apply / Reset ──────────────────────────────────────────────────────────
@@ -616,12 +662,12 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
               {/* ── 4. Distance ────────────────────────────────────────── */}
               <SectionTitle title="Distance" />
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                {DISTANCE_OPTIONS.map((km) => (
+                {DISTANCE_OPTIONS.map((opt) => (
                   <Chip
-                    key={km}
-                    label={`${km} km`}
-                    selected={draft.maxDistanceKm === km}
-                    onPress={() => setDistance(km)}
+                    key={opt.km}
+                    label={`${opt.miles} mi`}
+                    selected={draft.maxDistanceKm === opt.km}
+                    onPress={() => setDistance(opt.km)}
                   />
                 ))}
               </View>
@@ -650,6 +696,59 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                   thumbColor={draft.openNow ? Colors.sky : Colors.white}
                   ios_backgroundColor={Colors.greyLighter}
                   accessibilityLabel="Show only venues open right now"
+                  accessibilityRole="switch"
+                />
+              </View>
+
+              {/* ── 6. Facilities ──────────────────────────────────────── */}
+              <SectionTitle title="Facilities" />
+              {facilitiesLoading && <ActivityIndicator size="small" color={Colors.sky} />}
+              {!facilitiesLoading && facilities.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingRight: 8, paddingBottom: 4 }}
+                >
+                  {facilities.map((fac) => (
+                    <Chip
+                      key={fac.id}
+                      label={fac.name}
+                      icon={fac.icon}
+                      selected={draft.facilityIds.includes(fac.id)}
+                      onPress={() => toggleFacility(fac.id)}
+                    />
+                  ))}
+                </ScrollView>
+              )}
+
+              {/* ── 7. Featured venues ─────────────────────────────────── */}
+              <SectionTitle title="Featured venues" />
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: Colors.sandDark,
+                  borderRadius: 14,
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                }}
+              >
+                <View>
+                  <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 15, color: Colors.charcoal }}>
+                    Featured venues only
+                  </Text>
+                  <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 12, color: Colors.grey, marginTop: 2 }}>
+                    Top-rated and verified by our team
+                  </Text>
+                </View>
+                <Switch
+                  value={draft.premiumOnly}
+                  onValueChange={setPremiumOnly}
+                  trackColor={{ false: Colors.greyLighter, true: Colors.skyLight }}
+                  thumbColor={draft.premiumOnly ? Colors.sky : Colors.white}
+                  ios_backgroundColor={Colors.greyLighter}
+                  accessibilityLabel="Show only featured venues"
                   accessibilityRole="switch"
                 />
               </View>

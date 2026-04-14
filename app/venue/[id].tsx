@@ -2,7 +2,7 @@
  * Venue detail screen
  * Shows everything about a single venue: photos, info, hours, reviews.
  */
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Linking, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVenue } from '@/hooks/useVenues';
 import { useVenueReviews } from '@/hooks/useReviews';
 import { useUser } from '@/hooks/useAuth';
+import { useReportVenue } from '@/hooks/useVenueReport';
 import { useVenuePhotos } from '@/hooks/useVenuePhotos';
 import { supabase } from '@/lib/supabase';
 import { Colors } from '@/constants/theme';
@@ -35,6 +36,7 @@ export default function VenueDetailScreen() {
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const user = useUser();
   const queryClient = useQueryClient();
+  const reportVenue = useReportVenue();
 
   const { data: venue, isLoading, error } = useVenue(id);
 
@@ -85,6 +87,35 @@ export default function VenueDetailScreen() {
     () => [...(venue?.opening_hours ?? [])].sort((a, b) => a.day_of_week - b.day_of_week),
     [venue?.opening_hours]
   );
+
+  const submitReport = useCallback((reason: Parameters<typeof reportVenue.mutate>[0]['reason']) => {
+    reportVenue.mutate(
+      { venueId: id as string, reason },
+      {
+        onSuccess: () =>
+          Alert.alert('Thanks', "Your report has been received. We'll review it shortly."),
+        onError: (err) =>
+          Alert.alert(
+            'Error',
+            err instanceof Error ? err.message : 'Could not submit report.'
+          ),
+      }
+    );
+  }, [reportVenue, id]);
+
+  const handleReport = useCallback(() => {
+    Alert.alert(
+      'Report an issue',
+      'What is the problem with this venue?',
+      [
+        { text: 'Venue is permanently closed', onPress: () => submitReport('permanently_closed') },
+        { text: 'Wrong information',           onPress: () => submitReport('wrong_info') },
+        { text: 'Inappropriate content',       onPress: () => submitReport('inappropriate_content') },
+        { text: 'Duplicate listing',           onPress: () => submitReport('duplicate') },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }, [submitReport]);
 
   if (isLoading) {
     return (
@@ -234,10 +265,25 @@ export default function VenueDetailScreen() {
           <View className="mt-6">
             <Text className="text-charcoal font-bold text-lg mb-1">Address</Text>
             <Text className="text-grey">{[venue.address_line1, venue.address_line2, venue.city, venue.postcode].filter(Boolean).join(', ')}</Text>
+            {/* ODbL attribution — required by OpenStreetMap licence for OSM-sourced venues */}
+            {(venue as any).data_source === 'osm' && (
+              <Text className="text-grey text-xs mt-1">
+                © OpenStreetMap contributors (ODbL)
+              </Text>
+            )}
           </View>
 
           {/* Photo upload — only shown to authenticated users */}
           {user && <VenuePhotoUpload venueId={id} />}
+
+          {/* Report an issue */}
+          <TouchableOpacity
+            className="flex-row items-center justify-center py-2 mt-4"
+            onPress={handleReport}
+            disabled={reportVenue.isPending}
+          >
+            <Text className="text-grey text-xs">Report an issue with this venue</Text>
+          </TouchableOpacity>
 
           {/* Reviews section */}
           <View className="mt-6 mb-10">
