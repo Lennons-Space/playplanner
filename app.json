@@ -90,8 +90,8 @@
       "eas": {
         "projectId": "4cbd1146-859f-44b6-80dd-52ed7d61800a"
       },
-      "privacyPolicyUrl": "https://playplanner.app/privacy",
-      "supportUrl": "https://playplanner.app/support"
+      "privacyPolicyUrl": "https://lennons-space.github.io/playplanner/privacy.html",
+      "supportUrl": "https://lennons-space.github.io/playplanner"
     },
     "owner": "playplanner"
   }

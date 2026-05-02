@@ -208,7 +208,7 @@ export default function PrivacyScreen() {
           For urgent data protection concerns or to exercise your rights, email us with the subject
           line "Data Rights Request" and we will respond within 30 days.{'\n\n'}
           This Privacy Policy is also available at:{'\n'}
-          playplanner.app/privacy
+          lennons-space.github.io/playplanner/privacy.html
         </Section>
 
         <View className="h-8" />

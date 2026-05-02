@@ -187,7 +187,7 @@ export default function TermsScreen() {
           All enquiries — general, legal, and privacy:{'\n'}
           privacy@playplanner.app{'\n\n'}
           Our full Privacy Policy is available at:{'\n'}
-          playplanner.app/privacy
+          lennons-space.github.io/playplanner/privacy.html
         </Section>
 
         <View className="h-8" />
