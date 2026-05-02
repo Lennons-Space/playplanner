@@ -118,13 +118,19 @@ describe('useNearbyVenues', () => {
   });
 
   // The hook must forward the resolved venue array directly so callers can
-  // render it without any additional transformation.
-  it('returns the venue list from the RPC on success', async () => {
-    const venues = [
-      { id: 'venue-1', name: 'Soft Play Central', distance_km: 1.2, has_hours: true },
-      { id: 'venue-2', name: 'Park Lane',          distance_km: 2.5, has_hours: false },
+  // render it without any additional transformation. Latitude/longitude must
+  // arrive as real JS numbers even if the RPC serialised them as strings
+  // (PostgreSQL `numeric` → string in the Supabase JS client). This is the
+  // guarantee that stops "pins appear briefly then disappear" on the map.
+  it('returns the venue list with numeric latitude/longitude', async () => {
+    const rpcRows = [
+      // As the RPC would actually return them — numeric serialised to string
+      { id: 'venue-1', name: 'Soft Play Central', latitude: '51.507', longitude: '-0.127', distance_km: 1.2, has_hours: true },
+      // Also accept rows that are already numeric (future-proofing for the
+      // float8 migration)
+      { id: 'venue-2', name: 'Park Lane', latitude: 51.508, longitude: -0.128, distance_km: 2.5, has_hours: false },
     ];
-    mockRpc.mockResolvedValue({ data: venues, error: null } as any);
+    mockRpc.mockResolvedValue({ data: rpcRows, error: null } as any);
 
     const { result } = renderHook(
       () => useNearbyVenues(LONDON, BASE_FILTERS),
@@ -133,7 +139,55 @@ describe('useNearbyVenues', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data).toEqual(venues);
+    // Both rows must survive, and both must have numeric coords.
+    expect(result.current.data).toHaveLength(2);
+    expect(typeof result.current.data![0].latitude).toBe('number');
+    expect(typeof result.current.data![0].longitude).toBe('number');
+    expect(result.current.data![0].latitude).toBe(51.507);
+    expect(result.current.data![0].longitude).toBe(-0.127);
+    expect(result.current.data![1].latitude).toBe(51.508);
+  });
+
+  // Regression guard: rows where latitude/longitude cannot be coerced to a
+  // finite number must be dropped, not passed through. A corrupt row reaching
+  // react-native-maps causes the native layer to drop ALL markers silently,
+  // which was the visible "pins flash then disappear" bug.
+  it('drops rows with non-finite latitude or longitude', async () => {
+    const rpcRows = [
+      { id: 'ok',       name: 'Valid',    latitude: '51.5', longitude: '-0.1', distance_km: 1.0, has_hours: true },
+      { id: 'bad-lat',  name: 'Bad lat',  latitude: null,   longitude: '-0.1', distance_km: 1.0, has_hours: true },
+      { id: 'bad-lng',  name: 'Bad lng',  latitude: '51.5', longitude: 'xyz',  distance_km: 1.0, has_hours: true },
+      { id: 'no-coord', name: 'No coord', distance_km: 1.0, has_hours: true },
+    ];
+    mockRpc.mockResolvedValue({ data: rpcRows, error: null } as any);
+
+    const { result } = renderHook(
+      () => useNearbyVenues(LONDON, BASE_FILTERS),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toHaveLength(1);
+    expect(result.current.data![0].id).toBe('ok');
+  });
+
+  // Regression guard: if the caller passes non-finite coords (e.g. a stale
+  // closure or uninitialised state), the hook must refuse to fire the RPC.
+  // This stops a bogus request reaching PostGIS and causing an error response
+  // that would flash empty venues on the map.
+  it('does not fire the RPC when coords are non-finite', async () => {
+    mockRpc.mockResolvedValue({ data: [], error: null } as any);
+
+    const BAD: Coordinates = { latitude: Number.NaN, longitude: -0.127 };
+    renderHook(
+      () => useNearbyVenues(BAD, BASE_FILTERS),
+      { wrapper: makeWrapper() },
+    );
+
+    // Give React Query a tick to settle — the query must stay idle.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 
   // Security/privacy note: useNearbyVenues does NOT currently guard against
@@ -212,5 +266,22 @@ describe('useNearbyVenues', () => {
         price_ranges: ['free', 'budget'],
       }),
     );
+  });
+});
+
+// ── VENUE_SELECT_BASE regression ───────────────────────────────────────────
+// Ensures category slug is always selected so plan-visit tips and checklists
+// work correctly. If someone removes slug from the select, this test breaks.
+// ── VENUE_SELECT_BASE regression ───────────────────────────────────────────
+// Ensures category slug is always selected so plan-visit tips and checklists
+// work correctly. If someone removes slug from the select, this test breaks.
+describe('VENUE_SELECT_BASE includes category slug', () => {
+  it('contains slug in the category join', () => {
+    // Import is already hoisted at the top of this file via jest.mock —
+    // use require() to stay in CommonJS module mode (dynamic import() is
+    // not supported without --experimental-vm-modules in this Jest config).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { VENUE_SELECT_BASE } = require('../useVenues');
+    expect(VENUE_SELECT_BASE).toContain('slug');
   });
 });

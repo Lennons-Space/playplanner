@@ -8,8 +8,20 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { useAuthListener } from '@/hooks/useAuth';
+import * as Notifications from 'expo-notifications';
+import { useAuthListener, useProfileForegroundRefresh } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
+
+// Set once at app boot — controls how notifications appear while the app is
+// in the foreground. Placing this here (not in a hook file) avoids a global
+// side effect firing on every module import.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 // NativeWind v4: third-party components need cssInterop to accept className props.
 // Core react-native components (View, Text, etc.) are handled automatically.
@@ -17,8 +29,12 @@ cssInterop(SafeAreaView, { className: 'style' });
 
 SplashScreen.preventAutoHideAsync();
 
-function RootLayoutInner() {
-  useAuthListener(); // starts listening to Supabase auth events
+// queryClient is threaded down from RootLayout so useAuthListener can call
+// queryClient.clear() on SIGNED_OUT, preventing cached user data from leaking
+// to the next session on a shared device.
+function RootLayoutInner({ queryClient }: { queryClient: QueryClient }) {
+  useAuthListener(queryClient); // starts listening to Supabase auth events
+  useProfileForegroundRefresh(); // re-fetches profile on foreground — catches server-side changes (BUG F)
   const isLoading = useAuthStore((s) => s.isLoading);
 
   useEffect(() => {
@@ -33,6 +49,14 @@ function RootLayoutInner() {
       <Stack.Screen name="venue/add"  options={{ presentation: 'modal' }} />
       <Stack.Screen name="business/dashboard" />
       <Stack.Screen name="admin/moderation"   />
+      {/* Profile group — registered so Expo Router treats it as intentional */}
+      <Stack.Screen name="profile" options={{ headerShown: false }} />
+      {/* Business upgrade — modal sheet for the subscription upsell flow */}
+      <Stack.Screen name="business/upgrade" options={{ headerShown: false, presentation: 'modal' }} />
+      {/* Venue claim flow — three-step card sequence */}
+      <Stack.Screen name="venue/claim"         options={{ headerShown: false }} />
+      <Stack.Screen name="venue/claim-verify"  options={{ headerShown: false }} />
+      <Stack.Screen name="venue/claim-success" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -73,7 +97,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY}>
-          <RootLayoutInner />
+          <RootLayoutInner queryClient={queryClient} />
         </StripeProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>

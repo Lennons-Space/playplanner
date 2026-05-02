@@ -1,239 +1,514 @@
 /**
- * Favourites tab — saved venues for the current user.
+ * Favourites tab — 2-column card grid of saved venues.
  *
- * RLS note:
- * The Supabase query filters by user_id client-side (.eq('user_id', user.id))
- * AND is protected server-side by RLS on the `favourites` table. The client
- * filter is belt-and-braces — RLS is the authoritative security boundary.
- * Never rely on client-side filtering alone for user-scoped data.
+ * RLS note: .eq('user_id', user.id) is belt-and-braces — RLS on the
+ * `favourites` table is the authoritative security boundary.
  *
- * Data minimisation:
- * We select only the columns VenueCard actually needs rather than selecting
- * the entire venues row. This limits data transfer and avoids accidentally
- * exposing fields like `claimed_by`, `submitted_by`, or `moderation_status`
- * to the client — even if they are not rendered, they travel over the wire.
- *
- * Query key:
- * ['favourites', user.id] matches the key used in venue/[id].tsx when it calls
- * queryClient.invalidateQueries. This ensures the list refreshes automatically
- * after the user toggles a favourite on the detail screen.
+ * Data minimisation: we only select columns the UI actually needs.
+ * venue_photos is joined and resolved to a single cover_photo_url
+ * client-side; the raw array is never stored in component state.
  */
 
 import { useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  Image,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+} from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
-import { useUser } from '@/hooks/useAuth';
-import VenueCard from '@/components/venue/VenueCard';
-import { Colors } from '@/constants/theme';
-import type { Favourite, Venue } from '@/types';
+import { useUser, useProfile } from '@/hooks/useAuth';
+import { Icon, ScreenTitle, CategoryPlaceholder } from '@/components/ui';
+import { getCategoryMeta } from '@/constants/categories';
 
-// ─── Type for the joined Supabase row ─────────────────────────────────────────
-// The select query below joins the venue with its category. We express this as
-// a local type so TypeScript knows the shape of `item.venue` in renderItem.
-type FavouriteWithVenue = Omit<Favourite, 'venue'> & {
-  venue: Pick<
-    Venue,
-    | 'id' | 'name' | 'slug' | 'city' | 'postcode' | 'country'
-    | 'average_rating' | 'review_count' | 'is_premium' | 'is_verified'
-    | 'price_range' | 'min_age' | 'max_age'
-    | 'latitude' | 'longitude'
-    | 'category_id' | 'category'
-    // Fields required by the Venue interface that we populate with safe defaults:
-    | 'is_published' | 'moderation_status' | 'review_count'
-    | 'created_at' | 'updated_at'
-  > & {
-    category?: { id: string; name: string; icon: string; color: string; slug: string } | null;
-  };
+// ─── Types ────────────────────────────────────────────────────────────────────
+type FavVenue = {
+  id: string;
+  venue_id: string;
+  venue: {
+    id: string;
+    name: string;
+    is_premium: boolean;
+    average_rating: number;
+    cover_photo_url: string | null;
+    category: { id: string; name: string; icon: string; color: string; slug: string } | null;
+  } | null;
 };
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const C = {
+  ink:      '#1D2630',
+  inkSoft:  '#4A5560',
+  mute:     '#7B8794',
+  line:     '#E6E2DB',
+  lineSoft: '#F1ECE2',
+  sand:     '#FBF6EC',
+  paper:    '#FFFFFF',
+  sky:      '#2FB8B0',
+  skyDeep:  '#1B8A85',
+  coral:    '#FF6B6B',
+  sun:      '#FFD66B',
+  sunSoft:  '#FFF1C7',
+  coralSoft:'#FFE8E8',
+  star:     '#F5A524',
+} as const;
+
+const H_PAD    = 20;
+const CARD_GAP = 10;
+const IMG_H    = 104;
+
+// ─── FavCard ──────────────────────────────────────────────────────────────────
+// Each card in the 2-col grid: image area + info area + unsave button overlay.
+function FavCard({
+  item,
+  onPress,
+  onUnsave,
+}: {
+  item: FavVenue;
+  onPress: () => void;
+  onUnsave: () => void;
+}) {
+  const venue = item.venue;
+  // Empty slot to preserve grid column layout when venue data is null.
+  if (!venue) return <View style={styles.cardPlaceholderSlot} />;
+
+  const catMeta  = getCategoryMeta(venue.category?.slug);
+  const hasPhoto = !!venue.cover_photo_url;
+
+  return (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      activeOpacity={0.88}
+      accessibilityRole="button"
+      accessibilityLabel={venue.name}
+    >
+      {/* ── Image area ─────────────────────────────────────────── */}
+      <View style={styles.imageArea}>
+        {hasPhoto ? (
+          <Image
+            source={{ uri: venue.cover_photo_url! }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+          />
+        ) : (
+          // CategoryPlaceholder expects square dimensions; we stretch it to fill
+          // the image area by wrapping it in an absoluteFill container.
+          <View style={[StyleSheet.absoluteFill, styles.placeholderWrap]}>
+            <CategoryPlaceholder
+              categorySlug={venue.category?.slug ?? 'other'}
+              size={IMG_H}
+              borderRadius={0}
+            />
+          </View>
+        )}
+
+        {/* Unsave button — top-right overlay */}
+        <Pressable
+          style={styles.unsaveBtn}
+          onPress={onUnsave}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${venue.name} from favourites`}
+          hitSlop={8}
+        >
+          <Icon name="heartFill" size={14} color={C.coral} />
+        </Pressable>
+      </View>
+
+      {/* ── Info area ──────────────────────────────────────────── */}
+      <View style={styles.infoArea}>
+        <Text style={styles.venueName} numberOfLines={2}>{venue.name}</Text>
+
+        <View style={styles.metaRow}>
+          <Icon name="star" size={10} color={C.star} />
+          <Text style={styles.ratingText}>
+            {Number(venue.average_rating) > 0
+              ? Number(venue.average_rating).toFixed(1)
+              : '–'}
+          </Text>
+          <Text style={styles.distanceText}>· nearby</Text>
+        </View>
+
+        {venue.category && (
+          <View style={[styles.catPill, { backgroundColor: catMeta.soft }]}>
+            <Text style={[styles.catPillText, { color: catMeta.color }]}>
+              {catMeta.label.toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── EmptyState ───────────────────────────────────────────────────────────────
+function EmptyState() {
+  return (
+    <View style={styles.emptyWrap}>
+      <Text style={styles.emptyEmoji}>💛</Text>
+      <Text style={styles.emptyTitle}>Nothing saved yet</Text>
+      <Text style={styles.emptySub}>
+        Tap the heart on any venue to save it here.
+      </Text>
+    </View>
+  );
+}
 
 // ─── FavouritesScreen ─────────────────────────────────────────────────────────
 export default function FavouritesScreen() {
-  const user = useUser();
+  const user         = useUser();
+  const profile      = useProfile();
+  const queryClient  = useQueryClient();
 
-  const { data: favourites = [], isLoading, isError } = useQuery({
+  // First name from full_name for the eyebrow — same derivation as before.
+  const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? null;
+
+  // ── Data query (preserved verbatim) ────────────────────────────────────────
+  const { data: favRows = [], isLoading, isError } = useQuery<FavVenue[]>({
     queryKey: ['favourites', user?.id],
     queryFn: async () => {
-      // Only the columns VenueCard needs — not the full venue row.
-      // moderation_status and is_published are included so that if a venue is
-      // later unpublished or rejected, the card can still render without crashing
-      // (VenueCard doesn't check these, but they satisfy the Venue type shape).
+      // Re-check inside queryFn — session may have expired between the enabled
+      // check and when React Query actually fires the fetch (e.g. on a cache miss
+      // triggered by a navigation event after token expiry).
+      if (!user?.id) throw new Error('Not authenticated');
+
       const { data, error } = await supabase
         .from('favourites')
         .select(`
           id,
-          user_id,
           venue_id,
-          list_name,
-          created_at,
           venue:venues (
-            id, name, slug, city, postcode, country,
-            average_rating, review_count, is_premium, is_verified,
-            price_range, min_age, max_age,
-            latitude, longitude,
-            category_id, is_published, moderation_status,
-            created_at, updated_at,
-            category:categories ( id, name, icon, color, slug )
+            id, name, is_premium, average_rating,
+            category:categories ( id, name, icon, color, slug ),
+            venue_photos ( url, is_cover, sort_order, status )
           )
         `)
-        .eq('user_id', user!.id)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return (data ?? []) as FavouriteWithVenue[];
+
+      return (data ?? []).map((row) => {
+        const v = row.venue as (typeof row.venue & {
+          venue_photos?: { url: string; is_cover: boolean; sort_order: number; status: string }[];
+        }) | null;
+
+        // Resolve cover photo from the joined array — pick the approved cover,
+        // falling back to the first approved photo, then null.
+        const approved = (v?.venue_photos ?? []).filter((p) => p.status === 'approved');
+        const cover = approved.find((p) => p.is_cover) ?? approved[0] ?? null;
+
+        return {
+          id: row.id,
+          venue_id: row.venue_id,
+          venue: v ? {
+            id: v.id,
+            name: v.name,
+            is_premium: v.is_premium ?? false,
+            average_rating: v.average_rating == null ? 0 : Number(v.average_rating),
+            cover_photo_url: cover?.url ?? null,
+            category: v.category ?? null,
+          } : null,
+        } as FavVenue;
+      });
     },
-    // Only run the query if the user is signed in.
-    // Without this guard the query runs with user!.id throwing immediately.
     enabled: !!user,
-    staleTime: 1000 * 60 * 2, // 2 min — favourites change infrequently
+    staleTime: 1000 * 60 * 2,
   });
 
-  // Stable press handler — avoids creating a new function per FlatList render.
-  // VenueCard is memoised, so stable props mean no unnecessary re-renders.
-  const handleVenuePress = useCallback((id: string) => {
-    router.push(`/venue/${id}`);
+  // ── Unsave mutation ─────────────────────────────────────────────────────────
+  const unsaveMutation = useMutation({
+    mutationFn: async (favouriteId: string) => {
+      const { error } = await supabase
+        .from('favourites')
+        .delete()
+        .eq('id', favouriteId)
+        .eq('user_id', user!.id); // belt-and-braces; RLS is the real boundary
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['favourites', user?.id] });
+    },
+  });
+
+  const handlePress = useCallback((venueId: string) => {
+    router.push(`/venue/${venueId}`);
   }, []);
 
-  // ── Not signed in ───────────────────────────────────────────────────────────
+  // ── Derived display state ───────────────────────────────────────────────────
+  const showEmpty = favRows.length === 0;
+
+  // ── List header ─────────────────────────────────────────────────────────────
+  const listHeader = (
+    <View>
+      <ScreenTitle
+        eyebrow={firstName ? `${firstName}'s` : undefined}
+        title="Saved places"
+      />
+    </View>
+  );
+
+  // ── List footer ─────────────────────────────────────────────────────────────
+  const listFooter = <View style={styles.bottomPad} />;
+
+  // ── Not signed in ─────────────────────────────────────────────────────────
   if (!user) {
     return (
-      <SafeAreaView className="flex-1 bg-slate items-center justify-center px-8" edges={['top']}>
-        <Text style={{ fontSize: 56, marginBottom: 16 }}>💛</Text>
-        <Text
-          className="text-charcoal text-xl text-center"
-          style={{ fontFamily: 'Nunito-ExtraBold' }}
-        >
-          Save your favourite places
-        </Text>
-        <Text
-          className="text-grey text-center mt-2 mb-8"
-          style={{ fontFamily: 'Nunito-Regular', fontSize: 15 }}
-        >
-          Sign in to keep a personal list of venues your family loves.
-        </Text>
-        <TouchableOpacity
-          className="rounded-2xl py-4 px-8"
-          style={{ backgroundColor: Colors.sky }}
-          onPress={() => router.push('/(auth)/login')}
-          accessibilityRole="button"
-          accessibilityLabel="Sign in to save favourites"
-        >
-          <Text
-            className="text-white text-base"
-            style={{ fontFamily: 'Nunito-Bold' }}
-          >
-            Sign in
+      <SafeAreaView style={styles.root} edges={['top']}>
+        <View style={styles.centred}>
+          <Text style={styles.notSignedInEmoji}>💛</Text>
+          <Text style={styles.emptyTitle}>Save your favourite places</Text>
+          <Text style={styles.emptySub}>
+            Sign in to keep a personal list of venues your family loves.
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          className="mt-3 py-3"
-          onPress={() => router.push('/(auth)/register')}
-          accessibilityRole="button"
-        >
-          <Text
-            className="text-sky text-sm"
-            style={{ fontFamily: 'Nunito-Bold' }}
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={() => router.push('/(auth)/login')}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in to save favourites"
           >
-            Create an account
-          </Text>
-        </TouchableOpacity>
+            <Text style={styles.primaryBtnText}>Sign in</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryBtnWrap}
+            onPress={() => router.push('/(auth)/register')}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryBtnText}>Create an account</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
 
-  // ── Loading ─────────────────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <SafeAreaView className="flex-1 bg-slate items-center justify-center" edges={['top']}>
-        <ActivityIndicator color={Colors.sky} size="large" />
+      <SafeAreaView style={styles.root} edges={['top']}>
+        <View style={styles.centred}>
+          <ActivityIndicator color={C.sky} size="large" />
+        </View>
       </SafeAreaView>
     );
   }
 
-  // ── Error ───────────────────────────────────────────────────────────────────
+  // ── Error ─────────────────────────────────────────────────────────────────
   if (isError) {
     return (
-      <SafeAreaView className="flex-1 bg-slate items-center justify-center px-8" edges={['top']}>
-        <Text style={{ fontSize: 48, marginBottom: 12 }}>⚠️</Text>
-        <Text
-          className="text-charcoal text-lg text-center"
-          style={{ fontFamily: 'Nunito-Bold' }}
-        >
-          Could not load favourites
-        </Text>
-        <Text
-          className="text-grey text-sm text-center mt-2"
-          style={{ fontFamily: 'Nunito-Regular' }}
-        >
-          Check your connection and try again.
-        </Text>
+      <SafeAreaView style={styles.root} edges={['top']}>
+        <View style={styles.centred}>
+          <Text style={styles.errorEmoji}>⚠️</Text>
+          <Text style={styles.emptyTitle}>Could not load favourites</Text>
+          <Text style={styles.emptySub}>Check your connection and try again.</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
-  // ── Signed-in list view ─────────────────────────────────────────────────────
+  // ── Signed-in grid view ───────────────────────────────────────────────────
   return (
-    <SafeAreaView className="flex-1 bg-slate" edges={['top']}>
-      <View className="px-4 pt-4 pb-2">
-        <Text
-          className="text-2xl text-charcoal"
-          style={{ fontFamily: 'Nunito-ExtraBold' }}
+    <SafeAreaView style={styles.root} edges={['top']}>
+      {showEmpty ? (
+        // When the active tab has nothing to show, render header + empty state
+        // in a plain ScrollView (no FlatList needed).
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.emptyScrollContent}
         >
-          Favourites
-        </Text>
-        {favourites.length > 0 && (
-          <Text
-            className="text-grey text-sm mt-1"
-            style={{ fontFamily: 'Nunito-Regular' }}
-          >
-            {favourites.length} saved {favourites.length === 1 ? 'venue' : 'venues'}
-          </Text>
-        )}
-      </View>
-
-      <FlatList
-        data={favourites}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, gap: 12 }}
-        // removeClippedSubviews: unmounts list items that scroll off-screen,
-        // reducing memory use and preventing janky scrolling on longer lists.
-        // Note: getItemLayout is intentionally omitted here — venue card heights
-        // are variable (venue names can wrap to multiple lines).
-        removeClippedSubviews
-        ListEmptyComponent={
-          <View className="items-center mt-20">
-            <Text style={{ fontSize: 56, marginBottom: 12 }}>💛</Text>
-            <Text
-              className="text-charcoal text-lg text-center"
-              style={{ fontFamily: 'Nunito-Bold' }}
-            >
-              No favourites yet
-            </Text>
-            <Text
-              className="text-grey text-sm text-center mt-2"
-              style={{ fontFamily: 'Nunito-Regular' }}
-            >
-              Tap the heart on any venue to save it here.
-            </Text>
-          </View>
-        }
-        renderItem={({ item }: { item: FavouriteWithVenue }) => {
-          // item.venue could theoretically be null if the venue was deleted
-          // after it was favourited (referential integrity should prevent this,
-          // but we guard defensively to avoid a crash).
-          if (!item.venue) return null;
-
-          return (
-            <VenueCard
-              venue={item.venue as Venue}
-              onPress={() => handleVenuePress(item.venue_id)}
+          {listHeader}
+          <EmptyState />
+          <View style={styles.bottomPad} />
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={favRows}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          columnWrapperStyle={styles.columnWrapper}
+          contentContainerStyle={styles.listContent}
+          ListHeaderComponent={listHeader}
+          ListFooterComponent={listFooter}
+          renderItem={({ item }) => (
+            <FavCard
+              item={item}
+              onPress={() => handlePress(item.venue_id)}
+              onUnsave={() => unsaveMutation.mutate(item.id)}
             />
-          );
-        }}
-      />
+          )}
+          removeClippedSubviews
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </SafeAreaView>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: C.sand,
+  },
+  centred: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+
+  // ── FlatList layout ───────────────────────────────────────────────
+  listContent: {
+    paddingBottom: 32,
+  },
+  columnWrapper: {
+    paddingHorizontal: H_PAD,
+    gap: CARD_GAP,
+    marginBottom: CARD_GAP,
+  },
+  emptyScrollContent: {
+    flexGrow: 1,
+  },
+  bottomPad: {
+    height: 110, // clear tab bar
+  },
+
+  // ── Venue card ────────────────────────────────────────────────────
+  card: {
+    flex: 1,
+    backgroundColor: C.paper,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.line,
+    overflow: 'hidden',
+  },
+  // Zero-width spacer in the grid column when venue data is null,
+  // so the sibling card still occupies its correct column.
+  cardPlaceholderSlot: {
+    flex: 1,
+  },
+  imageArea: {
+    height: IMG_H,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  placeholderWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  unsaveBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoArea: {
+    padding: 10,
+  },
+  venueName: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 13,
+    color: C.ink,
+    lineHeight: 13 * 1.2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  ratingText: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 11,
+    color: C.ink,
+  },
+  distanceText: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 11,
+    color: C.mute,
+  },
+  catPill: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingVertical: 2,
+    paddingHorizontal: 7,
+    borderRadius: 999,
+  },
+  catPillText: {
+    fontFamily: 'Nunito-ExtraBold',
+    fontSize: 9,
+    letterSpacing: 0.3,
+  },
+
+  // ── Empty state ───────────────────────────────────────────────────
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 60,
+  },
+  emptyEmoji: {
+    fontSize: 56,
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    fontFamily: 'Nunito-ExtraBold',
+    fontSize: 20,
+    color: C.ink,
+    textAlign: 'center',
+  },
+  emptySub: {
+    fontFamily: 'Nunito-Regular',
+    fontSize: 14,
+    color: C.mute,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 14 * 1.5,
+  },
+
+  // ── Not signed in ─────────────────────────────────────────────────
+  notSignedInEmoji: {
+    fontSize: 56,
+    marginBottom: 16,
+  },
+  errorEmoji: {
+    fontSize: 44,
+    marginBottom: 12,
+  },
+  primaryBtn: {
+    backgroundColor: C.sky,
+    borderRadius: 999,
+    paddingVertical: 14,
+    paddingHorizontal: 36,
+    marginTop: 8,
+  },
+  primaryBtnText: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 15,
+    color: '#FFFFFF',
+  },
+  secondaryBtnWrap: {
+    marginTop: 12,
+    paddingVertical: 8,
+  },
+  secondaryBtnText: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 14,
+    color: C.sky,
+  },
+});

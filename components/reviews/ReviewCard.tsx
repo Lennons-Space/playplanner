@@ -30,17 +30,26 @@ interface ReviewCardProps {
 /**
  * Derives the safe display name for a reviewer.
  *
- * Rule: if show_reviews_publicly is false, always use "Anonymous" — this is
- * the user's stated privacy preference and must be honoured even if a username
- * exists. If show_reviews_publicly is true (or the profile is absent), show
- * username, then full_name, then fall back to "Anonymous".
+ * Priority order (most restrictive first):
+ *   1. is_anonymous === true  → "Anonymous parent" (reviewer's per-review opt-out,
+ *      persisted in the DB via migration 038 and the "Post anonymously" toggle).
+ *   2. show_reviews_publicly === false → "Anonymous parent" (user's global
+ *      profile preference — must be honoured even if a username exists).
+ *   3. profile absent (deleted account) → "Anonymous parent".
+ *   4. profile present, show_reviews_publicly true → username ?? full_name ?? "Anonymous parent".
+ *
+ * Using a single label "Anonymous parent" (not just "Anonymous") provides a
+ * privacy-safe, context-appropriate display that is consistent across all
+ * anonymisation paths.
  */
 function getDisplayName(review: Review): string {
+  // Per-review anonymity: reviewer explicitly ticked "Post anonymously"
+  if (review.is_anonymous) return 'Anonymous parent';
   const profile = review.profile;
-  if (!profile) return 'Anonymous';
-  // Privacy preference: user asked not to be publicly identified on reviews
-  if (profile.show_reviews_publicly === false) return 'Anonymous';
-  return profile.username ?? profile.full_name ?? 'Anonymous';
+  if (!profile) return 'Anonymous parent';
+  // Global privacy preference: user opted out of public review identification
+  if (profile.show_reviews_publicly === false) return 'Anonymous parent';
+  return profile.username ?? profile.full_name ?? 'Anonymous parent';
 }
 
 /** Renders filled/empty star characters for a 1–5 rating. Clamped to prevent RangeError. */
@@ -62,6 +71,10 @@ export const ReviewCard = React.memo(function ReviewCard({ review, onPressReview
   // The avatar+name block becomes tappable when a navigation handler is provided
   // AND the reviewer is not anonymous (anonymous reviewers have opted out of
   // public identification — navigating to their profile would violate that preference).
+  // isAnonymousDisplay covers all anonymisation paths: is_anonymous flag,
+  // show_reviews_publicly=false, and missing profile.
+  const isAnonymousDisplay = displayName === 'Anonymous parent';
+
   const ReviewerBlock = (
     <>
       {/* Initials placeholder — dynamic colour derived from display name length */}
@@ -81,7 +94,7 @@ export const ReviewCard = React.memo(function ReviewCard({ review, onPressReview
   return (
     <View style={styles.card}>
       {/* Top row: avatar placeholder + name + date */}
-      {onPressReviewer && displayName !== 'Anonymous' ? (
+      {onPressReviewer && !isAnonymousDisplay ? (
         <TouchableOpacity
           style={styles.topRow}
           onPress={onPressReviewer}

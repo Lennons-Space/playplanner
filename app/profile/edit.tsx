@@ -21,7 +21,7 @@ import {
   KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Image,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
-import { ChevronRight } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfile, useUser } from '@/hooks/useAuth';
 import { useUpdateProfile, useUploadAvatar } from '@/hooks/useProfile';
@@ -34,20 +34,27 @@ export default function EditProfileScreen() {
   const { mutateAsync, isPending }           = useUpdateProfile();
   const { mutateAsync: uploadAvatar, isPending: isUploading } = useUploadAvatar();
 
-  // Auth guard — redirect unauthenticated users to the login screen.
-  // useEffect avoids calling router.replace during render (React rule).
-  useEffect(() => {
-    if (user === null) {
-      router.replace('/(auth)/login');
-    }
-  }, [user]);
+  // All hooks must be called unconditionally (React rules of hooks).
+  // Initial values are empty strings; useEffect syncs them once profile loads.
+  const [fullName,    setFullName]    = useState('');
+  const [username,    setUsername]    = useState('');
+  const [bio,         setBio]         = useState('');
+  const [postcode,    setPostcode]    = useState('');
 
-  // Local form state — pre-filled from the stored profile.
-  // Changes are held locally until the user presses Save.
-  const [fullName,    setFullName]    = useState(profile?.full_name    ?? '');
-  const [username,    setUsername]    = useState(profile?.username     ?? '');
-  const [bio,         setBio]         = useState(profile?.bio          ?? '');
-  const [postcode,    setPostcode]    = useState(profile?.postcode     ?? '');
+  useEffect(() => {
+    if (!profile) return;
+    setFullName(profile.full_name ?? '');
+    setUsername(profile.username  ?? '');
+    setBio(profile.bio            ?? '');
+    setPostcode(profile.postcode  ?? '');
+  }, [profile]);
+
+  if (!user) {
+    router.replace('/(auth)/login');
+    return null;
+  }
+
+  if (!profile) return null;
 
   async function handleChangePhoto() {
     try {
@@ -257,13 +264,13 @@ export default function EditProfileScreen() {
                     className="text-grey text-xs"
                     style={{ fontFamily: 'Nunito-Regular' }}
                   >
-                    {(profile?.children_ages ?? []).length > 0
-                      ? (profile!.children_ages ?? []).join(', ')
+                    {(profile.children_ages ?? []).length > 0
+                      ? (profile.children_ages ?? []).join(', ')
                       : 'Not set — only you can see this'}
                   </Text>
                 </View>
               </View>
-              <ChevronRight size={18} color="#B0B0B0" />
+              <Ionicons name="chevron-forward" size={18} color="#B0B0B0" />
             </TouchableOpacity>
 
             {/* Divider */}

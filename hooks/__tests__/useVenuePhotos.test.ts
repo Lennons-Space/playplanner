@@ -86,7 +86,7 @@ jest.mock('expo-image-manipulator', () => ({
 
 // expo-file-system — deleteAsync is called in the finally block of
 // useUploadVenuePhoto to clean up the manipulated temp file.
-jest.mock('expo-file-system', () => ({
+jest.mock('expo-file-system/legacy', () => ({
   deleteAsync: jest.fn().mockResolvedValue(undefined),
 }));
 

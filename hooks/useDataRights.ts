@@ -30,7 +30,7 @@ export function useMyReviews(userId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('reviews')
-        .select('id, venue_id, rating, title, body, moderation_status, moderation_notes, created_at, venues(name, city)')
+        .select('id, venue_id, rating, title, body, is_anonymous, moderation_status, moderation_notes, created_at, venues(name, city)')
         .eq('user_id', userId!)
         .order('created_at', { ascending: false });
 
@@ -53,11 +53,12 @@ export function useDeleteReview() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ reviewId }: { reviewId: string; userId: string }) => {
+    mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
       const { error } = await supabase
         .from('reviews')
         .delete()
-        .eq('id', reviewId);
+        .eq('id', reviewId)
+        .eq('user_id', userId);
 
       if (error) throw error;
     },
@@ -124,7 +125,7 @@ export async function buildDataExport(userId: string): Promise<string> {
   // --- 2. Reviews ---
   const { data: reviewsData, error: reviewsError } = await supabase
     .from('reviews')
-    .select('rating, title, body, visit_date, moderation_status, created_at, venues(name)')
+    .select('rating, title, body, is_anonymous, visit_date, moderation_status, created_at, venues(name)')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
@@ -189,6 +190,7 @@ export async function buildDataExport(userId: string): Promise<string> {
       rating:            r.rating,
       title:             r.title              ?? null,
       body:              r.body,
+      is_anonymous:      r.is_anonymous       ?? false,
       visit_date:        r.visit_date         ?? null,
       moderation_status: r.moderation_status,
       created_at:        r.created_at,

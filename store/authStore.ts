@@ -44,15 +44,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (error) {
       // Log so developers can diagnose — without this, a broken profile fetch
       // is completely invisible (profile stays null with no explanation).
-      console.error('fetchProfile failed:', error.message);
+      console.error('fetchProfile failed:', error.code);
       return;
     }
-    if (data) set({ profile: data as Profile });
+    // Identity guard: if the user changed while this async fetch was in-flight
+    // (e.g. sign-out → sign-in as a different account on a shared device),
+    // discard the stale result. `user` is the captured value from the start
+    // of this call; get().user is who is signed in now.
+    if (data && get().user?.id === user.id) set({ profile: data as Profile });
   },
 
   signOut: async () => {
     await supabase.auth.signOut();
-    set({ session: null, user: null, profile: null });
+    set({ session: null, user: null, profile: null, isLoading: false });
     // CONTRACT: callers must also call queryClient.clear() immediately after this
     // to prevent cached venue/profile data from leaking to the next user on a
     // shared device. The store cannot access queryClient directly (it lives in

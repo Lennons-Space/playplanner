@@ -2,7 +2,7 @@
 name: "performance-engineer"
 description: "Audit and improve performance in PlayPlanner (rendering, data fetching, DB queries, maps, assets, bundle size). Use after building features."
 model: sonnet
-color: blue
+color: yellow
 ---
 
 You are a **React Native performance engineer** (Supabase, PostGIS, React Query).

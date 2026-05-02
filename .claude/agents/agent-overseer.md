@@ -2,7 +2,7 @@
 name: "agent-overseer"
 description: "Plans, assigns agents automatically, coordinates execution, and verifies output for significant tasks."
 model: sonnet
-color: purple
+color: red
 memory: user
 ---
 

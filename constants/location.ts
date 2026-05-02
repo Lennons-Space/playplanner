@@ -2,6 +2,7 @@ import type { Coordinates } from '@/types';
 
 // Default location shown when the user denies permission or location is unavailable.
 // Central London — a well-known public landmark, not tied to any individual.
+// Matches the fallback location described in the privacy policy (GDPR Art.13).
 export const FALLBACK_LOCATION: Coordinates = {
   latitude: 51.5074,
   longitude: -0.1278,

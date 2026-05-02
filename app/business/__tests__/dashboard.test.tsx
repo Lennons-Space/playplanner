@@ -11,6 +11,12 @@ import React from 'react';
 import { render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+// Access mock functions after jest.mock is in place
+import { router }    from 'expo-router';
+import { useUser }   from '@/hooks/useAuth';
+import { supabase }  from '@/lib/supabase';
+import BusinessDashboard from '../dashboard';
+
 // ---------------------------------------------------------------------------
 // Mocks — all jest.mock calls are hoisted; define stubs inside the factories
 // ---------------------------------------------------------------------------
@@ -40,12 +46,6 @@ jest.mock('react-native-safe-area-context', () => ({
 
 process.env.EXPO_PUBLIC_SUPABASE_URL      = 'https://test.supabase.co';
 process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
-
-// Access mock functions after jest.mock is in place
-import { router }    from 'expo-router';
-import { useUser }   from '@/hooks/useAuth';
-import { supabase }  from '@/lib/supabase';
-import BusinessDashboard from '../dashboard';
 
 const mockUseUser      = useUser         as jest.MockedFunction<typeof useUser>;
 const mockRouterReplace = router.replace  as jest.Mock;

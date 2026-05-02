@@ -25,6 +25,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import type { Profile, PublicProfile } from '@/types';
@@ -115,7 +117,7 @@ export function useUploadAvatar() {
 
       // Open the picker — square crop enforced so avatars look consistent.
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.75,   // 75% JPEG quality — good balance of size vs fidelity
@@ -123,47 +125,55 @@ export function useUploadAvatar() {
 
       if (result.canceled) return null;   // user dismissed — nothing to do
 
-      const uri = result.assets[0].uri;
+      const pickedUri = result.assets[0].uri;
 
-      // Convert the local file URI to a blob for Supabase Storage upload.
-      const response = await fetch(uri);
-      const blob     = await response.blob();
+      // Re-encode as JPEG to strip all EXIF data, including GPS coordinates that
+      // phone cameras embed automatically. Without this, the raw picker file would
+      // be uploaded with location data readable by anyone who downloads the avatar.
+      const manipResult = await ImageManipulator.manipulateAsync(
+        pickedUri,
+        [],
+        { format: ImageManipulator.SaveFormat.JPEG, compress: 0.75 }
+      );
 
-      // Unique path prevents serving the old avatar from CDN cache after update.
-      const newPath = `${userId}/${Date.now()}.jpg`;
+      let newUrl: string;
+      try {
+        const response = await fetch(manipResult.uri);
+        const blob     = await response.blob();
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(newPath, blob, { contentType: 'image/jpeg', upsert: false });
+        // Unique path prevents serving the old avatar from CDN cache after update.
+        const newPath = `${userId}/${Date.now()}.jpg`;
 
-      if (uploadError) throw uploadError;
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(newPath, blob, { contentType: 'image/jpeg', upsert: false });
 
-      const { data: urlData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(newPath);
+        if (uploadError) throw uploadError;
 
-      const newUrl = urlData.publicUrl;
+        const { data: urlData } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(newPath);
+
+        newUrl = urlData.publicUrl;
+      } finally {
+        // Delete the temp EXIF-stripped file regardless of upload success/failure.
+        await FileSystem.deleteAsync(manipResult.uri, { idempotent: true });
+      }
 
       // Persist the new URL to the profile row.
-      await updateProfile({ avatar_url: newUrl });
+      await updateProfile({ avatar_url: newUrl! });
 
       // Delete the old avatar file — data minimisation (GDPR Art.5(1)(c)).
-      // We do this after saving the new URL so a failure here doesn't
-      // leave the user with a broken avatar.
       if (currentAvatarUrl) {
-        // Extract the storage path from the full public URL.
-        // URL format: .../storage/v1/object/public/avatars/{path}
         const marker = '/avatars/';
         const markerIdx = currentAvatarUrl.indexOf(marker);
         if (markerIdx !== -1) {
           const oldPath = currentAvatarUrl.slice(markerIdx + marker.length);
-          // Best-effort deletion — ignore errors so a stale old file
-          // never breaks the upload flow.
           await supabase.storage.from('avatars').remove([oldPath]).catch(() => {});
         }
       }
 
-      return newUrl;
+      return newUrl!;
     },
   });
 }

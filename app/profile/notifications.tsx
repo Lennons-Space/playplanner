@@ -1,153 +1,286 @@
 /**
- * Notifications stub screen — app/profile/notifications.tsx
+ * Notifications settings screen.
  *
- * Phase 1 placeholder. Push notifications will be wired up in Phase 4.
+ * GDPR / ICO Children's Code
+ * --------------------------
+ * Notifications are opt-in only. The user must actively toggle the switch to
+ * register. We explain clearly what we'll send and how to turn it off.
+ * (ICO Children's Code Standard 3: privacy by default; GDPR Art.7 consent.)
  *
- * Privacy notes (ICO Children's Code Standard 10 — data minimisation by default):
- *   - The toggle is disabled — no notification permission is requested here.
- *   - We will only request permission at the point where the user explicitly
- *     chooses to opt in (Phase 4), never in the background.
- *   - No notification-related data is stored or transmitted in Phase 1.
- *
- * UK PECR compliance:
- *   Under PECR, sending marketing communications requires explicit prior consent.
- *   The copy here makes clear that consent will be required before we send
- *   anything — this is the correct pre-announcement pattern.
+ * When permission is denied at the OS level, we tell the user how to re-enable
+ * it in Settings rather than silently failing — this preserves transparency
+ * (GDPR Art.5(1)(a) fair and transparent processing).
  */
 
-import { View, Text, Switch, ScrollView, StyleSheet } from 'react-native';
-import { Stack } from 'expo-router';
+import { useCallback } from 'react';
+import { View, Text, Switch, Alert, TouchableOpacity } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// Colour constants — consistent with the rest of the app.
-const SWITCH_TRACK_OFF = '#E8E8E8';
-const SWITCH_TRACK_ON  = '#4ECDC4';   // sky — never reached while disabled
+import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import { useUser } from '@/hooks/useAuth';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { Colors, FontFamily, FontSize, Spacing } from '@/constants/theme';
 
 export default function NotificationsScreen() {
-  return (
-    <>
-      <Stack.Screen options={{ title: 'Notifications' }} />
-      <SafeAreaView style={styles.root} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+  const user = useUser();
+  const { isRegistered, isLoading: hookLoading, register, unregister } = usePushNotifications();
 
-          {/* Section label */}
-          <Text style={styles.sectionLabel}>
-            Push Notifications
+  // If OS permission is revoked while the app is backgrounded, the toggle would
+  // still show "on" when the user returns. Re-check on every focus and call
+  // unregister() so the token is removed from DB and the toggle reflects reality.
+  useFocusEffect(
+    useCallback(() => {
+      Notifications.getPermissionsAsync().then(({ status }) => {
+        if (status !== 'granted') {
+          unregister();
+        }
+      });
+    }, [unregister])
+  );
+
+  // ── Check whether the user already has a push token saved in the DB ─────────
+  // This determines the initial toggle state when the screen first opens.
+  // staleTime: 0 means we always re-check on mount (correct for a settings page).
+  const { data: hasExistingToken, isLoading: tokenCheckLoading } = useQuery({
+    queryKey: ['push-tokens', 'has-token', user?.id],
+    queryFn: async () => {
+      if (!user) return false;
+      const { count, error } = await supabase
+        .from('push_tokens')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id);
+      if (error) {
+        // Log only the error code — never user ID or token value.
+        console.error('[notifications] token check failed:', error.code, error.message);
+        return false;
+      }
+      return (count ?? 0) > 0;
+    },
+    enabled: !!user,
+    staleTime: 0,
+  });
+
+  // The effective "on" state: a token exists in DB (from a previous session)
+  // OR we just registered this session.
+  const notificationsEnabled = isRegistered || (hasExistingToken ?? false);
+
+  const isLoading = hookLoading || tokenCheckLoading;
+
+  // ── Toggle handler ───────────────────────────────────────────────────────────
+  async function handleToggle(value: boolean) {
+    if (value) {
+      const success = await register();
+      if (!success) {
+        // Permission was denied by the OS. Tell the user how to fix it.
+        Alert.alert(
+          'Notifications blocked',
+          'To receive notifications, please enable them for PlayPlanner in your device Settings.',
+          [{ text: 'OK' }]
+        );
+      }
+    } else {
+      await unregister();
+    }
+  }
+
+  // ── Signed-out guard ─────────────────────────────────────────────────────────
+  if (!user) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sand }} edges={['top']}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: Spacing.lg,
+            paddingVertical: Spacing.md,
+            gap: Spacing.md,
+            borderBottomWidth: 1,
+            borderBottomColor: Colors.greyLighter,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="chevron-back" size={24} color={Colors.charcoal} />
+          </TouchableOpacity>
+          <Text style={{ fontFamily: FontFamily.extraBold, fontSize: FontSize.lg, color: Colors.charcoal, flex: 1 }}>
+            Notifications
           </Text>
-
-          {/* Toggle card — disabled until Phase 4 */}
-          <View style={styles.toggleCard}>
-            <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>
-                Enable push notifications
-              </Text>
-              {/*
-                Switch is permanently disabled in Phase 1.
-                value is always false — no permission has been requested.
-                Phase 4 will replace this with a live opt-in flow that
-                requests OS permission only at the point of toggle.
-              */}
-              <Switch
-                value={false}
-                onValueChange={undefined}
-                disabled
-                trackColor={{ false: SWITCH_TRACK_OFF, true: SWITCH_TRACK_ON }}
-                thumbColor="#FFFFFF"
-                accessibilityRole="switch"
-                accessibilityState={{ checked: false, disabled: true }}
-                accessibilityLabel="Enable push notifications — coming soon"
-              />
-            </View>
-
-            {/* Helper text explaining why the toggle is greyed out */}
-            <Text style={styles.helperText}>
-              Push notifications are coming soon. We will ask for your permission
-              when this feature is ready — we will never enable notifications
-              without your explicit choice.
-            </Text>
-          </View>
-
-          {/* Privacy-first copy — required before any notification feature launches */}
-          <View style={styles.privacyCard}>
-            <Text style={styles.privacyText}>
-              We will only send you notifications you explicitly opt in to.
-              We never send marketing messages without your consent.
-            </Text>
-          </View>
-
-          {/* Bottom reassurance note */}
-          <Text style={styles.footerText}>
-            Your notification preferences are stored privately and never shared.
+        </View>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.lg }}>
+          <Ionicons name="notifications-off-outline" size={40} color={Colors.grey} />
+          <Text style={{ fontFamily: FontFamily.bold, fontSize: FontSize.md, color: Colors.charcoal, marginTop: 12, textAlign: 'center' }}>
+            Sign in to manage notifications
           </Text>
-
-        </ScrollView>
+        </View>
       </SafeAreaView>
-    </>
+    );
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sand }} edges={['top']}>
+
+      {/* Header */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: Spacing.lg,
+          paddingVertical: Spacing.md,
+          gap: Spacing.md,
+          borderBottomWidth: 1,
+          borderBottomColor: Colors.greyLighter,
+          backgroundColor: Colors.sand,
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="chevron-back" size={24} color={Colors.charcoal} />
+        </TouchableOpacity>
+        <Text
+          style={{
+            fontFamily: FontFamily.extraBold,
+            fontSize: FontSize.lg,
+            color: Colors.charcoal,
+            flex: 1,
+          }}
+        >
+          Notifications
+        </Text>
+      </View>
+
+      {/* Body */}
+      <View style={{ flex: 1, paddingHorizontal: Spacing.lg, paddingTop: Spacing.xl }}>
+
+        {/* Toggle card */}
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderRadius: 16,
+            paddingHorizontal: Spacing.lg,
+            paddingVertical: 18,
+            flexDirection: 'row',
+            alignItems: 'center',
+            shadowColor: '#000',
+            shadowOpacity: 0.05,
+            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 1 },
+            elevation: 2,
+          }}
+        >
+          {/* Icon badge */}
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              backgroundColor: Colors.sky + '18',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: Spacing.md,
+            }}
+          >
+            <Ionicons
+              name={notificationsEnabled ? 'notifications' : 'notifications-off-outline'}
+              size={20}
+              color={Colors.sky}
+            />
+          </View>
+
+          {/* Label */}
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontFamily: FontFamily.bold,
+                fontSize: FontSize.md,
+                color: Colors.charcoal,
+              }}
+            >
+              Push notifications
+            </Text>
+            <Text
+              style={{
+                fontFamily: FontFamily.regular,
+                fontSize: FontSize.sm,
+                color: Colors.grey,
+                marginTop: 2,
+              }}
+            >
+              {notificationsEnabled ? 'Enabled' : 'Disabled'}
+            </Text>
+          </View>
+
+          <Switch
+            value={notificationsEnabled}
+            onValueChange={handleToggle}
+            disabled={isLoading}
+            trackColor={{ false: Colors.greyLighter, true: Colors.sky }}
+            thumbColor="#fff"
+            accessibilityRole="switch"
+            accessibilityLabel="Toggle push notifications"
+            accessibilityState={{ checked: notificationsEnabled, disabled: isLoading }}
+            style={{ opacity: isLoading ? 0.4 : 1 }}
+          />
+        </View>
+
+        {/* GDPR-friendly explanation of what we'll send */}
+        <Text
+          style={{
+            fontFamily: FontFamily.regular,
+            fontSize: FontSize.sm,
+            color: Colors.grey,
+            marginTop: Spacing.lg,
+            lineHeight: 20,
+            paddingHorizontal: Spacing.xs,
+          }}
+        >
+          We'll notify you when your reviews are published. You can turn this off at any time.
+        </Text>
+
+        {/* Privacy reassurance card */}
+        <View
+          style={{
+            backgroundColor: Colors.sky + '12',
+            borderRadius: 12,
+            padding: Spacing.md,
+            marginTop: Spacing.lg,
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: Spacing.sm,
+          }}
+        >
+          <Ionicons
+            name="shield-checkmark-outline"
+            size={16}
+            color={Colors.sky}
+            style={{ marginTop: 1 }}
+          />
+          <Text
+            style={{
+              fontFamily: FontFamily.regular,
+              fontSize: FontSize.sm,
+              color: Colors.charcoal,
+              flex: 1,
+              lineHeight: 19,
+            }}
+          >
+            We'll never send marketing messages or sell your data to third parties.
+            Notification tokens are deleted automatically if you delete your account.
+          </Text>
+        </View>
+
+      </View>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#F0F7F7',   // bg-slate
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  sectionLabel: {
-    color: '#636E72',              // text-grey
-    fontSize: 11,
-    fontFamily: 'Nunito-Bold',
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 12,
-  },
-  toggleCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    marginBottom: 12,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  toggleLabel: {
-    flex: 1,
-    color: '#2D3436',              // text-charcoal
-    fontSize: 16,
-    fontFamily: 'Nunito-Medium',
-  },
-  helperText: {
-    color: '#636E72',              // text-grey
-    fontSize: 12,
-    fontFamily: 'Nunito-Regular',
-    lineHeight: 18,
-    marginTop: 8,
-  },
-  privacyCard: {
-    backgroundColor: '#FFF9F0',   // bg-sand
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    marginBottom: 16,
-  },
-  privacyText: {
-    color: '#4ECDC4',              // text-sky
-    fontSize: 14,
-    fontFamily: 'Nunito-Medium',
-    lineHeight: 20,
-  },
-  footerText: {
-    color: '#636E72',              // text-grey
-    fontSize: 12,
-    fontFamily: 'Nunito-Regular',
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-});

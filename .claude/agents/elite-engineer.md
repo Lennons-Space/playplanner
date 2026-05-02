@@ -2,7 +2,7 @@
 name: "elite-engineer"
 description: "Full-cycle production engineer. Designs, builds, aggressively stress-tests, and fixes code before release. Use for any feature, refactor, or critical bug."
 model: sonnet
-color: purple
+color: cyan
 memory: user
 ---
 

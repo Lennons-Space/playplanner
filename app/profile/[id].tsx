@@ -136,7 +136,12 @@ export default function PublicProfileScreen() {
 
   // ---- Loaded state --------------------------------------------------------
   const memberSince = formatMonthYear(profile.created_at);
-  const reviewCount = reviews?.length ?? 0;
+  // Filter out anonymous reviews once — the same slice is used for both the
+  // section header count and the list items. Anonymous reviews must never be
+  // traceable back to the author on another user's public profile page.
+  // (GDPR Art.5(1)(a) — transparency; the reviewer was told their identity would be hidden.)
+  const publicReviews = (reviews ?? []).filter((r) => !r.is_anonymous);
+  const reviewCount = publicReviews.length;
 
   // ---- FlatList data -------------------------------------------------------
   // When reviews are public we show the list (or a loading/empty state).
@@ -154,10 +159,10 @@ export default function PublicProfileScreen() {
     listData = [{ type: 'private' }];
   } else if (reviewsLoading) {
     listData = [{ type: 'loading' }];
-  } else if (!reviews || reviews.length === 0) {
+  } else if (publicReviews.length === 0) {
     listData = [{ type: 'empty' }];
   } else {
-    listData = reviews.map((r) => ({ type: 'review' as const, review: r }));
+    listData = publicReviews.map((r) => ({ type: 'review' as const, review: r }));
   }
 
   const ListHeader = (

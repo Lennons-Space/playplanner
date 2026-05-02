@@ -1,4 +1,5 @@
 import { initStripe } from '@stripe/stripe-react-native';
+import { supabase } from '@/lib/supabase';
 
 export async function setupStripe() {
   await initStripe({
@@ -8,13 +9,27 @@ export async function setupStripe() {
   });
 }
 
-// Price IDs from your Stripe dashboard (set in .env)
-export const STRIPE_PRICES = {
-  USER_PREMIUM_MONTHLY: process.env.EXPO_PUBLIC_STRIPE_USER_PREMIUM_MONTHLY!,
-  USER_PREMIUM_ANNUAL:  process.env.EXPO_PUBLIC_STRIPE_USER_PREMIUM_ANNUAL!,
-  BUSINESS_BASIC:       process.env.EXPO_PUBLIC_STRIPE_BUSINESS_BASIC!,
-  BUSINESS_PRO:         process.env.EXPO_PUBLIC_STRIPE_BUSINESS_PRO!,
-} as const;
+// ── Plan price IDs ────────────────────────────────────────────────────────────
+//
+// Price IDs are fetched from the get-plans edge function rather than baked into
+// EXPO_PUBLIC_ env vars. This keeps them out of the compiled JS bundle and
+// allows rotation without a new app release.
+//
+// They are NOT secret (a price ID alone cannot trigger any payment), but there
+// is no benefit to bundling them client-side.
+
+export interface PlanPriceIds {
+  userPremiumMonthly: string;
+  userPremiumAnnual: string;
+  businessBasic: string;
+  businessPro: string;
+}
+
+export async function fetchPlanPriceIds(): Promise<PlanPriceIds> {
+  const { data, error } = await supabase.functions.invoke('get-plans');
+  if (error) throw error;
+  return data as PlanPriceIds;
+}
 
 // Human-readable plan details shown in the UI
 export const PLAN_DETAILS = {

@@ -24,13 +24,13 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import {
   documentDirectory,
   writeAsStringAsync,
   deleteAsync,
   EncodingType,
-} from 'expo-file-system';
+} from 'expo-file-system/legacy';
 // eslint-disable-next-line import/no-unresolved -- expo-sharing not yet installed; run: npx expo install expo-sharing
 import { shareAsync } from 'expo-sharing';
 import { format } from 'date-fns';
@@ -52,9 +52,12 @@ export default function DataDownloadScreen() {
   const [error,        setError]        = useState(false);
   const [lastExportTs, setLastExportTs] = useState<number | null>(null);
 
-  // On mount: read the last-export timestamp from AsyncStorage.
+  // On mount: read the last-export timestamp from SecureStore.
+  // WHY SecureStore: the cooldown key indirectly signals when a GDPR export was
+  // requested — that is sensitive metadata. AsyncStorage is plaintext on-disk;
+  // SecureStore encrypts at rest via the device keychain / keystore.
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
+    SecureStore.getItemAsync(STORAGE_KEY)
       .then((raw) => {
         if (raw) setLastExportTs(parseInt(raw, 10));
       })
@@ -101,7 +104,7 @@ export default function DataDownloadScreen() {
       });
 
       const now = Date.now();
-      await AsyncStorage.setItem(STORAGE_KEY, now.toString());
+      await SecureStore.setItemAsync(STORAGE_KEY, now.toString());
       setLastExportTs(now);
       setSuccess(true);
     } catch {

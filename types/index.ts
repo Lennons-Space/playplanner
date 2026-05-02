@@ -63,7 +63,7 @@ export interface Venue {
   address_line1: string | null;
   address_line2: string | null;
   city: string;
-  postcode: string;
+  postcode: string | null;
   country: string;
   latitude: number;
   longitude: number;
@@ -83,11 +83,33 @@ export interface Venue {
   claimed_by: string | null;
   submitted_by: string | null;
   moderation_status: ModerationStatus;
+  // Data provenance (migrations 012 & 013)
+  // osm_id: stable OSM identifier (e.g. "node/12345"), null for non-OSM rows.
+  // data_source: where the record originated — must match the CHECK constraint
+  //   in migration 012 exactly.
+  // license: open licence string (e.g. 'ODbL-1.0', 'OGL-3.0'), null for manual.
+  osm_id: string | null;
+  data_source: 'manual' | 'user_submitted' | 'osm' | 'ogl' | 'foursquare' | 'business_claimed' | null;
+  license: string | null;
+  // Enriched image metadata (migration 039)
+  // image_url: Wikimedia CDN URL or category fallback. NULL until enrichment runs.
+  // The app displays cover_photo_url from venue_photos in preference to this.
+  image_url?: string | null;
+  image_source?: 'wikimedia' | 'category_fallback' | null;
+  image_attribution?: string | null;   // must be shown when image is displayed (CC licence)
+  image_license?: string | null;
+  image_is_exact?: boolean;            // true = matched this venue; false = generic category image
+  image_updated_at?: string | null;
+  // Moderation
+  moderation_notes: string | null;  // set by admin — audit trail for queue actions
+  moderated_by: string | null;
+  moderated_at: string | null;
   // Aggregates
   review_count: number;
   average_rating: number;
   // Joined relations
   photos?: VenuePhoto[];
+  cover_photo_url?: string | null;
   facilities?: Facility[];
   opening_hours?: OpeningHours[];
   distance_km?: number;          // calculated at query time
@@ -156,6 +178,13 @@ export interface Review {
   body: string;
   visit_date: string | null;
   children_ages: string[] | null;
+  /**
+   * True when the reviewer chose "Post anonymously" at submission time.
+   * Display logic must show "Anonymous parent" and must not render the
+   * reviewer's username, full_name, or avatar when this is true.
+   * DEFAULT false in the DB — all existing reviews remain non-anonymous.
+   */
+  is_anonymous: boolean;
   moderation_status: ModerationStatus;
   moderation_notes: string | null;  // set by admin on rejection — shown to reviewer (GDPR Art.13)
   moderated_by: string | null;      // admin user ID — for audit trail (GDPR Art.5(2))
@@ -246,4 +275,19 @@ export interface Coordinates {
 export interface MapRegion extends Coordinates {
   latitudeDelta: number;
   longitudeDelta: number;
+}
+
+// ---- Business Claiming ----
+
+export interface VenueClaim {
+  id: string;
+  venue_id: string;
+  user_id: string;
+  verified_phone: string;
+  status: 'pending' | 'approved' | 'rejected';
+  notes: string | null;
+  admin_notes: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  created_at: string;
 }

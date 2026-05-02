@@ -310,6 +310,38 @@ const CategoryChip = memo(function CategoryChip({ cat, selected, onToggle }: Cat
   );
 });
 
+// ─── Price chip wrapper ───────────────────────────────────────────────────────
+
+/**
+ * Same pattern as CategoryChip — stable onPress so Chip's memo is effective.
+ * Without this wrapper, the inline `() => togglePrice(opt.value)` arrow in the
+ * PRICE_OPTIONS.map creates a new reference every render, causing all price chips
+ * to re-render when any draft state changes.
+ */
+interface PriceChipProps {
+  opt: { value: PriceRange; label: string };
+  selected: boolean;
+  onToggle: (v: PriceRange) => void;
+}
+
+const PriceChip = memo(function PriceChip({ opt, selected, onToggle }: PriceChipProps) {
+  const handlePress = useCallback(() => onToggle(opt.value), [opt.value, onToggle]);
+  return <Chip label={opt.label} selected={selected} onPress={handlePress} />;
+});
+
+// ─── Facility chip wrapper ────────────────────────────────────────────────────
+
+interface FacilityChipProps {
+  fac: Facility;
+  selected: boolean;
+  onToggle: (id: string) => void;
+}
+
+const FacilityChip = memo(function FacilityChip({ fac, selected, onToggle }: FacilityChipProps) {
+  const handlePress = useCallback(() => onToggle(fac.id), [fac.id, onToggle]);
+  return <Chip label={fac.name} icon={fac.icon} selected={selected} onPress={handlePress} />;
+});
+
 // ─── FilterSheet (main component) ────────────────────────────────────────────
 
 /**
@@ -396,6 +428,11 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
     queryKey: ['categories'],
     // Categories rarely change — stale time of 10 minutes keeps network calls low.
     staleTime: 10 * 60 * 1000,
+    // gcTime: React Query v5 default is 5 minutes. If the user does not open
+    // the filter sheet for 5+ minutes the cache is discarded and they see a
+    // spinner on next open. Categories almost never change — keep them in
+    // memory for 1 hour so repeat filter sheet opens are always instant.
+    gcTime: 60 * 60 * 1000,
     queryFn: fetchCategories,
   });
 
@@ -407,6 +444,9 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
     queryKey: ['facilities'],
     // Facilities rarely change — stale time of 10 minutes keeps network calls low.
     staleTime: 10 * 60 * 1000,
+    // gcTime: same reasoning as categories above — keep for 1 hour so the
+    // filter sheet always opens instantly without a spinner.
+    gcTime: 60 * 60 * 1000,
     queryFn: fetchFacilities,
   });
 
@@ -517,13 +557,9 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
         accessibilityLabel="Close filters"
         accessibilityRole="button"
       >
-        {/*
-         * We need to stop taps on the sheet itself from bubbling up to the
-         * Pressable overlay (which would close the sheet). Wrapping the sheet
-         * in another Pressable with onPress={undefined} and e.stopPropagation
-         * does the job cleanly without any gesture handler libraries.
-         */}
-        <Pressable onPress={() => { /* intentional no-op — stops tap reaching overlay */ }}>
+        {/* View claims the tap responder before the overlay Pressable, stopping
+            close-on-tap, without interfering with ScrollView scroll gestures. */}
+        <View onStartShouldSetResponder={() => true}>
           {/* ── Animated sheet panel ─────────────────────────────────────── */}
           <Animated.View
             style={{
@@ -564,6 +600,7 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                 not obscured by the absolutely-positioned Apply/Reset bar.
             ──────────────────────────────────────────────────────────────── */}
             <ScrollView
+              style={{ flex: 1 }}
               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 120 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
@@ -617,11 +654,11 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
               <SectionTitle title="Price" />
               <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
                 {PRICE_OPTIONS.map((opt) => (
-                  <Chip
+                  <PriceChip
                     key={opt.value}
-                    label={opt.label}
+                    opt={opt}
                     selected={draft.priceRange.includes(opt.value)}
-                    onPress={() => togglePrice(opt.value)}
+                    onToggle={togglePrice}
                   />
                 ))}
               </View>
@@ -710,12 +747,11 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                   contentContainerStyle={{ paddingRight: 8, paddingBottom: 4 }}
                 >
                   {facilities.map((fac) => (
-                    <Chip
+                    <FacilityChip
                       key={fac.id}
-                      label={fac.name}
-                      icon={fac.icon}
+                      fac={fac}
                       selected={draft.facilityIds.includes(fac.id)}
-                      onPress={() => toggleFacility(fac.id)}
+                      onToggle={toggleFacility}
                     />
                   ))}
                 </ScrollView>
@@ -811,7 +847,7 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
               </TouchableOpacity>
             </View>
           </Animated.View>
-        </Pressable>
+        </View>
       </Pressable>
     </Modal>
   );

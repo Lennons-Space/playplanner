@@ -1,15 +1,20 @@
 import { Tabs, Redirect } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { Colors } from '@/constants/theme';
-import { MapPin, Search, Heart, User } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabsLayout() {
   const session = useAuthStore((s) => s.session);
+  const isLoading = useAuthStore((s) => s.isLoading);
   const insets = useSafeAreaInsets();
 
-  // If not logged in, send to auth flow
-  if (!session) return <Redirect href="/(auth)/welcome" />;
+  // During cold-start session restore, isLoading is true while Supabase replays
+  // the cached session via INITIAL_SESSION. Returning null here prevents a
+  // premature redirect to auth that would then immediately flip back to tabs —
+  // causing a visible flash and potentially breaking deep-link navigation.
+  if (isLoading) return null;
+  if (!session) return <Redirect href="/(auth)" />;
 
   return (
     <Tabs
@@ -33,28 +38,28 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Explore',
-          tabBarIcon: ({ color, size }) => <MapPin color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="location-outline" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
           title: 'Search',
-          tabBarIcon: ({ color, size }) => <Search color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="search-outline" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="favourites"
         options={{
           title: 'Favourites',
-          tabBarIcon: ({ color, size }) => <Heart color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="heart-outline" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, size }) => <User color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" color={color} size={size} />,
         }}
       />
     </Tabs>

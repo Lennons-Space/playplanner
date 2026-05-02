@@ -30,12 +30,16 @@ export function useReportVenue() {
 
   return useMutation({
     mutationFn: async ({ venueId, reason, notes }: ReportPayload) => {
+      // WHY we throw rather than fall back to null:
+      // The RLS INSERT policy requires auth.uid() = reported_by, so an
+      // unauthenticated insert would fail at the DB anyway. Throwing here
+      // surfaces a clear error to the UI instead of a cryptic Postgres RLS
+      // denial, and prevents the client from even sending a pointless request.
+      if (!user) throw new Error('You must be signed in to report a venue.');
+
       const { error } = await supabase.from('venue_reports').insert({
         venue_id:    venueId,
-        // reported_by is nullable (allows anonymous reports if policy permits),
-        // but the RLS policy requires auth.uid() = reported_by for INSERT,
-        // so in practice the user must be signed in.
-        reported_by: user?.id ?? null,
+        reported_by: user.id,
         reason,
         // Trim whitespace and enforce the 2000-char DB CHECK constraint on the
         // client side too, so the user sees a clean truncation rather than a

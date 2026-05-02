@@ -16,6 +16,10 @@ import * as Location from 'expo-location';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { coarsenCoordinates } from '@/services/location/coordinates';
 
+import { recordLocationConsentGranted, recordLocationConsentDenied } from '@/services/consent/locationConsent';
+import { isValidCoordinate } from '@/services/location/coordinates';
+import { useLocation } from '@/hooks/location/useLocation';
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -42,10 +46,6 @@ jest.mock('@/lib/supabase', () => ({
 
 process.env.EXPO_PUBLIC_SUPABASE_URL      = 'https://test.supabase.co';
 process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
-
-import { recordLocationConsentGranted, recordLocationConsentDenied } from '@/services/consent/locationConsent';
-import { isValidCoordinate } from '@/services/location/coordinates';
-import { useLocation } from '@/hooks/location/useLocation';
 
 const mockRequestPermissions = Location.requestForegroundPermissionsAsync as jest.MockedFunction<typeof Location.requestForegroundPermissionsAsync>;
 const mockGetCurrentPosition  = Location.getCurrentPositionAsync          as jest.MockedFunction<typeof Location.getCurrentPositionAsync>;

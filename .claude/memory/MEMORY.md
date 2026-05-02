@@ -58,3 +58,25 @@ Three custom agents created (2026-04-09) — files at `C:\Users\Liame\.claude-wo
 - `Main-coder` — architecture, folder structure, data flows, security-first planning
 - `secom-reviewer` — post-change code review: security, GDPR/ICO, completeness, performance
 Each agent has bootstrapped memory at `C:\Users\Liame\.claude-work\agent-memory\<agent-name>\`
+
+## Moderation approve silent-failure fix (2026-04-16)
+Root cause: `supabase.update(...).eq('id', id)` without a chained `.select()`
+uses `Prefer: return=minimal`, so PostgREST returns 204 No Content even when
+RLS filtered the write down to zero rows. The venue/review stays `pending`,
+no error is thrown, and the admin sees nothing happen ("approve is broken").
+
+Fixes landed:
+- `app/admin/moderation.tsx` moderateVenue + bulkApprove now chain `.select('id')`,
+  throw a clear error when zero rows come back, log code/message/hint only
+  (never the row — privacy), and invalidate `['venues']` so the public map
+  refreshes immediately on approve. Bulk approve now reports the exact count.
+- `hooks/useReviews.ts` useModerateReview — same `.select('id')` pattern,
+  same zero-row guard, also invalidates `['myReview']` so the reviewer sees
+  the rejection note (GDPR Art.13) immediately.
+- Pending reviews query switched the join hint from
+  `public_profiles!reviews_user_id_fkey` to `profiles!reviews_user_id_fkey`.
+  The FK actually targets `profiles`; using the view hint was silently dropping
+  reviewers whose `show_in_search = false` (default). Only username/full_name
+  selected — no sensitive columns leak.
+- Reviews tab now renders an error state instead of a false "all caught up"
+  when the query fails. All 342 tests pass, type-check clean.

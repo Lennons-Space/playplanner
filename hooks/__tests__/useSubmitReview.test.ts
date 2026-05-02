@@ -17,6 +17,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useSubmitReview } from '@/hooks/useReviews';
 
+import { useUser } from '@/hooks/useAuth';
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -38,8 +40,6 @@ jest.mock('@/hooks/useAuth', () => ({
 process.env.EXPO_PUBLIC_SUPABASE_URL      = 'https://test.supabase.co';
 process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
 
-import { useUser } from '@/hooks/useAuth';
-
 const mockFrom    = supabase.from    as jest.MockedFunction<typeof supabase.from>;
 const mockUseUser = useUser          as jest.MockedFunction<typeof useUser>;
 
@@ -58,12 +58,16 @@ function resetFromMock(insertError: object | null = null) {
 }
 
 const BASE_PAYLOAD = {
-  venueId:      'venue-test-001',
-  rating:       4,
-  title:        'Great soft play',
-  body:         'Kids loved it, really clean and well staffed.',
-  visitDate:    '2026-04-10',
-  childrenAges: ['2-4', '5-7'],
+  venueId:          'venue-test-001',
+  venueClaimedBy:   null,
+  venueSubmittedBy: null,
+  rating:           4,
+  title:            'Great soft play',
+  body:             'Kids loved it, really clean and well staffed.',
+  visitDate:        '2026-04-10',
+  childrenAges:     ['2-4', '5-7'],
+  tags:             [] as string[],
+  anonymous:        false,
 };
 
 beforeEach(() => {
@@ -141,6 +145,36 @@ describe('useSubmitReview — insert shape', () => {
       expect.objectContaining({ user_id: 'user-test-999' }),
     );
   });
+
+  // Privacy-critical: is_anonymous must be written to the DB when anonymous=true.
+  // Without this, the "Post anonymously" toggle is a false privacy promise —
+  // the reviewer is told their name is hidden but it is always stored and shown.
+  // This test directly closes that gap (migration 038, GDPR Art.5(1)(a)).
+  it('sends is_anonymous: true in the DB insert when anonymous is true', async () => {
+    const insertMock = resetFromMock(null);
+    const { result } = renderHook(() => useSubmitReview(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await result.current.mutateAsync({ ...BASE_PAYLOAD, anonymous: true });
+    });
+
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ is_anonymous: true }),
+    );
+  });
+
+  it('sends is_anonymous: false in the DB insert when anonymous is false', async () => {
+    const insertMock = resetFromMock(null);
+    const { result } = renderHook(() => useSubmitReview(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await result.current.mutateAsync({ ...BASE_PAYLOAD, anonymous: false });
+    });
+
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ is_anonymous: false }),
+    );
+  });
 });
 
 // ======================================================================
@@ -186,6 +220,97 @@ describe('useSubmitReview — error handling', () => {
     });
 
     errorSpy.mockRestore();
+  });
+});
+
+// ======================================================================
+// Own-venue prevention
+// ======================================================================
+describe('useSubmitReview — own-venue guard', () => {
+  // A venue owner must never be able to review their own listing.
+  // This test verifies the hook-level guard (belt-and-braces, separate from the
+  // screen guard and the DB RLS policy in migration 009).
+  it('throws OWNER_REVIEW_NOT_ALLOWED when venueClaimedBy matches the current user', async () => {
+    resetFromMock(null);
+    // The logged-in user is also the venue owner
+    mockUseUser.mockReturnValue({ id: 'owner-user-001' } as any);
+    const { result } = renderHook(() => useSubmitReview(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          ...BASE_PAYLOAD,
+          venueClaimedBy: 'owner-user-001',
+          venueSubmittedBy: null,
+        }),
+      ).rejects.toThrow('OWNER_REVIEW_NOT_ALLOWED');
+    });
+  });
+
+  it('throws OWNER_REVIEW_NOT_ALLOWED when venueSubmittedBy matches the current user', async () => {
+    resetFromMock(null);
+    mockUseUser.mockReturnValue({ id: 'submitter-user-002' } as any);
+    const { result } = renderHook(() => useSubmitReview(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          ...BASE_PAYLOAD,
+          venueClaimedBy: null,
+          venueSubmittedBy: 'submitter-user-002',
+        }),
+      ).rejects.toThrow('OWNER_REVIEW_NOT_ALLOWED');
+    });
+  });
+
+  // When the current user is NOT the owner, the mutation must proceed to the
+  // Supabase insert without throwing.
+  it('allows the review when venueClaimedBy and venueSubmittedBy do not match the current user', async () => {
+    const insertMock = resetFromMock(null);
+    mockUseUser.mockReturnValue({ id: 'regular-user-003' } as any);
+    const { result } = renderHook(() => useSubmitReview(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        ...BASE_PAYLOAD,
+        venueClaimedBy:   'different-owner-999',
+        venueSubmittedBy: 'another-user-888',
+      });
+    });
+
+    // The Supabase insert must have been called — guard did not block
+    expect(insertMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ======================================================================
+// Body length enforcement
+// ======================================================================
+describe('useSubmitReview — body length', () => {
+  // The hook does not directly enforce BODY_MAX — that is the form's job.
+  // However, a future caller bypassing the form could send oversized content.
+  // This test documents the current behaviour so any change to enforcement
+  // location is caught and deliberate.
+  //
+  // Currently the hook does NOT re-validate body length — it trusts the form.
+  // The DB has no CHECK constraint on body length (verified in migration audit).
+  // This test verifies a body over 500 chars is NOT blocked at the hook level,
+  // which is intentional: the form layer owns that validation.
+  //
+  // If you add hook-level length validation in the future, update this test.
+  it('does not independently reject a body over 500 characters (form owns that validation)', async () => {
+    const insertMock = resetFromMock(null);
+    const { result } = renderHook(() => useSubmitReview(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        ...BASE_PAYLOAD,
+        body: 'a'.repeat(501),
+      });
+    });
+
+    // Supabase insert was still called — hook did not block it
+    expect(insertMock).toHaveBeenCalledTimes(1);
   });
 });
 

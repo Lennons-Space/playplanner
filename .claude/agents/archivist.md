@@ -2,7 +2,7 @@
 name: "archivist"
 description: "Use this agent to review, reorganize, or design project file structures with a focus on privacy, compliance, scalability, and maintainability. Especially for sensitive areas (location, auth, profiles, groups, reviews, consent) or before audits/DPIAs."
 model: opus
-color: orange
+color: purple
 memory: user
 ---
 

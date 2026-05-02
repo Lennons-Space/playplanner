@@ -215,12 +215,23 @@ async function main() {
     }
   }
 
-  const result = Array.from(venueMap.values());
+  // Filter out venues that still have no usable coordinates — they would
+  // cause NOT NULL violations at insert time and cannot appear on the map.
+  const all    = Array.from(venueMap.values());
+  const result = all.filter(
+    (v) => v.latitude != null && v.longitude != null &&
+           !(v.latitude === 0 && v.longitude === 0)
+  );
+  const dropped = all.length - result.length;
+
   fs.writeFileSync(OUT_FILE, JSON.stringify(result), 'utf8');
 
   console.log(`\nGeocoded ${geocodedCount} venues from postcode · Skipped ${noLocation.length} (no location)`);
   if (failedCount > 0) {
     console.log(`  Note: ${failedCount} postcode lookups returned no result (postcode may be invalid or terminated).`);
+  }
+  if (dropped > 0) {
+    console.log(`  Dropped ${dropped} venues with no usable coordinates (would fail DB insert).`);
   }
   console.log(`Output → ${OUT_FILE}`);
   console.log('\nRun 05_insert.js next.');

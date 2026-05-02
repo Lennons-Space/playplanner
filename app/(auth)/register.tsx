@@ -120,59 +120,71 @@ export default function RegisterScreen() {
     submitLocked.current = true;
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: {
-          full_name: fullName.trim(),
-          marketing_consent: marketing,
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            marketing_consent: marketing,
+          },
         },
-      },
-    });
+      });
 
-    if (!error && data.user?.id) {
-      const consentTimestamp = new Date().toISOString();
-
-      // UK GDPR Art.7: record the exact moment the user accepted Terms of Service
-      const { error: consentError } = await supabase
-        .from('profiles')
-        .update({ terms_accepted_at: consentTimestamp })
-        .eq('id', data.user.id);
-
-      if (consentError) {
-        // Log but do NOT block registration — the user already signed up successfully
-        console.error('Failed to record terms consent timestamp:', consentError);
+      if (error) {
+        Alert.alert('Sign up failed', getFriendlySignUpError(error.message));
+        return;
       }
 
-      // GDPR Art.5(2) accountability: write an audit log entry.
-      // In try/catch so a broken audit log never crashes the registration flow.
-      try {
-        await writeAuditLog(data.user.id, 'terms_accepted', 'profiles', data.user.id);
-      } catch (auditError) {
-        console.error('Audit log write failed (non-blocking):', auditError);
+      if (data.user?.id) {
+        const consentTimestamp = new Date().toISOString();
+
+        // UK GDPR Art.7: record the exact moment the user accepted Terms of Service
+        const { error: consentError } = await supabase
+          .from('profiles')
+          .update({ terms_accepted_at: consentTimestamp })
+          .eq('id', data.user.id);
+
+        if (consentError) {
+          // Log but do NOT block registration — the user already signed up successfully
+          console.error('Failed to record terms consent timestamp:', consentError);
+        }
+
+        // GDPR Art.5(2) accountability: write an audit log entry.
+        // In try/catch so a broken audit log never crashes the registration flow.
+        try {
+          await writeAuditLog(data.user.id, 'terms_accepted', 'profiles', data.user.id);
+        } catch (auditError) {
+          console.error('Audit log write failed (non-blocking):', auditError);
+        }
+
+        // Migrate any pre-auth location consent stored locally before account creation.
+        // useAuthListener handles this on SIGNED_IN, but the session may not fire
+        // until after email confirmation — we do it here too as a belt-and-braces.
+        try {
+          await migratePendingLocationConsent(data.user.id);
+        } catch {
+          // Non-blocking — migration will be retried on next login.
+        }
       }
 
-      // Migrate any pre-auth location consent stored locally before account creation.
-      try {
-        await migratePendingLocationConsent(data.user.id);
-      } catch {
-        // Non-blocking — migration will be retried on next login.
-      }
-    }
-
-    setLoading(false);
-    submitLocked.current = false;
-
-    if (error) {
-      Alert.alert('Sign up failed', getFriendlySignUpError(error.message));
-    } else {
       // data.session is null here — email confirmation is required before the user is active
       Alert.alert(
         'Almost there!',
         'We sent a confirmation email — click the link in it to activate your account.',
         [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
       );
+    } catch {
+      // Handles unexpected throws (e.g. network errors) that bypass the { data, error }
+      // pattern. Without this, setLoading and submitLocked are never reset, permanently
+      // disabling the form for the rest of the session.
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      // Always release the lock and loading state — whether the call succeeded,
+      // returned a Supabase error, or threw an exception.
+      setLoading(false);
+      submitLocked.current = false;
     }
   }
 

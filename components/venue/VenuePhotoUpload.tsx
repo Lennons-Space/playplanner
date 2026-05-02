@@ -38,7 +38,7 @@ export function VenuePhotoUpload({ venueId }: Props) {
   const launchPicker = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         // P1 — quality: 1 skips the picker's own lossy JPEG encode.
         // The only encode is the re-encode inside useUploadVenuePhoto
         // (compress: 0.85) which also strips EXIF/GPS. Two lossy encodes

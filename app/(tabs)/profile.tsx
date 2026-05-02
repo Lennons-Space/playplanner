@@ -1,72 +1,134 @@
 /**
- * Profile tab — user account, settings, subscription
+ * Profile tab — user account, settings, subscription.
  *
- * GDPR Art.17 (right to erasure): The "Delete account" button calls the
- * delete_own_account() Postgres function via RPC. We never call the auth API
- * directly from the client — the server-side function handles cascading
- * deletion and writes a GDPR audit log entry before removing the account.
+ * GDPR Art.17 (right to erasure): "Delete account" calls delete_own_account()
+ * server-side — never the auth API directly. The function handles cascading
+ * deletion and writes a GDPR audit log before removing the row.
  */
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
-import { router } from 'expo-router';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  StyleSheet,
+  Linking,
+} from 'react-native';
+import { router, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useQueryClient } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
-import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { PREMIUM_PRICE_MONTHLY_DISPLAY } from '@/constants/pricing';
+import { Icon } from '@/components/ui';
 
+// ─── SectionLabel ────────────────────────────────────────────────────────────
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <Text style={styles.sectionLabel}>
+      {label.toUpperCase()}
+    </Text>
+  );
+}
+
+// ─── MenuItem ────────────────────────────────────────────────────────────────
 interface MenuItemProps {
-  icon: string;
+  icon: React.ComponentProps<typeof Icon>['name'];
   label: string;
   onPress: () => void;
   badge?: string;
+  detail?: string;
+  iconBg?: string;
+  iconColor?: string;
+  last?: boolean;
 }
 
-function MenuItem({ icon, label, onPress, badge }: MenuItemProps) {
+function MenuItem({
+  icon,
+  label,
+  onPress,
+  badge,
+  detail,
+  iconBg = '#EEF9F8',
+  iconColor = '#1B8A85',
+  last = false,
+}: MenuItemProps) {
   return (
     <TouchableOpacity
-      className="flex-row items-center gap-3 bg-white px-4 py-4 border-b border-greyLighter"
+      style={[styles.menuItem, last ? styles.menuItemLast : styles.menuItemBorder]}
       onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
-      <Text className="text-xl">{icon}</Text>
-      <Text className="flex-1 text-charcoal text-base">{label}</Text>
+      {/* Icon box */}
+      <View style={[styles.menuIconBox, { backgroundColor: iconBg }]}>
+        <Icon name={icon} size={18} color={iconColor} />
+      </View>
+
+      <Text style={styles.menuLabel}>{label}</Text>
+
+      {detail && !badge && (
+        <Text style={styles.menuDetail}>{detail}</Text>
+      )}
+
       {badge && (
-        <View className="bg-coral rounded-full px-2 py-0.5">
-          <Text className="text-white text-xs font-bold">{badge}</Text>
+        <View style={styles.menuBadge}>
+          <Text style={styles.menuBadgeText}>{badge}</Text>
         </View>
       )}
-      <Text className="text-greyLight">›</Text>
+
+      <Icon name="chevR" size={16} color="#7B8794" />
     </TouchableOpacity>
   );
 }
 
+// ─── MenuGroup ───────────────────────────────────────────────────────────────
+// Wraps a group of MenuItems in a card with rounded corners.
+function MenuGroup({ children }: { children: React.ReactNode }) {
+  return (
+    <View style={styles.menuGroup}>
+      {children}
+    </View>
+  );
+}
+
+// ─── ProfileScreen ───────────────────────────────────────────────────────────
 export default function ProfileScreen() {
   const profile = useProfile();
+  const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
   const queryClient = useQueryClient();
-
-  // Tracks whether the account deletion call is in progress.
-  // Prevents the user tapping "Delete" twice and sending two requests.
   const [deleting, setDeleting] = useState(false);
 
   function confirmSignOut() {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => { queryClient.clear(); signOut(); } },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          // Await signOut so the Supabase token is invalidated before we
+          // clear the React Query cache. If signOut throws (e.g. offline),
+          // local state is still wiped — the session token is useless on
+          // a device that has lost connectivity anyway.
+          try { await signOut(); } catch { /* local state cleared regardless */ }
+          queryClient.clear();
+          router.replace('/(auth)/welcome');
+        },
+      },
     ]);
   }
 
   /**
-   * GDPR Art.17 — right to erasure ("right to be forgotten").
-   *
-   * We call the delete_own_account() Postgres function via RPC rather than
-   * deleting directly. The server-side function:
+   * GDPR Art.17 — right to erasure.
+   * The delete_own_account() RPC:
    *   1. Writes a GDPR audit log entry (Art.5(2) accountability).
-   *   2. Deletes the auth.users row, which cascades to all related data.
-   *
-   * On success we clear local auth state and send the user to the Welcome
-   * screen so they cannot interact with the app as a deleted account.
+   *   2. Deletes the auth.users row, cascading to all related data.
    */
   function confirmDeleteAccount() {
     Alert.alert(
@@ -80,25 +142,24 @@ export default function ProfileScreen() {
           onPress: async () => {
             setDeleting(true);
             const { error } = await supabase.rpc('delete_own_account');
-            setDeleting(false);
-
             if (error) {
+              // Only re-enable the button on failure. On success we leave
+              // deleting=true — the screen is replaced immediately so the
+              // state never resets, and this prevents the button briefly
+              // re-enabling between the RPC resolving and navigation firing.
+              setDeleting(false);
               Alert.alert('Error', 'Could not delete account. Please try again.');
               return;
             }
 
-            // Clear the React Query cache and local session so no data from
-            // this deleted account can leak to the next user on the device.
             queryClient.clear();
-            // signOut is best-effort here: the DB row is already gone so the
-            // session is invalid regardless. We still call it to clear local
-            // state, but a network error must not block navigation.
+            // signOut is best-effort — the DB row is gone so the session is
+            // invalid regardless. We clear local state but don't block on failure.
             try {
               await signOut();
-            } catch (signOutError) {
-              console.error('signOut failed after account delete (non-blocking):', signOutError);
+            } catch (e) {
+              console.error('signOut failed after account delete (non-blocking):', e instanceof Error ? e.message : String(e));
             }
-            // Send the user back to the Welcome screen — the account no longer exists.
             router.replace('/(auth)/welcome');
           },
         },
@@ -106,88 +167,269 @@ export default function ProfileScreen() {
     );
   }
 
+  // ── Auth guard — must come after all hooks (Rules of Hooks) ─────────────
+  // If there is no authenticated user, redirect to the welcome screen rather
+  // than showing a skeleton that will never resolve.
+  if (!user) return <Redirect href="/(auth)/welcome" />;
+
+  const isPremium =
+    profile?.subscription_tier === 'premium' &&
+    (profile?.subscription_expires_at == null ||
+      new Date(profile.subscription_expires_at) > new Date());
+
+  // ── Loading skeleton ──────────────────────────────────────────────────────
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.skeletonRoot} edges={['top']}>
+        <View style={styles.skeletonHero} />
+        <View style={styles.skeletonBlock1} />
+        <View style={styles.skeletonBlock2} />
+      </SafeAreaView>
+    );
+  }
+
+  // ── Derive initials for avatar ────────────────────────────────────────────
+  const initials = profile.full_name
+    ?.trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w: string) => w[0]?.toUpperCase() ?? '')
+    .join('') ?? '';
+
   return (
-    <SafeAreaView className="flex-1 bg-slate" edges={['top']}>
-      <ScrollView>
-        {/* Header */}
-        <View className="bg-sky px-4 pt-4 pb-8 items-center">
-          <View className="w-20 h-20 rounded-full bg-white items-center justify-center mb-3">
-            <Text className="text-4xl">👤</Text>
-          </View>
-          <Text className="text-white font-extrabold text-xl">{profile?.full_name ?? 'Parent'}</Text>
-          {profile?.username && (
-            <Text className="text-white text-sm mt-0.5" style={{ opacity: 0.75 }}>
-              @{profile.username}
-            </Text>
-          )}
-          {profile?.subscription_tier === 'premium' && (
-            <View className="bg-sun rounded-full px-3 py-1 mt-1">
-              <Text className="text-charcoal font-bold text-xs">⭐ Premium</Text>
+    <SafeAreaView style={styles.root} edges={['top']}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+
+        {/* ── Hero card ─────────────────────────────────────────────────── */}
+        <LinearGradient
+          colors={['#D4F0EE', '#EEF9F8', '#FFF1C7']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
+          {/* Top row: avatar + settings button */}
+          <View style={styles.heroTopRow}>
+            {/* Avatar */}
+            <View style={styles.avatar}>
+              {initials.length > 0 ? (
+                <Text style={styles.avatarInitials}>{initials}</Text>
+              ) : (
+                <Icon name="user" size={28} color="#FFFFFF" />
+              )}
             </View>
+
+            {/* Settings button */}
+            <TouchableOpacity
+              style={styles.heroSettingsBtn}
+              onPress={() => router.push('/profile/edit')}
+              accessibilityRole="button"
+              accessibilityLabel="Edit profile settings"
+              activeOpacity={0.7}
+            >
+              <Icon name="settings" size={20} color="#4A5560" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Name */}
+          <Text style={styles.heroName}>
+            {profile.full_name ?? 'Parent'}
+          </Text>
+
+          {/* Username */}
+          {profile.username ? (
+            <Text style={styles.heroUsername}>@{profile.username}</Text>
+          ) : null}
+
+          {/* Premium badge */}
+          {isPremium && (
+            <TouchableOpacity
+              onPress={() => router.push('/profile/pass-interest')}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="View PlayPlanner Pass details"
+              style={styles.premiumBadge}
+            >
+              <Icon name="sparkle" size={11} color="#7A5800" />
+              <Text style={styles.premiumBadgeText}>Pass</Text>
+            </TouchableOpacity>
           )}
-        </View>
+        </LinearGradient>
 
-        {/* Account section */}
-        <Text className="text-grey text-xs font-bold uppercase px-4 pt-5 pb-2">Account</Text>
-        <View className="rounded-2xl overflow-hidden mx-4">
-          <MenuItem icon="✏️" label="Edit profile"      onPress={() => router.push('/profile/edit')} />
-          <MenuItem icon="⭐" label="My reviews"         onPress={() => router.push('/profile/my-reviews')} />
-          <MenuItem icon="📍" label="My submitted venues" onPress={() => router.push('/profile/my-venues')} />
-          <MenuItem icon="🔔" label="Notifications"      onPress={() => router.push('/profile/notifications')} />
-          <MenuItem icon="🔒" label="Privacy settings"   onPress={() => router.push('/profile/privacy-settings')} />
-          <MenuItem icon="⬇️" label="Download my data"   onPress={() => router.push('/profile/data-download')} />
-        </View>
+        {/* ── Account ───────────────────────────────────────────────────── */}
+        <SectionLabel label="Account" />
+        <MenuGroup>
+          <MenuItem
+            icon="user"
+            label="Personal details"
+            onPress={() => router.push('/profile/edit')}
+          />
+          <MenuItem
+            icon="bell"
+            label="Notifications"
+            onPress={() => router.push('/profile/notifications')}
+          />
+          <MenuItem
+            icon="shield"
+            label="Privacy & data"
+            onPress={() => router.push('/profile/privacy-settings')}
+          />
+          <MenuItem
+            icon="info"
+            label="Download my data"
+            onPress={() => router.push('/profile/data-download')}
+            last
+          />
+        </MenuGroup>
 
-        {/* Subscription */}
-        <Text className="text-grey text-xs font-bold uppercase px-4 pt-5 pb-2">Subscription</Text>
-        <View className="rounded-2xl overflow-hidden mx-4">
-          {(!profile || profile.subscription_tier === 'free') ? (
-            <MenuItem
-              icon="⭐"
-              label="Upgrade to Premium"
-              onPress={() => {/* TODO: open upgrade screen */}}
-              badge={PREMIUM_PRICE_MONTHLY_DISPLAY}
-            />
-          ) : (
-            <MenuItem icon="⭐" label="Manage subscription" onPress={() => {/* TODO */}} />
-          )}
-        </View>
+        {/* ── My Activity ───────────────────────────────────────────────── */}
+        <SectionLabel label="My activity" />
+        <MenuGroup>
+          <MenuItem
+            icon="star"
+            label="My reviews"
+            onPress={() => router.push('/profile/my-reviews')}
+          />
+          <MenuItem
+            icon="pin"
+            label="My submitted venues"
+            onPress={() => router.push('/profile/my-venues')}
+            last
+          />
+        </MenuGroup>
 
-        {/* Business */}
-        <Text className="text-grey text-xs font-bold uppercase px-4 pt-5 pb-2">Business</Text>
-        <View className="rounded-2xl overflow-hidden mx-4">
-          <MenuItem icon="🏢" label="Business dashboard" onPress={() => router.push('/business/dashboard')} />
-          <MenuItem icon="📍" label="Add a venue"        onPress={() => router.push('/venue/add')} />
-        </View>
-
-        {/* Support */}
-        <Text className="text-grey text-xs font-bold uppercase px-4 pt-5 pb-2">Support</Text>
-        <View className="rounded-2xl overflow-hidden mx-4">
-          <MenuItem icon="❓" label="Help & FAQ"     onPress={() => {/* TODO */}} />
-          <MenuItem icon="📧" label="Contact us"     onPress={() => {/* TODO */}} />
-          <MenuItem icon="📄" label="Privacy policy" onPress={() => {/* TODO */}} />
-        </View>
-
-        {/* Sign out */}
-        <View className="mx-4 mt-5">
+        {/* ── Subscription ──────────────────────────────────────────────── */}
+        {!isPremium ? (
           <TouchableOpacity
-            className="border-2 border-error rounded-2xl py-4 items-center"
-            onPress={confirmSignOut}
+            style={styles.upgradeCardWrapper}
+            onPress={() => router.push('/profile/pass-interest')}
+            activeOpacity={0.88}
+            accessibilityRole="button"
+            accessibilityLabel="Upgrade to PlayPlanner Pass"
           >
-            <Text className="text-error font-bold text-base">Sign out</Text>
+            <LinearGradient
+              colors={['#FFF1C7', '#FFE8E8']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.upgradeCardGradient}
+            >
+              <View style={styles.upgradeIconBox}>
+                <Icon name="sparkle" size={20} color="#F5A524" />
+              </View>
+              <View style={styles.upgradeTextBlock}>
+                <Text style={styles.upgradeTitle}>Upgrade to PlayPlanner Pass</Text>
+                <Text style={styles.upgradeSubtitle}>
+                  {PREMIUM_PRICE_MONTHLY_DISPLAY} · Unlimited access
+                </Text>
+              </View>
+              <Icon name="chevR" size={18} color="#1D2630" />
+            </LinearGradient>
           </TouchableOpacity>
+        ) : (
+          <>
+            <SectionLabel label="Subscription" />
+            <MenuGroup>
+              <MenuItem
+                icon="sparkle"
+                label="Manage subscription"
+                onPress={() => router.push('/profile/pass-interest')}
+                iconBg="#FFF1C7"
+                iconColor="#8A6100"
+                last
+              />
+            </MenuGroup>
+          </>
+        )}
+
+        {/* ── Community ─────────────────────────────────────────────────── */}
+        <SectionLabel label="Community" />
+        <MenuGroup>
+          <MenuItem
+            icon="plus"
+            label="Add a venue"
+            onPress={() => router.push('/venue/add')}
+            last
+          />
+        </MenuGroup>
+
+        {/* ── "Own a venue?" dark callout card ──────────────────────────── */}
+        <TouchableOpacity
+          style={styles.claimCard}
+          onPress={() => router.push('/venue/claim')}
+          activeOpacity={0.88}
+          accessibilityRole="button"
+          accessibilityLabel="Claim your venue listing"
+        >
+          {/* Decorative circle — inline per spec */}
+          <View style={{ position: 'absolute', right: -20, top: -30, width: 100, height: 100, borderRadius: 999, backgroundColor: '#2FB8B0', opacity: 0.3 }} />
+          <View style={styles.claimIconBox}>
+            <Icon name="biz" size={20} color="#FFFFFF" />
+          </View>
+          <View style={styles.claimTextBlock}>
+            <Text style={styles.claimTitle}>Own a venue?</Text>
+            <Text style={styles.claimSubtitle}>
+              Claim your listing, add photos, get reviews.
+            </Text>
+          </View>
+          <Icon name="chevR" size={18} color="rgba(255,255,255,0.8)" />
+        </TouchableOpacity>
+
+        {/* ── Support ───────────────────────────────────────────────────── */}
+        <SectionLabel label="Support" />
+        <MenuGroup>
+          <MenuItem
+            icon="info"
+            label="Help & FAQ"
+            onPress={() => Alert.alert('Help', 'For help, email support@playplanner.app')}
+          />
+          <MenuItem
+            icon="msg"
+            label="Contact us"
+            onPress={() => Linking.openURL('mailto:support@playplanner.app')}
+          />
+          <MenuItem
+            icon="shield"
+            label="Privacy policy"
+            onPress={() => router.push('/(auth)/privacy')}
+            last
+          />
+        </MenuGroup>
+
+        {/* ── Admin panel — only visible to admins ──────────────────────── */}
+        {profile?.is_admin === true && (
+          <>
+            <SectionLabel label="Admin" />
+            <MenuGroup>
+              <MenuItem
+                icon="shield"
+                label="Moderation panel"
+                onPress={() => router.push('/admin/moderation')}
+                iconBg="#FFF1C7"
+                iconColor="#8A6100"
+                last
+              />
+            </MenuGroup>
+          </>
+        )}
+
+        {/* ── Footer ────────────────────────────────────────────────────── */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>PlayPlanner · v1.0.0</Text>
         </View>
 
-        {/*
-          Delete account — GDPR Art.17 right to erasure.
-          Visually separated from Sign out and styled in coral/red so the user
-          clearly understands this is a destructive, irreversible action.
-          The loading state prevents double-taps from sending two delete requests.
-        */}
-        <View className="mx-4 mt-3 mb-10">
+        {/* ── Sign out ──────────────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.signOutBtn}
+          onPress={confirmSignOut}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out of your account"
+        >
+          <Text style={styles.signOutText}>Sign out</Text>
+        </TouchableOpacity>
+
+        {/* ── Delete account — GDPR Art.17 ──────────────────────────────── */}
+        <View style={styles.deleteWrapper}>
           <TouchableOpacity
-            className="rounded-2xl py-4 items-center"
-            style={{ backgroundColor: '#FFF0F0', borderWidth: 1, borderColor: '#FF6B6B' }}
+            style={styles.deleteBtn}
             onPress={confirmDeleteAccount}
             disabled={deleting}
             accessibilityRole="button"
@@ -197,24 +439,328 @@ export default function ProfileScreen() {
             {deleting ? (
               <ActivityIndicator color="#FF6B6B" />
             ) : (
-              <Text
-                className="font-bold text-base"
-                style={{ color: '#FF6B6B', fontFamily: 'Nunito-Bold' }}
-              >
-                Delete account
-              </Text>
+              <Text style={styles.deleteBtnText}>Delete account</Text>
             )}
           </TouchableOpacity>
-          {/* Plain-English warning below the button — ICO Children's Code Standard 4
-              (transparency): users must understand what will happen before they act. */}
-          <Text
-            className="text-xs text-center mt-2"
-            style={{ color: '#b0b0b0', fontFamily: 'Nunito-Regular' }}
-          >
+          {/* ICO Children's Code Standard 4 — transparency before destructive action */}
+          <Text style={styles.deleteWarning}>
             Permanently deletes all your data. Cannot be undone.
           </Text>
         </View>
+
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  // Root
+  root: {
+    flex: 1,
+    backgroundColor: '#FBF6EC',
+  },
+  scrollContent: {
+    paddingBottom: 96,
+  },
+
+  // Skeleton
+  skeletonRoot: {
+    flex: 1,
+    backgroundColor: '#FBF6EC',
+  },
+  skeletonHero: {
+    margin: 16,
+    height: 140,
+    borderRadius: 24,
+    backgroundColor: '#F1ECE2',
+  },
+  skeletonBlock1: {
+    marginHorizontal: 16,
+    marginTop: 20,
+    height: 200,
+    borderRadius: 16,
+    backgroundColor: '#F1ECE2',
+  },
+  skeletonBlock2: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    height: 100,
+    borderRadius: 16,
+    backgroundColor: '#F1ECE2',
+  },
+
+  // Hero card
+  heroCard: {
+    borderRadius: 24,
+    margin: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E6E2DB',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#1D2630',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  avatarInitials: {
+    fontFamily: 'Nunito-ExtraBold',
+    fontSize: 22,
+    color: '#FFFFFF',
+  },
+  heroSettingsBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroName: {
+    fontFamily: 'Nunito-ExtraBold',
+    fontSize: 20,
+    color: '#1D2630',
+    letterSpacing: -0.3,
+    marginTop: 12,
+  },
+  heroUsername: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 12,
+    color: '#4A5560',
+    marginTop: 2,
+  },
+  premiumBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFD66B',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  premiumBadgeText: {
+    fontFamily: 'Nunito-ExtraBold',
+    fontSize: 11,
+    color: '#7A5800',
+  },
+
+  // SectionLabel
+  sectionLabel: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 11,
+    color: '#7B8794',
+    letterSpacing: 0.6,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
+
+  // MenuGroup
+  menuGroup: {
+    marginHorizontal: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+
+  // MenuItem
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  menuItemBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E6E2DB',
+  },
+  menuItemLast: {
+    borderBottomWidth: 0,
+  },
+  menuIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuLabel: {
+    flex: 1,
+    fontFamily: 'Nunito-Bold',
+    fontSize: 14,
+    color: '#1D2630',
+  },
+  menuDetail: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 12,
+    color: '#7B8794',
+    marginRight: 4,
+  },
+  menuBadge: {
+    backgroundColor: '#2FB8B0',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginRight: 4,
+  },
+  menuBadgeText: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 11,
+    color: '#FFFFFF',
+  },
+
+  // Upgrade card (non-premium)
+  upgradeCardWrapper: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  upgradeCardGradient: {
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderWidth: 1,
+    borderColor: '#E6E2DB',
+    borderRadius: 16,
+  },
+  upgradeIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upgradeTextBlock: {
+    flex: 1,
+  },
+  upgradeTitle: {
+    fontFamily: 'Nunito-ExtraBold',
+    fontSize: 15,
+    color: '#1D2630',
+  },
+  upgradeSubtitle: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 12,
+    color: '#4A5560',
+    marginTop: 2,
+  },
+
+  // Claim card
+  claimCard: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#1D2630',
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  claimIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#2FB8B0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  claimTextBlock: {
+    flex: 1,
+    zIndex: 1,
+  },
+  claimTitle: {
+    fontFamily: 'Nunito-ExtraBold',
+    fontSize: 15,
+    color: '#FFFFFF',
+  },
+  claimSubtitle: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
+  },
+
+  // Footer
+  footer: {
+    alignItems: 'center',
+    paddingTop: 28,
+    paddingBottom: 12,
+  },
+  footerText: {
+    fontFamily: 'Nunito-Regular',
+    fontSize: 12,
+    color: '#7B8794',
+  },
+
+  // Sign out
+  signOutBtn: {
+    marginHorizontal: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  signOutText: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 15,
+    color: '#FF6B6B',
+  },
+
+  // Delete account
+  deleteWrapper: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 48,
+    backgroundColor: '#FFE8E8',
+    borderWidth: 1,
+    borderColor: '#FF6B6B',
+    borderRadius: 16,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  deleteBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 14,
+  },
+  deleteBtnText: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 15,
+    color: '#FF6B6B',
+  },
+  deleteWarning: {
+    fontFamily: 'Nunito-Regular',
+    fontSize: 12,
+    color: '#7B8794',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 16,
+  },
+});

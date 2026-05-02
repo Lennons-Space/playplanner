@@ -3,10 +3,13 @@
  *
  * Covers: info copy renders, download button renders, loading disables button,
  * cooldown message shown within 24h.
+ *
+ * The component uses expo-secure-store (SecureStore.getItemAsync / setItemAsync)
+ * to persist the last-export timestamp — NOT AsyncStorage.
  */
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { buildDataExport } from '@/hooks/useDataRights';
 import DataDownloadScreen from '../data-download';
 
@@ -33,7 +36,7 @@ jest.mock('@/hooks/useDataRights', () => ({
   buildDataExport: jest.fn().mockResolvedValue('{}'),
 }));
 
-jest.mock('expo-file-system', () => ({
+jest.mock('expo-file-system/legacy', () => ({
   documentDirectory: 'file:///tmp/',
   EncodingType: { UTF8: 'utf8' },
   writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
@@ -46,9 +49,10 @@ jest.mock('expo-sharing', () => ({
   shareAsync: jest.fn().mockResolvedValue(undefined),
 }), { virtual: true });
 
-jest.mock('@react-native-async-storage/async-storage', () => ({
-  getItem: jest.fn().mockResolvedValue(null),
-  setItem: jest.fn().mockResolvedValue(undefined),
+// The component uses SecureStore — mock at the SecureStore boundary.
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn().mockResolvedValue(null),
+  setItemAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('date-fns', () => ({
@@ -59,8 +63,8 @@ jest.mock('date-fns', () => ({
 // Typed mock references
 // ---------------------------------------------------------------------------
 
-const mockGetItem     = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
-const mockBuildExport = buildDataExport as jest.MockedFunction<typeof buildDataExport>;
+const mockGetItemAsync = SecureStore.getItemAsync as jest.MockedFunction<typeof SecureStore.getItemAsync>;
+const mockBuildExport  = buildDataExport as jest.MockedFunction<typeof buildDataExport>;
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -69,7 +73,7 @@ const mockBuildExport = buildDataExport as jest.MockedFunction<typeof buildDataE
 describe('DataDownloadScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetItem.mockResolvedValue(null);
+    mockGetItemAsync.mockResolvedValue(null);
     mockBuildExport.mockResolvedValue('{}');
   });
 
@@ -102,7 +106,7 @@ describe('DataDownloadScreen', () => {
   it('shows cooldown message when last export was within 24h', async () => {
     // Set last export timestamp to 1 hour ago
     const oneHourAgo = (Date.now() - 3_600_000).toString();
-    mockGetItem.mockResolvedValue(oneHourAgo);
+    mockGetItemAsync.mockResolvedValue(oneHourAgo);
 
     render(<DataDownloadScreen />);
 
@@ -114,7 +118,7 @@ describe('DataDownloadScreen', () => {
   it('does not show cooldown message when last export was over 24h ago', async () => {
     // Set last export timestamp to 25 hours ago
     const twentyFiveHoursAgo = (Date.now() - 90_000_000).toString();
-    mockGetItem.mockResolvedValue(twentyFiveHoursAgo);
+    mockGetItemAsync.mockResolvedValue(twentyFiveHoursAgo);
 
     render(<DataDownloadScreen />);
 

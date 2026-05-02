@@ -105,6 +105,25 @@ describe('useMyReviews', () => {
     expect(result.current.isError).toBe(false);
   });
 
+  it('includes is_anonymous in returned review data so callers can identify anonymous reviews', async () => {
+    const reviews = [
+      { id: 'r1', rating: 5, is_anonymous: true,  venues: { name: 'Park A', city: 'London' } },
+      { id: 'r2', rating: 4, is_anonymous: false, venues: { name: 'Park B', city: 'London' } },
+    ];
+    _builder.order.mockResolvedValueOnce({ data: reviews, error: null });
+
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useMyReviews('user-123'), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // Verify the SELECT string actually requests the column — removing is_anonymous
+    // from the select query would make Supabase return undefined, breaking the filter.
+    expect(_builder.select).toHaveBeenCalledWith(expect.stringContaining('is_anonymous'));
+    expect(result.current.data?.[0].is_anonymous).toBe(true);
+    expect(result.current.data?.[1].is_anonymous).toBe(false);
+  });
+
   it('is disabled (does not fire) when userId is undefined', () => {
     const { Wrapper } = makeWrapper();
     const { result } = renderHook(() => useMyReviews(undefined), { wrapper: Wrapper });
@@ -122,8 +141,15 @@ describe('useMyReviews', () => {
 
 describe('useDeleteReview', () => {
   it('invalidates the my-reviews query on success', async () => {
-    // delete().eq() chain resolves with no error
-    _builder.eq.mockResolvedValueOnce({ data: null, error: null });
+    // delete().eq('id').eq('user_id') — second eq resolves, first returns this
+    const deleteBuilder: any = {
+      eq: jest.fn().mockReturnThis(),
+      delete: jest.fn().mockReturnThis(),
+    };
+    deleteBuilder.eq
+      .mockReturnValueOnce(deleteBuilder) // first .eq('id', ...)
+      .mockResolvedValueOnce({ data: null, error: null }); // second .eq('user_id', ...)
+    mockFrom.mockReturnValueOnce(deleteBuilder);
 
     const { Wrapper, client } = makeWrapper();
     const invalidateSpy = jest.spyOn(client, 'invalidateQueries');
@@ -140,7 +166,15 @@ describe('useDeleteReview', () => {
   });
 
   it('does NOT invalidate the query when the delete fails', async () => {
-    _builder.eq.mockResolvedValueOnce({ data: null, error: { message: 'DB error' } });
+    // delete().eq('id').eq('user_id') — second eq rejects with an error
+    const deleteBuilder: any = {
+      eq: jest.fn().mockReturnThis(),
+      delete: jest.fn().mockReturnThis(),
+    };
+    deleteBuilder.eq
+      .mockReturnValueOnce(deleteBuilder) // first .eq('id', ...)
+      .mockResolvedValueOnce({ data: null, error: { message: 'DB error' } }); // second .eq('user_id', ...)
+    mockFrom.mockReturnValueOnce(deleteBuilder);
 
     const { Wrapper, client } = makeWrapper();
     const invalidateSpy = jest.spyOn(client, 'invalidateQueries');
@@ -252,6 +286,26 @@ describe('buildDataExport', () => {
 
     expect(parsed.profile).toHaveProperty('children_age_groups', ['3-5', '6-8']);
     expect(parsed.profile).not.toHaveProperty('children_ages');
+  });
+
+  it('includes is_anonymous in the reviews section of the export bundle', async () => {
+    mockQueries({
+      reviews: {
+        data: [
+          { rating: 5, title: 'Great', body: 'Loved it', is_anonymous: true,  visit_date: null, moderation_status: 'approved', created_at: '2024-06-01', venues: { name: 'Park A' } },
+          { rating: 3, title: 'OK',    body: 'Fine',     is_anonymous: false, visit_date: null, moderation_status: 'approved', created_at: '2024-03-01', venues: { name: 'Park B' } },
+        ],
+        error: null,
+      },
+    });
+
+    const json = await buildDataExport('user-123');
+    const parsed = JSON.parse(json);
+
+    // Verify the SELECT string requests the column and the map() includes it in output.
+    // If either is removed, the export silently omits the user's anonymity choices.
+    expect(parsed.reviews[0]).toHaveProperty('is_anonymous', true);
+    expect(parsed.reviews[1]).toHaveProperty('is_anonymous', false);
   });
 
   it('calls writeAuditLog only after all queries succeed', async () => {

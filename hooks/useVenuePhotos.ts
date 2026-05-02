@@ -10,7 +10,7 @@
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import type { VenuePhoto, PendingPhotoWithVenue } from '../types';
@@ -28,7 +28,9 @@ export function useVenuePhotos(venueId: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('venue_photos')
-        .select('id, url, storage_path, caption, sort_order, status, is_cover')
+        // storage_path is intentionally excluded — it is an internal storage
+        // reference that must never reach the client. Only the public url is needed.
+        .select('id, url, caption, sort_order, status, is_cover')
         .eq('venue_id', venueId)
         .eq('status', 'approved')
         .order('sort_order', { ascending: true });
@@ -66,7 +68,11 @@ export function useUploadVenuePhoto() {
 
       // Step 1: Re-encode as JPEG — this strips all EXIF data including GPS.
       // Actions array is empty because we only want re-encoding (no resize/crop).
-      const manipResult = await ImageManipulator.manipulateAsync(
+      // Declared outside the try block so the finally clause can safely reference
+      // it. Initialised to null so the finally guard (manipResult?.uri) works
+      // correctly even if manipulateAsync throws before assigning.
+      let manipResult: ImageManipulator.ImageResult | null = null;
+      manipResult = await ImageManipulator.manipulateAsync(
         imageUri,
         [],
         { format: ImageManipulator.SaveFormat.JPEG, compress: 0.85 }
@@ -128,7 +134,12 @@ export function useUploadVenuePhoto() {
         }
       } finally {
         // Delete the temp re-encoded JPEG regardless of success or failure.
-        await FileSystem.deleteAsync(manipResult.uri, { idempotent: true });
+        // Guard on manipResult?.uri in case manipulateAsync itself threw before
+        // setting manipResult — without the guard, this line would throw a
+        // ReferenceError that masks the original error from manipulateAsync.
+        if (manipResult?.uri) {
+          await FileSystem.deleteAsync(manipResult.uri, { idempotent: true });
+        }
       }
     },
     onSuccess: (_data, variables) => {
@@ -171,11 +182,24 @@ export function useModeratePhoto() {
           moderated_at:     new Date().toISOString(),
         })
         .eq('id', photoId)
-        .select('id');
+        .select('id, storage_path');
 
       if (error) throw error;
       if (!data || data.length === 0) {
         throw new Error('Photo no longer exists or could not be updated.');
+      }
+
+      // When rejecting, delete the file from storage so it cannot be accessed
+      // via its public URL even after the DB row is marked rejected.
+      // Best-effort: a cleanup failure must not block the moderation action.
+      if (status === 'rejected') {
+        const storagePath = (data[0] as { id: string; storage_path: string | null }).storage_path;
+        if (storagePath) {
+          await supabase.storage
+            .from('venue-photos')
+            .remove([storagePath])
+            .catch(() => {});
+        }
       }
     },
     onSuccess: (_data, variables) => {

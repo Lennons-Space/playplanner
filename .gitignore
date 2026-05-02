@@ -8,9 +8,10 @@ web-build/
 expo-env.d.ts
 
 # Environment — NEVER commit these
-.env
-.env.local
-.env.production
+.env*
+!.env.example
+scripts/**/.env*
+scripts/**/.env.txt
 
 # Native builds
 ios/
@@ -30,3 +31,26 @@ npm-debug.log*
 
 # TypeScript
 *.tsbuildinfo
+
+# Claude
+.claude/settings.local.json
+.claude/worktrees/
+
+# Test artefacts
+coverage/
+
+# Import data — may contain PII or large files
+scripts/data/
+
+# Supabase local temp (project metadata, not secrets — but local only)
+supabase/.temp/
+
+# Local Claude/agent tool installs
+.claude/skills/
+.agents/
+
+# Design import artefacts (binary, generated)
+.design-import/
+
+# Accidental shell output files
+set

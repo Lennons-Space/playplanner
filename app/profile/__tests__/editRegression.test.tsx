@@ -18,6 +18,11 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 
+import { router }    from 'expo-router';
+import { useUser, useProfile } from '@/hooks/useAuth';
+import { useUpdateProfile, useUploadAvatar } from '@/hooks/useProfile';
+import EditProfileScreen from '../edit';
+
 // ---------------------------------------------------------------------------
 // Mocks — all jest.mock calls are hoisted; stubs defined inside factories
 // ---------------------------------------------------------------------------
@@ -42,8 +47,8 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-jest.mock('lucide-react-native', () => ({
-  ChevronRight: 'View',
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: 'View',
 }));
 
 jest.mock('@/lib/supabase', () => ({
@@ -52,11 +57,6 @@ jest.mock('@/lib/supabase', () => ({
 
 process.env.EXPO_PUBLIC_SUPABASE_URL      = 'https://test.supabase.co';
 process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
-
-import { router }    from 'expo-router';
-import { useUser, useProfile } from '@/hooks/useAuth';
-import { useUpdateProfile, useUploadAvatar } from '@/hooks/useProfile';
-import EditProfileScreen from '../edit';
 
 const mockUseUser       = useUser          as jest.MockedFunction<typeof useUser>;
 const mockUseProfile    = useProfile       as jest.MockedFunction<typeof useProfile>;

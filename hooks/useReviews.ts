@@ -27,6 +27,14 @@ export type PublicReviewItem = {
   title: string | null;
   body: string;
   created_at: string;
+  /**
+   * Whether the reviewer posted this review anonymously (migration 038).
+   * The caller MUST filter out (or redact) reviews where is_anonymous === true
+   * before displaying them on another user's public profile page — showing them
+   * attributed would break the anonymity promise made to the reviewer
+   * (GDPR Art.5(1)(a) transparency and Art.5(1)(b) purpose limitation).
+   */
+  is_anonymous: boolean;
   /** Joined venue info — may be null if the venue was deleted. */
   venues: { name: string; city: string } | null;
 };
@@ -37,11 +45,33 @@ export type PublicReviewItem = {
 
 interface SubmitReviewPayload {
   venueId: string;
+  /**
+   * The UUID of the user who has claimed this venue, if any.
+   * Passed by the caller (review screen) so the hook can enforce the
+   * own-venue guard without a second network round-trip.
+   * Belt-and-braces: the DB RLS policy (migration 009) is the primary
+   * enforcement; this is a second layer in case the screen guard is bypassed.
+   */
+  venueClaimedBy: string | null | undefined;
+  /**
+   * The UUID of the user who originally submitted this venue, if any.
+   * Also checked to prevent a submitter self-reviewing before a claim exists.
+   */
+  venueSubmittedBy: string | null | undefined;
   rating: number;
   title: string;
   body: string;
   visitDate: string | null;
   childrenAges: string[];
+  tags: string[];
+  /**
+   * Whether the reviewer chose "Post anonymously".
+   * Persisted as is_anonymous on the reviews row (migration 038).
+   * When true, display logic must show "Anonymous parent" instead of the
+   * reviewer's real name — this is a privacy promise made in the UI and
+   * must be honoured end-to-end (GDPR Art.5(1)(a) transparency).
+   */
+  anonymous: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +93,7 @@ export function useVenueReviews(venueId: string) {
           title,
           body,
           visit_date,
-          children_ages,
+          is_anonymous,
           moderation_status,
           helpful_count,
           created_at,
@@ -89,6 +119,11 @@ export function useVenueReviews(venueId: string) {
       return (data ?? []) as unknown as Review[];
     },
     enabled: !!venueId,
+    // Reviews are fetched on every venue-detail visit. Without staleTime React
+    // Query treats data as stale immediately, refetching on every navigation.
+    // 60 seconds matches useVenue and useVenuePhotos. Explicit invalidation in
+    // useSubmitReview and useModerateReview bypasses this when data really changes.
+    staleTime: 60_000,
   });
 }
 
@@ -147,11 +182,29 @@ export function useSubmitReview() {
 
   return useMutation({
     mutationFn: async (payload: SubmitReviewPayload) => {
-      const { venueId, rating, title, body, visitDate, childrenAges } = payload;
+      // Re-read user inside mutationFn — the session may have expired between
+      // the button render and the tap (token revocation, sign-out on another device).
+      // Using user!.id from the outer closure would crash with a TypeError here.
+      if (!user?.id) {
+        throw new Error('Your session has expired. Please sign in again to submit a review.');
+      }
+
+      // Hook-level own-venue guard (belt-and-braces).
+      // The primary enforcement is the DB RLS policy in migration 009.
+      // This layer surfaces a clear error if the screen guard is bypassed
+      // (e.g. direct API call routed through this hook, or a future UI bug).
+      if (
+        (payload.venueClaimedBy   && payload.venueClaimedBy   === user.id) ||
+        (payload.venueSubmittedBy && payload.venueSubmittedBy === user.id)
+      ) {
+        throw new Error('OWNER_REVIEW_NOT_ALLOWED');
+      }
+
+      const { venueId, rating, title, body, visitDate, childrenAges, tags, anonymous } = payload;
 
       const { error } = await supabase.from('reviews').insert({
         venue_id:          venueId,
-        user_id:           user!.id,
+        user_id:           user.id,
         rating,
         // Send null rather than empty string for optional text fields —
         // the DB column is nullable text, not empty-string-friendly.
@@ -161,6 +214,11 @@ export function useSubmitReview() {
         // Only store children_ages if the user actually provided any.
         // Empty array → null (data minimisation: don't store empty arrays).
         children_ages:     childrenAges.length > 0 ? childrenAges : null,
+        // Data minimisation: store null rather than an empty array for tags.
+        tags:              tags.length > 0 ? tags : null,
+        // Persist the reviewer's anonymity choice (migration 038).
+        // Display logic must honour this flag — "Anonymous parent" shown when true.
+        is_anonymous:      anonymous,
         moderation_status: 'pending',   // all reviews go through moderation first
       });
 
@@ -211,6 +269,14 @@ interface ModerateReviewPayload {
  * On success: invalidates both the admin pending-reviews query (removes the
  * item from the queue) and the venue's public review list (if approved, it
  * should appear immediately for regular users).
+ *
+ * WHY .select('id') is chained on the update:
+ *   Without it, Supabase sends Prefer: return=minimal and PostgREST returns
+ *   204 No Content regardless of how many rows were actually updated. A
+ *   silent RLS filter (e.g. admin flag missing from the JWT) would look like
+ *   a successful approve with no visible change. Chaining .select('id')
+ *   forces PostgREST to return the affected row; an empty result means the
+ *   write was blocked and we surface a real error instead of a no-op.
  */
 export function useModerateReview() {
   const queryClient = useQueryClient();
@@ -218,19 +284,40 @@ export function useModerateReview() {
 
   return useMutation({
     mutationFn: async ({ reviewId, status, moderation_notes }: ModerateReviewPayload) => {
-      const { error } = await supabase
+      if (!user?.id) {
+        throw new Error('Admin session has expired. Sign out and back in, then try again.');
+      }
+      const { data, error } = await supabase
         .from('reviews')
         .update({
           moderation_status: status,
           moderation_notes:  moderation_notes?.trim() || null,
-          moderated_by:      user!.id,
+          moderated_by:      user.id,
           moderated_at:      new Date().toISOString(),
         })
-        .eq('id', reviewId);
+        .eq('id', reviewId)
+        .select('id');
 
       if (error) {
-        console.error('useModerateReview error:', error.code, error.hint);
+        // Only log code/message/hint — NEVER log the row (body may contain
+        // personal information about the user or their children).
+        console.error('useModerateReview error:', error.code, error.message);
         throw new Error('Could not moderate review. Please try again.');
+      }
+
+      // Zero rows = RLS silently filtered the write (auth/admin drift).
+      // Fail loud instead of pretending it worked.
+      if (!data || data.length === 0) {
+        throw new Error('No review updated — your admin permissions may have changed. Sign out and back in, then try again.');
+      }
+
+      // Fire-and-forget notification — a send failure must never block the moderation action.
+      if (status === 'approved') {
+        supabase.functions
+          .invoke('notify-review-published', { body: { reviewId } })
+          .catch((err: unknown) => {
+            console.warn('[useModerateReview] notify-review-published failed:', (err as Error).message);
+          });
       }
     },
 
@@ -239,6 +326,9 @@ export function useModerateReview() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'pending-reviews'] });
       // Public venue review lists may now include/exclude this review
       queryClient.invalidateQueries({ queryKey: ['reviews'] });
+      // Also refresh the reviewer's "My Reviews" screen so the rejection
+      // note / approved status appears to them immediately (GDPR Art.13).
+      queryClient.invalidateQueries({ queryKey: ['myReview'] });
     },
   });
 }
@@ -264,7 +354,11 @@ export function usePublicProfileReviews(userId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('reviews')
-        .select('id, rating, title, body, created_at, venues(name, city)')
+        // is_anonymous is required so the caller can filter out anonymous reviews
+        // before rendering them on another user's public profile. Without it the
+        // server would return the review content without the flag, making it
+        // impossible to honour the anonymity promise at the display layer.
+        .select('id, rating, title, body, created_at, is_anonymous, venues(name, city)')
         .eq('user_id', userId!)
         .eq('moderation_status', 'approved')
         .order('created_at', { ascending: false })

@@ -10,7 +10,7 @@
  *    them before signing in (ICO Children's Code Standard 4 — transparency).
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,6 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
-import { migratePendingLocationConsent } from '@/services/consent/locationConsent';
 
 // Client-side sanity check only — real validation happens on the server.
 // Catches obvious typos before hitting the network.
@@ -62,16 +61,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading]   = useState(false);
   const user = useUser();
-
-  // Migrate any pre-auth location consent (stored locally before account creation)
-  // into the database now that we have an authenticated user ID.
-  useEffect(() => {
-    if (user?.id) {
-      migratePendingLocationConsent(user.id).catch(() => {
-        // Non-blocking — migration failure must never impact the login experience.
-      });
-    }
-  }, [user?.id]);
 
   async function handleLogin() {
     if (!email || !password) {

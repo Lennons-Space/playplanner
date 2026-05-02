@@ -31,6 +31,9 @@ function makeReview(overrides: Partial<Review> = {}): Review {
     body: 'Great park for kids',
     visit_date: null,
     children_ages: null,
+    // is_anonymous defaults to false — all existing reviews remain non-anonymous
+    // (migration 038 DB DEFAULT false keeps backwards compatibility).
+    is_anonymous: false,
     moderation_status: 'approved',
     helpful_count: 0,
     created_at: '2026-01-15T10:00:00Z',
@@ -58,7 +61,7 @@ describe('ReviewCard — privacy: display name', () => {
   // If show_reviews_publicly is false, the user has explicitly opted out of
   // being identified on reviews. Showing their real username would be a GDPR
   // breach — they have not consented to this particular use of their data.
-  it('shows "Anonymous" when show_reviews_publicly is false, even if username exists', () => {
+  it('shows "Anonymous parent" when show_reviews_publicly is false, even if username exists', () => {
     const review = makeReview({
       profile: {
         id: 'user-1',
@@ -76,19 +79,19 @@ describe('ReviewCard — privacy: display name', () => {
 
     // The username must NOT appear anywhere
     expect(screen.queryByText('janeparent')).toBeNull();
-    // "Anonymous" must be shown instead
-    expect(screen.getByText('Anonymous')).toBeTruthy();
+    // "Anonymous parent" must be shown instead
+    expect(screen.getByText('Anonymous parent')).toBeTruthy();
   });
 
   // A null profile means the reviewer's account was deleted.
-  // The component must gracefully fall back to "Anonymous" — not crash.
+  // The component must gracefully fall back to "Anonymous parent" — not crash.
   // Without this guard a deleted account would cause a TypeError on profile.username.
-  it('shows "Anonymous" when profile is null', () => {
+  it('shows "Anonymous parent" when profile is null', () => {
     const review = makeReview({ profile: undefined }); // no joined profile row
 
     render(<ReviewCard review={review} />);
 
-    expect(screen.getByText('Anonymous')).toBeTruthy();
+    expect(screen.getByText('Anonymous parent')).toBeTruthy();
   });
 
   // When the user has allowed public identification, their username should
@@ -102,7 +105,7 @@ describe('ReviewCard — privacy: display name', () => {
   });
 
   // If username is null but full_name exists, fall back to full_name.
-  // Without this, a user who has a name but no username would appear as "Anonymous"
+  // Without this, a user who has a name but no username would appear as "Anonymous parent"
   // even though they want to be publicly identified.
   it('falls back to full_name when username is null and show_reviews_publicly is true', () => {
     const review = makeReview({
@@ -121,7 +124,7 @@ describe('ReviewCard — privacy: display name', () => {
     render(<ReviewCard review={review} />);
 
     expect(screen.getByText('Jane Parent')).toBeTruthy();
-    expect(screen.queryByText('Anonymous')).toBeNull();
+    expect(screen.queryByText('Anonymous parent')).toBeNull();
   });
 });
 
@@ -260,7 +263,7 @@ describe('ReviewCard — tappable reviewer block', () => {
   // Making their reviewer block tappable would let users attempt to navigate
   // to an "anonymous" profile, which should not exist or could expose data.
   // The block must be a plain View (non-interactive) for anonymous reviewers.
-  it('does not render a tappable button when the reviewer display name is "Anonymous"', () => {
+  it('does not render a tappable button when the reviewer display name is "Anonymous parent"', () => {
     const onPressReviewer = jest.fn();
     const review = makeReview({
       profile: {
@@ -270,7 +273,7 @@ describe('ReviewCard — tappable reviewer block', () => {
         avatar_url: null,
         bio: null,
         is_business_owner: false,
-        show_reviews_publicly: false, // → displayName becomes 'Anonymous'
+        show_reviews_publicly: false, // → displayName becomes 'Anonymous parent'
         created_at: '2025-01-01T00:00:00Z',
       },
     });
@@ -331,5 +334,96 @@ describe('ReviewCard — content rendering', () => {
 
     // Body must still be present
     expect(screen.getByText('Great park for kids')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// is_anonymous flag — per-review anonymity (migration 038)
+//
+// The "Post anonymously" toggle in ReviewForm now persists is_anonymous to the
+// DB. ReviewCard must honour this flag by showing "Anonymous parent" instead of
+// the reviewer's real display name, and by blocking profile navigation.
+//
+// This is the end-to-end privacy test for the toggle — it closes the gap where
+// the flag was collected in the UI but never persisted or rendered.
+// ---------------------------------------------------------------------------
+
+describe('ReviewCard — is_anonymous flag', () => {
+  // Core privacy test: when is_anonymous is true, show "Anonymous parent"
+  // regardless of what the profile says — the reviewer explicitly asked
+  // to be hidden for this specific review.
+  it('shows "Anonymous parent" when is_anonymous is true, even if profile is public', () => {
+    const review = makeReview({
+      is_anonymous: true,
+      // Profile is public (show_reviews_publicly=true) but is_anonymous takes priority
+      profile: {
+        id: 'user-1',
+        username: 'janeparent',
+        full_name: 'Jane Parent',
+        avatar_url: null,
+        bio: null,
+        is_business_owner: false,
+        show_reviews_publicly: true,
+        created_at: '2025-01-01T00:00:00Z',
+      },
+    });
+
+    render(<ReviewCard review={review} />);
+
+    // Real username must NOT appear — that would violate the reviewer's choice
+    expect(screen.queryByText('janeparent')).toBeNull();
+    expect(screen.queryByText('Jane Parent')).toBeNull();
+    // "Anonymous parent" must appear in its place
+    expect(screen.getByText('Anonymous parent')).toBeTruthy();
+  });
+
+  // Confirm the profile navigation button is suppressed when is_anonymous is true.
+  // An anonymous reviewer has opted out of identification — letting a user
+  // tap through to their profile would undermine that choice.
+  it('does not render the tappable profile button when is_anonymous is true', () => {
+    const onPressReviewer = jest.fn();
+    const review = makeReview({
+      is_anonymous: true,
+      profile: {
+        id: 'user-1',
+        username: 'janeparent',
+        full_name: 'Jane Parent',
+        avatar_url: null,
+        bio: null,
+        is_business_owner: false,
+        show_reviews_publicly: true,
+        created_at: '2025-01-01T00:00:00Z',
+      },
+    });
+
+    render(<ReviewCard review={review} onPressReviewer={onPressReviewer} />);
+
+    // No profile navigation button should exist
+    expect(screen.queryByLabelText(/profile/i)).toBeNull();
+    // The handler must never be called
+    expect(onPressReviewer).not.toHaveBeenCalled();
+  });
+
+  // Verify that is_anonymous=false (the default) still shows the real
+  // display name normally — existing non-anonymous reviews must be unaffected.
+  it('shows the real display name when is_anonymous is false', () => {
+    const review = makeReview({
+      is_anonymous: false,
+      profile: {
+        id: 'user-1',
+        username: 'janeparent',
+        full_name: 'Jane Parent',
+        avatar_url: null,
+        bio: null,
+        is_business_owner: false,
+        show_reviews_publicly: true,
+        created_at: '2025-01-01T00:00:00Z',
+      },
+    });
+
+    render(<ReviewCard review={review} />);
+
+    expect(screen.getByText('janeparent')).toBeTruthy();
+    expect(screen.queryByText('Anonymous parent')).toBeNull();
   });
 });

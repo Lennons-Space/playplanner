@@ -208,6 +208,67 @@ describe('fetchProfile', () => {
 
     expect(supabase.from).not.toHaveBeenCalled();
   });
+
+  /**
+   * Stale-fetch identity guard.
+   *
+   * Scenario: User A signs in → fetchProfile starts for User A → User A
+   * signs out and User B signs in → fetchProfile resolves for User A.
+   * Without the identity guard, User A's profile data overwrites User B's
+   * profile in the store — a serious data leak on shared/family devices.
+   *
+   * We simulate this by:
+   *   1. Starting fetchProfile for User A (mockSingle resolves slowly via a
+   *      deferred promise).
+   *   2. Swapping the store user to User B before the promise resolves.
+   *   3. Resolving the deferred promise (User A's fetch completes).
+   *   4. Asserting that the store profile is still null (not User A's data).
+   */
+  it('does not write profile if user changed between fetch start and resolve', async () => {
+    const userA: User = {
+      id: 'user-A',
+      email: 'a@example.com',
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: '2024-01-01T00:00:00Z',
+    } as User;
+
+    const userB: User = {
+      id: 'user-B',
+      email: 'b@example.com',
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: '2024-01-01T00:00:00Z',
+    } as User;
+
+    const profileA: Profile = { ...fakeProfile, id: 'user-A', username: 'user_a' };
+
+    // Deferred promise — lets us control exactly when the fetch "resolves"
+    // so we can change the store user in between.
+    let resolveDeferred!: (value: { data: Profile; error: null }) => void;
+    const deferred = new Promise<{ data: Profile; error: null }>((resolve) => {
+      resolveDeferred = resolve;
+    });
+    mockSingle.mockReturnValueOnce(deferred);
+
+    // Start fetchProfile for User A.
+    useAuthStore.setState({ user: userA, profile: null });
+    const fetchPromise = useAuthStore.getState().fetchProfile();
+
+    // Before the fetch resolves, switch to User B (simulating sign-out + sign-in).
+    useAuthStore.setState({ user: userB, profile: null });
+
+    // Now let User A's fetch complete.
+    resolveDeferred({ data: profileA, error: null });
+    await fetchPromise;
+
+    // User A's profile must NOT have been written to the store.
+    expect(useAuthStore.getState().profile).toBeNull();
+    // User B is still the active user.
+    expect(useAuthStore.getState().user?.id).toBe('user-B');
+  });
 });
 
 // ======================================================================
@@ -237,6 +298,23 @@ describe('signOut', () => {
   it('calls supabase.auth.signOut()', async () => {
     await useAuthStore.getState().signOut();
     expect(mockSignOut).toHaveBeenCalledTimes(1);
+  });
+
+  // BUG A fix: isLoading must be reset to false on signOut so the app never
+  // gets stuck showing a loading spinner after the user logs out and back in.
+  // Without this fix, the store keeps isLoading=true from a previous loading
+  // cycle, and the app renders a spinner indefinitely on the next session.
+  it('sets isLoading to false after signOut', async () => {
+    useAuthStore.setState({
+      session: fakeSession,
+      user: fakeUser,
+      profile: fakeProfile,
+      isLoading: true,   // simulate an in-progress load at sign-out time
+    });
+
+    await useAuthStore.getState().signOut();
+
+    expect(useAuthStore.getState().isLoading).toBe(false);
   });
 
   // After signOut, the profile's is_admin must not be accessible
