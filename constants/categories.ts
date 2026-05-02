@@ -60,7 +60,7 @@ export const CATEGORIES: Record<CategorySlug, CategoryMeta> = {
 
 /** Safe fallback when slug is null/unknown (e.g. new DB category not yet mapped). */
 export const CATEGORY_FALLBACK: CategoryMeta = {
-  label: 'Activity',
+  label: 'Venue',
   color: '#2FB8B0',
   soft:  '#D4F0EE',
   icon:  'map',

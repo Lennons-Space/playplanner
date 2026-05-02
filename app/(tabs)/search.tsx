@@ -14,9 +14,18 @@
  * query to the PostGIS RPC and keeps the search hook simple. For the empty-query
  * "recent venues" fallback we pass filters into useNearbyVenues so the RPC
  * handles them server-side.
+ *
+ * Chip trust rules:
+ * - null = unknown → a venue is NEVER included in a filter when the relevant
+ *   attribute is null (i.e. data not available).
+ * - Free filter only passes venues with price_range === 'free'. null price_range
+ *   is excluded — we never assume free.
+ * - Rainy day filter only passes venues where isRainyDaySuitable === true (known
+ *   indoor category). null category → excluded.
+ * - Category chips use DB IDs from useCategories() — never hard-coded.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,20 +36,20 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import { useEffect } from 'react';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useVenueSearch, useNearbyVenues } from '@/hooks/useVenues';
+import { useVenueSearch, useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { useFilterStore } from '@/store/filterStore';
 import { useMapStore } from '@/store/mapStore';
 import FilterSheet from '@/components/filters/FilterSheet';
 import { VenueCard, Icon, Chip, ScreenTitle, IconBtn } from '@/components/ui';
 import { FALLBACK_LOCATION } from '@/constants/location';
+import { getVenueAttributes } from '@/lib/venueAttributes';
 import type { Venue, VenueFilters, PriceRange } from '@/types';
 
 // ── Design tokens (pp- palette) ────────────────────────────────────────────────
-// These hex values mirror the pp- tokens in tailwind.config.js.
-// Using inline style where Tailwind class would require an arbitrary value.
 const pp = {
   ink:      '#1D2630',
   mute:     '#7B8794',
@@ -57,8 +66,6 @@ const pp = {
 const UK_POSTCODE_RE = /^[A-Z]{1,2}[0-9][A-Z0-9]?(\s*[0-9][A-Z]{2})?$/i;
 
 // ─── Debounce hook ────────────────────────────────────────────────────────────
-// Waits until the user stops typing for `delayMs` before updating the value.
-// This prevents a database query firing on every single keystroke.
 function useDebounce<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -70,19 +77,20 @@ function useDebounce<T>(value: T, delayMs: number): T {
 
 // ─── Client-side filter helper ────────────────────────────────────────────────
 // Applies the active VenueFilters to a list of venues returned by text search.
-// Text search uses a simple ILIKE query — it doesn't go through the PostGIS RPC
-// that handles server-side filters — so we enforce them here instead.
 function applyFiltersToResults(venues: Venue[], filters: VenueFilters): Venue[] {
   return venues.filter((v) => {
-    // Use the joined category object's id when available; fall back to the flat
-    // category_id field. The search query may return either shape depending on
-    // whether the join was included in the SELECT.
     const vCategoryId = v.category?.id ?? v.category_id;
     if (filters.categoryIds.length && vCategoryId && !filters.categoryIds.includes(vCategoryId)) {
       return false;
     }
-    if (filters.priceRange.length && v.price_range && !(filters.priceRange as PriceRange[]).includes(v.price_range)) {
-      return false;
+    // Trust rule: when a price filter is active, exclude venues with null price_range
+    // (unknown price). Never assume a venue is free or matches any price tier if the
+    // data is missing. The old guard `v.price_range &&` was wrong — it let null-price
+    // venues slip through because null is falsy.
+    if (filters.priceRange.length) {
+      if (!v.price_range || !(filters.priceRange as PriceRange[]).includes(v.price_range)) {
+        return false;
+      }
     }
     if (filters.minAge !== null && v.max_age < filters.minAge) return false;
     if (filters.maxAge !== null && v.min_age > filters.maxAge) return false;
@@ -90,20 +98,51 @@ function applyFiltersToResults(venues: Venue[], filters: VenueFilters): Venue[] 
   });
 }
 
+// ─── Rainy-day client-side filter ────────────────────────────────────────────
+// Only passes venues where isRainyDaySuitable is definitively true.
+// null (unknown category) is treated as "does not qualify" — trust rule.
+function applyRainyDayFilter(venues: Venue[]): Venue[] {
+  return venues.filter((v) => getVenueAttributes(v).isRainyDaySuitable === true);
+}
+
 // ─── Quick filter chip definitions ────────────────────────────────────────────
+// Category chips carry the slug used to look up the DB category ID at runtime.
 const QUICK_FILTERS = [
-  { id: 'all',       label: 'All' },
-  { id: 'open-now',  label: 'Open now' },
-  { id: 'free',      label: 'Free' },
-  { id: 'ages-0-3',  label: 'Ages 0–3' },
-  { id: 'all-ages',  label: 'All ages' },
+  { id: 'all',         label: 'All' },
+  { id: 'open-now',    label: 'Open now' },
+  { id: 'free',        label: 'Free' },
+  { id: 'rainy-day',   label: 'Rainy day' },
+  { id: 'soft-play',   label: 'Soft play',   categorySlug: 'soft-play'   },
+  { id: 'parks',       label: 'Parks',        categorySlug: 'park'        },
+  { id: 'indoor-play', label: 'Indoor play',  categorySlug: 'indoor-play' },
+  { id: 'swimming',    label: 'Swimming',     categorySlug: 'swimming'    },
+  { id: 'farms',       label: 'Farms',        categorySlug: 'farm'        },
+  { id: 'libraries',   label: 'Libraries',    categorySlug: 'library'     },
 ] as const;
 
 type QuickFilterId = (typeof QUICK_FILTERS)[number]['id'];
 
-// ─── Suggestion chips ──────────────────────────────────────────────────────────
-const SUGGESTIONS = ['Soft play', 'Parks with toilets', 'Free today', 'Rainy day', 'Toddler-friendly'];
+// ─── Active filter description helper ────────────────────────────────────────
+// Builds a short human-readable string for the empty-state message.
+function describeActiveFilters(
+  filters: VenueFilters,
+  isRainyDay: boolean,
+  categories: { id: string; slug: string; name: string }[],
+): string {
+  const parts: string[] = [];
 
+  if (filters.priceRange.includes('free')) parts.push('free');
+  if (isRainyDay) return 'rainy day';  // rainy day is mutually exclusive with category chips
+
+  if (filters.categoryIds.length) {
+    const cat = categories.find((c) => filters.categoryIds.includes(c.id));
+    if (cat) parts.push(cat.name.toLowerCase());
+  }
+
+  if (filters.openNow) parts.push('open');
+
+  return parts.length ? parts.join(' ') : 'matching';
+}
 
 // ─── SearchScreen ─────────────────────────────────────────────────────────────
 export default function SearchScreen() {
@@ -111,13 +150,19 @@ export default function SearchScreen() {
   const [inputFocused, setInputFocused] = useState(false);
   const debouncedQuery                  = useDebounce(query, 300);
 
-  const [quickFilter, setQuickFilter]   = useState<QuickFilterId>('all');
+  // Local rainy-day state — applied client-side only.
+  const [isRainyDay, setIsRainyDay] = useState(false);
 
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
 
   const filters            = useFilterStore((s) => s.filters);
+  const setFilters         = useFilterStore((s) => s.setFilters);
+  const resetFilters       = useFilterStore((s) => s.resetFilters);
   const activeFilterCount  = useFilterStore((s) => s.activeFilterCount());
   const setPendingPostcode = useMapStore((s) => s.setPendingPostcode);
+
+  // useCategories is cached for 24h — very cheap to call here.
+  const { data: dbCategories = [] } = useCategories();
 
   const looksLikePostcode = UK_POSTCODE_RE.test(query.trim());
 
@@ -126,78 +171,166 @@ export default function SearchScreen() {
     router.push('/(tabs)/');
   }, [query, setPendingPostcode]);
 
-  // Derived before queries so both hooks can reference it.
   const isSearchActive = debouncedQuery.length >= 2;
 
-  // Text search — only fires when debouncedQuery.length >= 2 (enforced in the hook).
   const {
     data: searchResults = [],
     isLoading: searchLoading,
   } = useVenueSearch(debouncedQuery, FALLBACK_LOCATION);
 
-  // Venue list shown when the search box is empty.
-  // Uses FALLBACK_LOCATION (central London) — the search tab never requests GPS.
-  // `enabled: !isSearchActive` avoids firing this query while the user is typing
-  // (the text search query runs instead, and we don't need two concurrent fetches).
   const {
     data: recentVenues = [],
     isLoading: recentLoading,
   } = useNearbyVenues(FALLBACK_LOCATION, filters, !isSearchActive);
 
-  // Stable callbacks — prevent child components re-rendering on parent state changes.
   const handleFiltersPress      = useCallback(() => setFilterSheetVisible(true), []);
   const handleFilterSheetClose  = useCallback(() => setFilterSheetVisible(false), []);
 
   const isLoading = isSearchActive ? searchLoading : recentLoading;
 
-  // Apply quick filter chip on top of the base venue list.
-  function applyQuickFilter(venues: Venue[]): Venue[] {
-    const now = new Date();
-    const todayDow = now.getDay();
-    const nowMins = now.getHours() * 60 + now.getMinutes();
-    const toMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-
-    switch (quickFilter) {
+  // ── Chip active-state derivation ────────────────────────────────────────────
+  function isChipActive(id: QuickFilterId): boolean {
+    switch (id) {
+      case 'all':
+        return (
+          !isRainyDay &&
+          !filters.openNow &&
+          !filters.priceRange.includes('free') &&
+          filters.categoryIds.length === 0
+        );
       case 'open-now':
-        return venues.filter((v) => {
-          if (!v.opening_hours?.length) return false;
-          const row = v.opening_hours.find((h) => h.day_of_week === todayDow);
-          if (!row || row.is_closed || !row.opens_at || !row.closes_at) return false;
-          return nowMins >= toMins(row.opens_at) && nowMins < toMins(row.closes_at);
-        });
+        return filters.openNow === true;
       case 'free':
-        return venues.filter((v) => v.price_range === 'free');
-      case 'ages-0-3':
-        return venues.filter((v) => (v.min_age ?? 0) <= 3);
-      case 'all-ages':
-        return venues.filter((v) => (v.min_age ?? 0) === 0 && (v.max_age ?? 99) >= 12);
-      default:
-        return venues;
+        return filters.priceRange.includes('free');
+      case 'rainy-day':
+        return isRainyDay;
+      default: {
+        // Category chip — check if the DB category ID for this slug is selected.
+        const filter = QUICK_FILTERS.find((f) => f.id === id);
+        if (!filter || !('categorySlug' in filter)) return false;
+        const cat = dbCategories.find((c) => c.slug === filter.categorySlug);
+        if (!cat) return false;
+        return filters.categoryIds.includes(cat.id);
+      }
     }
   }
 
-  // Memoised so the filtered list only recalculates when search results, filters, or chip changes.
+  // ── Chip press handlers ─────────────────────────────────────────────────────
+
+  // Look up a DB category ID by slug. Returns null if categories not yet loaded.
+  const getCategoryId = useCallback(
+    (slug: string): string | null => {
+      return dbCategories.find((c) => c.slug === slug)?.id ?? null;
+    },
+    [dbCategories],
+  );
+
+  // Activates a category chip by slug. Used by both chip presses and SUGGESTIONS.
+  const activateCategoryChip = useCallback(
+    (slug: string) => {
+      const id = getCategoryId(slug);
+      if (!id) return; // categories not loaded yet — safe to no-op
+      const alreadySelected = filters.categoryIds.includes(id);
+      setIsRainyDay(false);
+      setFilters({ categoryIds: alreadySelected ? [] : [id] });
+    },
+    [getCategoryId, filters.categoryIds, setFilters],
+  );
+
+  const activateRainyDay = useCallback(() => {
+    setIsRainyDay((prev) => {
+      const next = !prev;
+      if (next) {
+        // Clear category selection when entering rainy-day mode.
+        setFilters({ categoryIds: [] });
+      }
+      return next;
+    });
+  }, [setFilters]);
+
+  const activateFreeFilter = useCallback(() => {
+    const isFreeActive = filters.priceRange.includes('free');
+    setFilters({ priceRange: isFreeActive ? [] : ['free'] });
+  }, [filters.priceRange, setFilters]);
+
+  const handleChipPress = useCallback(
+    (id: QuickFilterId) => {
+      switch (id) {
+        case 'all':
+          resetFilters();
+          setIsRainyDay(false);
+          break;
+        case 'open-now':
+          setFilters({ openNow: !filters.openNow });
+          break;
+        case 'free':
+          activateFreeFilter();
+          break;
+        case 'rainy-day':
+          activateRainyDay();
+          break;
+        default: {
+          const filter = QUICK_FILTERS.find((f) => f.id === id);
+          if (filter && 'categorySlug' in filter) {
+            activateCategoryChip(filter.categorySlug);
+          }
+        }
+      }
+    },
+    [filters.openNow, resetFilters, setFilters, activateFreeFilter, activateRainyDay, activateCategoryChip],
+  );
+
+  // ─── Suggestion chips ──────────────────────────────────────────────────────
+  // Each suggestion triggers a REAL filter action, not just a setQuery call.
+  const SUGGESTIONS = useMemo(
+    () => [
+      { label: 'Soft play', action: () => activateCategoryChip('soft-play') },
+      { label: 'Rainy day', action: () => activateRainyDay()                },
+      { label: 'Free',      action: () => activateFreeFilter()               },
+      { label: 'Parks',     action: () => activateCategoryChip('park')       },
+      { label: 'Libraries', action: () => activateCategoryChip('library')    },
+    ],
+    [activateCategoryChip, activateRainyDay, activateFreeFilter],
+  );
+
+  // ── Display venues pipeline ────────────────────────────────────────────────
   const displayedVenues: Venue[] = useMemo(() => {
-    const base = isSearchActive
+    // Step 1: pick base list (search results or nearby).
+    let base: Venue[] = isSearchActive
       ? applyFiltersToResults(searchResults, filters)
       : (recentVenues as Venue[]);
-    return applyQuickFilter(base);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSearchActive, searchResults, recentVenues, filters, quickFilter]);
 
-  // Navigation handler — takes an id string so it remains stable across renders.
-  // renderItem still creates an inline closure `() => handleVenuePress(item.id)`
-  // which gives VenueCard a new onPress reference on each parent render. Because
-  // the parent only re-renders after the 300ms debounce resolves (not per keystroke)
-  // and the list is capped at 30 rows, this is an acceptable tradeoff. If the list
-  // grows significantly, extract a memoised VenueCardRow wrapper that closes over
-  // the id and passes a stable onPress to VenueCard.
+    // Step 2: apply rainy-day client-side post-filter if active.
+    if (isRainyDay) {
+      base = applyRainyDayFilter(base);
+    }
+
+    return base;
+  }, [isSearchActive, searchResults, recentVenues, filters, isRainyDay]);
+
+  // ── Active filter presence (for empty state and clear button) ─────────────
+  const hasActiveFilters =
+    isRainyDay ||
+    filters.openNow ||
+    filters.priceRange.length > 0 ||
+    filters.categoryIds.length > 0;
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
   const handleVenuePress = useCallback((id: string) => {
     router.push(`/venue/${id}`);
   }, []);
 
-  // Derived border colour for the search input — ink when active, muted line when idle.
+  // ── Search input border ────────────────────────────────────────────────────
   const searchBorderColor = inputFocused || query.length > 0 ? pp.ink : pp.line;
+
+  // ── Empty-state message ────────────────────────────────────────────────────
+  const filterDescription = hasActiveFilters
+    ? describeActiveFilters(
+        filters,
+        isRainyDay,
+        dbCategories as { id: string; slug: string; name: string }[],
+      )
+    : null;
 
   return (
     <SafeAreaView className="flex-1 bg-pp-sand" edges={['top']}>
@@ -237,7 +370,6 @@ export default function SearchScreen() {
               fontFamily: 'Nunito-SemiBold',
               fontSize: 14,
               color: pp.ink,
-              // Remove default padding that React Native adds on Android.
               padding: 0,
             }}
             placeholder="Search venues, postcodes, tags…"
@@ -247,8 +379,6 @@ export default function SearchScreen() {
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
             autoCorrect={false}
-            // Prevents capitalising the first letter, which would break search
-            // for things like "softplay" typed as "Softplay".
             autoCapitalize="none"
             returnKeyType="search"
             accessibilityLabel="Search for venues"
@@ -265,7 +395,7 @@ export default function SearchScreen() {
           )}
         </View>
 
-        {/* Postcode shortcut — shown when the query looks like a UK postcode */}
+        {/* Postcode shortcut */}
         {looksLikePostcode && (
           <TouchableOpacity
             onPress={handleExploreOnMap}
@@ -299,24 +429,23 @@ export default function SearchScreen() {
       </View>
 
       {/* ── Quick filter chips ───────────────────────────────────── */}
-      {/* TODO: wire quick filters to search logic in Phase 4. */}
       <View style={{ height: 52 }}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingBottom: 16 }}
-      >
-        {QUICK_FILTERS.map((f) => (
-          <Chip
-            key={f.id}
-            active={quickFilter === f.id}
-            color={pp.sky}
-            onPress={() => setQuickFilter(f.id)}
-          >
-            {f.label}
-          </Chip>
-        ))}
-      </ScrollView>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingBottom: 16 }}
+        >
+          {QUICK_FILTERS.map((f) => (
+            <Chip
+              key={f.id}
+              active={isChipActive(f.id)}
+              color={pp.sky}
+              onPress={() => handleChipPress(f.id)}
+            >
+              {f.label}
+            </Chip>
+          ))}
+        </ScrollView>
       </View>
 
       {/* ── Empty state (query < 2 chars) ────────────────────────── */}
@@ -325,7 +454,7 @@ export default function SearchScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 24 }}
         >
-          {/* Try searching — suggestion chips */}
+          {/* Try searching — suggestion chips (each triggers a real filter) */}
           <View style={{ paddingHorizontal: 20 }}>
             <Text
               style={{
@@ -340,8 +469,8 @@ export default function SearchScreen() {
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {SUGGESTIONS.map((s) => (
                 <TouchableOpacity
-                  key={s}
-                  onPress={() => setQuery(s)}
+                  key={s.label}
+                  onPress={s.action}
                   style={{
                     backgroundColor: pp.skyWash,
                     borderWidth: 1,
@@ -351,7 +480,7 @@ export default function SearchScreen() {
                     paddingVertical: 9,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Search for ${s}`}
+                  accessibilityLabel={`Filter by ${s.label}`}
                 >
                   <Text
                     style={{
@@ -360,14 +489,14 @@ export default function SearchScreen() {
                       color: pp.skyDeep,
                     }}
                   >
-                    {s}
+                    {s.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
 
-          {/* Results header when idle (showing popular venues below) */}
+          {/* Results header when idle */}
           <View
             style={{
               paddingHorizontal: 20,
@@ -379,7 +508,7 @@ export default function SearchScreen() {
             }}
           >
             <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 14, color: pp.ink }}>
-              Popular venues
+              Nearby venues
             </Text>
             <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 12, color: pp.mute }}>
               Sort: Nearest
@@ -391,34 +520,67 @@ export default function SearchScreen() {
             <View style={{ alignItems: 'center', paddingVertical: 24 }}>
               <ActivityIndicator color={pp.sky} size="large" />
             </View>
-          ) : recentVenues.length === 0 ? (
+          ) : displayedVenues.length === 0 ? (
             <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
-              <Text
-                style={{
-                  fontFamily: 'Nunito-Bold',
-                  fontSize: 16,
-                  color: pp.ink,
-                  textAlign: 'center',
-                  marginBottom: 8,
-                }}
-              >
-                No venues available
-              </Text>
-              <Text
-                style={{
-                  fontFamily: 'Nunito-Regular',
-                  fontSize: 14,
-                  color: pp.mute,
-                  textAlign: 'center',
-                }}
-              >
-                Check back soon — new venues are added regularly.
-              </Text>
+              {hasActiveFilters ? (
+                <>
+                  <Text
+                    style={{
+                      fontFamily: 'Nunito-Bold',
+                      fontSize: 16,
+                      color: pp.ink,
+                      textAlign: 'center',
+                      marginBottom: 8,
+                    }}
+                  >
+                    No {filterDescription} venues found nearby.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => { resetFilters(); setIsRainyDay(false); }}
+                    style={{
+                      backgroundColor: pp.sky,
+                      borderRadius: 9999,
+                      paddingHorizontal: 20,
+                      paddingVertical: 10,
+                      marginTop: 4,
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear all filters"
+                  >
+                    <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.paper }}>
+                      Clear filters
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text
+                    style={{
+                      fontFamily: 'Nunito-Bold',
+                      fontSize: 16,
+                      color: pp.ink,
+                      textAlign: 'center',
+                      marginBottom: 8,
+                    }}
+                  >
+                    No venues available
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: 'Nunito-Regular',
+                      fontSize: 14,
+                      color: pp.mute,
+                      textAlign: 'center',
+                    }}
+                  >
+                    Check back soon — new venues are added regularly.
+                  </Text>
+                </>
+              )}
             </View>
           ) : (
             <View style={{ paddingHorizontal: 20, gap: 12, paddingTop: 4 }}>
-              {(recentVenues as Venue[]).map((item) => (
-                // TODO: wire saved state from useFavourites hook in Phase 4.
+              {displayedVenues.map((item) => (
                 <VenueCard
                   key={item.id}
                   venue={item}
@@ -462,39 +624,68 @@ export default function SearchScreen() {
               data={displayedVenues}
               keyExtractor={(item) => item.id}
               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24, gap: 12 }}
-              // removeClippedSubviews: unmounts list items that scroll off-screen,
-              // reducing memory use and preventing janky scrolling on long lists.
               removeClippedSubviews
-              // Improves scroll performance on long lists — the card height is fixed.
-              // If card heights ever become variable (e.g. multi-line names), remove this.
               getItemLayout={(_data, index) => ({ length: 86, offset: 86 * index + 12 * index, index })}
               ListEmptyComponent={
                 <View style={{ alignItems: 'center', paddingTop: 80 }}>
-                  <Text
-                    style={{
-                      fontFamily: 'Nunito-Bold',
-                      fontSize: 16,
-                      color: pp.ink,
-                      textAlign: 'center',
-                      marginBottom: 8,
-                    }}
-                  >
-                    No venues found
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'Nunito-Regular',
-                      fontSize: 14,
-                      color: pp.mute,
-                      textAlign: 'center',
-                    }}
-                  >
-                    Try a different search term or remove some filters.
-                  </Text>
+                  {hasActiveFilters ? (
+                    <>
+                      <Text
+                        style={{
+                          fontFamily: 'Nunito-Bold',
+                          fontSize: 16,
+                          color: pp.ink,
+                          textAlign: 'center',
+                          marginBottom: 8,
+                        }}
+                      >
+                        No {filterDescription} venues found for "{debouncedQuery}".
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => { resetFilters(); setIsRainyDay(false); }}
+                        style={{
+                          backgroundColor: pp.sky,
+                          borderRadius: 9999,
+                          paddingHorizontal: 20,
+                          paddingVertical: 10,
+                          marginTop: 4,
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Clear all filters"
+                      >
+                        <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.paper }}>
+                          Clear filters
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <Text
+                        style={{
+                          fontFamily: 'Nunito-Bold',
+                          fontSize: 16,
+                          color: pp.ink,
+                          textAlign: 'center',
+                          marginBottom: 8,
+                        }}
+                      >
+                        No venues found
+                      </Text>
+                      <Text
+                        style={{
+                          fontFamily: 'Nunito-Regular',
+                          fontSize: 14,
+                          color: pp.mute,
+                          textAlign: 'center',
+                        }}
+                      >
+                        Try a different search term or remove some filters.
+                      </Text>
+                    </>
+                  )}
                 </View>
               }
               renderItem={({ item }: { item: Venue }) => (
-                // TODO: wire saved state from useFavourites hook in Phase 4.
                 <VenueCard
                   venue={item}
                   saved={false}
@@ -506,7 +697,7 @@ export default function SearchScreen() {
         </>
       )}
 
-      {/* FilterSheet modal — same pattern as the Explore tab */}
+      {/* FilterSheet modal */}
       <FilterSheet
         visible={filterSheetVisible}
         onClose={handleFilterSheetClose}

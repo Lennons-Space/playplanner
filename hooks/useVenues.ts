@@ -206,7 +206,7 @@ export function useVenueSearch(query: string, coords: Coordinates) {
           is_verified, is_premium,
           min_age, max_age, price_range,
           latitude, longitude,
-          category:categories(id, name, icon, color),
+          category:categories(id, name, slug, icon, color),
           photos:venue_photos(url, is_cover, status),
           opening_hours(id, day_of_week, opens_at, closes_at, is_closed)
         `)

@@ -22,29 +22,10 @@ import React from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 import type { Venue } from '../../types';
 import { getCategoryMeta } from '../../constants/categories';
+import { computeIsOpenNow } from '../../lib/venueAttributes';
 import { CategoryPlaceholder } from './CategoryPlaceholder';
 import { Icon } from './Icon';
 import { Stars } from './Stars';
-
-// ── Open-now helper ────────────────────────────────────────────────
-// The Venue type does not include a computed `openNow` boolean.
-// We derive it from `opening_hours` if present, otherwise show nothing.
-// This keeps the component self-contained without adding a new DB call.
-function isOpenNow(venue: Venue): boolean | null {
-  if (!venue.opening_hours || venue.opening_hours.length === 0) return null;
-  const now = new Date();
-  // 0 = Sunday in JS — same as the DB convention.
-  const todayRow = venue.opening_hours.find((h) => h.day_of_week === now.getDay());
-  if (!todayRow || todayRow.is_closed || !todayRow.opens_at || !todayRow.closes_at) return null;
-
-  // Convert "HH:MM" strings to minutes-since-midnight for simple comparison.
-  const toMins = (t: string) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-  return nowMins >= toMins(todayRow.opens_at) && nowMins < toMins(todayRow.closes_at);
-}
 
 // ── Distance formatter ─────────────────────────────────────────────
 function formatDistance(km: number | undefined): string | null {
@@ -85,7 +66,7 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
   const categorySlug = venue.category?.slug ?? null;
   const meta = getCategoryMeta(categorySlug);
 
-  const openStatus = isOpenNow(venue);
+  const openStatus = computeIsOpenNow(venue);
   const distanceText = formatDistance(venue.distance_km);
   const featured = isFeatured(venue);
 
