@@ -312,11 +312,11 @@ describe('Search screen — Rainy day chip', () => {
     const { getByTestId } = await renderSearch();
     // Chip starts inactive; pressing it should toggle rainy-day mode on.
     await act(async () => {
-      fireEvent.press(getByTestId('chip-Rainy day'));
+      fireEvent.press(getByTestId('chip-☔ Rainy day ideas'));
     });
     // The chip should now be active (selected).
     await waitFor(() => {
-      const chip = getByTestId('chip-Rainy day');
+      const chip = getByTestId('chip-☔ Rainy day ideas');
       expect(chip.props.accessibilityState?.selected).toBe(true);
     });
   });
@@ -331,7 +331,7 @@ describe('Search screen — Rainy day chip', () => {
     const { getByTestId } = await renderSearch();
 
     await act(async () => {
-      fireEvent.press(getByTestId('chip-Rainy day'));
+      fireEvent.press(getByTestId('chip-☔ Rainy day ideas'));
     });
 
     await waitFor(() => {
@@ -349,7 +349,7 @@ describe('Search screen — Rainy day chip', () => {
     const { getByTestId, queryByTestId } = await renderSearch();
 
     await act(async () => {
-      fireEvent.press(getByTestId('chip-Rainy day'));
+      fireEvent.press(getByTestId('chip-☔ Rainy day ideas'));
     });
 
     await waitFor(() => {
@@ -367,7 +367,7 @@ describe('Search screen — Rainy day chip', () => {
     const { getByTestId, queryByTestId } = await renderSearch();
 
     await act(async () => {
-      fireEvent.press(getByTestId('chip-Rainy day'));
+      fireEvent.press(getByTestId('chip-☔ Rainy day ideas'));
     });
 
     await waitFor(() => {
@@ -385,7 +385,7 @@ describe('Search screen — Rainy day chip', () => {
     const { getByTestId, queryByTestId } = await renderSearch();
 
     await act(async () => {
-      fireEvent.press(getByTestId('chip-Rainy day'));
+      fireEvent.press(getByTestId('chip-☔ Rainy day ideas'));
     });
 
     await waitFor(() => {

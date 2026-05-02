@@ -111,7 +111,7 @@ const QUICK_FILTERS = [
   { id: 'all',         label: 'All' },
   { id: 'open-now',    label: 'Open now' },
   { id: 'free',        label: 'Free' },
-  { id: 'rainy-day',   label: 'Rainy day' },
+  { id: 'rainy-day',   label: '☔ Rainy day ideas' },
   { id: 'soft-play',   label: 'Soft play',   categorySlug: 'soft-play'   },
   { id: 'parks',       label: 'Parks',        categorySlug: 'park'        },
   { id: 'indoor-play', label: 'Indoor play',  categorySlug: 'indoor-play' },
@@ -122,26 +122,67 @@ const QUICK_FILTERS = [
 
 type QuickFilterId = (typeof QUICK_FILTERS)[number]['id'];
 
-// ─── Active filter description helper ────────────────────────────────────────
-// Builds a short human-readable string for the empty-state message.
-function describeActiveFilters(
+// ─── Filter feedback helpers ──────────────────────────────────────────────────
+
+interface EmptyStateContent {
+  title: string;
+  subtitle: string;
+}
+
+// Short label shown above results: "Showing: Rainy day venues"
+function getFilterLabel(
   filters: VenueFilters,
   isRainyDay: boolean,
   categories: { id: string; slug: string; name: string }[],
-): string {
-  const parts: string[] = [];
-
-  if (filters.priceRange.includes('free')) parts.push('free');
-  if (isRainyDay) return 'rainy day';  // rainy day is mutually exclusive with category chips
-
+): string | null {
+  if (isRainyDay) return 'Showing: Rainy day ideas';
+  if (filters.priceRange.includes('free') && filters.openNow) return 'Showing: Free venues · Open now';
+  if (filters.priceRange.includes('free')) return 'Showing: Free venues (confirmed only)';
+  if (filters.openNow && filters.categoryIds.length) {
+    const cat = categories.find((c) => filters.categoryIds.includes(c.id));
+    return cat ? `Showing: ${cat.name} · Open now` : 'Showing: Open now';
+  }
+  if (filters.openNow) return 'Showing: Open now';
   if (filters.categoryIds.length) {
     const cat = categories.find((c) => filters.categoryIds.includes(c.id));
-    if (cat) parts.push(cat.name.toLowerCase());
+    return cat ? `Showing: ${cat.name} near you` : null;
   }
+  return null;
+}
 
-  if (filters.openNow) parts.push('open');
-
-  return parts.length ? parts.join(' ') : 'matching';
+// Contextual empty-state copy — specific per filter type so parents understand why.
+function getEmptyStateContent(
+  filters: VenueFilters,
+  isRainyDay: boolean,
+): EmptyStateContent {
+  if (isRainyDay) {
+    return {
+      title: 'No indoor venues found nearby.',
+      subtitle: 'Try expanding your search area or clearing the filter.',
+    };
+  }
+  if (filters.priceRange.includes('free')) {
+    return {
+      title: 'No free venues found nearby.',
+      subtitle: "Many places don't list pricing yet. Try removing the Free filter.",
+    };
+  }
+  if (filters.openNow) {
+    return {
+      title: 'No venues currently open nearby.',
+      subtitle: 'Opening hours are not available for many places yet.',
+    };
+  }
+  if (filters.categoryIds.length) {
+    return {
+      title: 'No venues found for this category nearby.',
+      subtitle: 'Try a different category or expand your search area.',
+    };
+  }
+  return {
+    title: 'No venues found.',
+    subtitle: 'Try removing some filters or checking back soon.',
+  };
 }
 
 // ─── SearchScreen ─────────────────────────────────────────────────────────────
@@ -323,14 +364,17 @@ export default function SearchScreen() {
   // ── Search input border ────────────────────────────────────────────────────
   const searchBorderColor = inputFocused || query.length > 0 ? pp.ink : pp.line;
 
-  // ── Empty-state message ────────────────────────────────────────────────────
-  const filterDescription = hasActiveFilters
-    ? describeActiveFilters(
-        filters,
-        isRainyDay,
-        dbCategories as { id: string; slug: string; name: string }[],
-      )
+  // ── Filter feedback ────────────────────────────────────────────────────────
+  const filterLabel = hasActiveFilters
+    ? getFilterLabel(filters, isRainyDay, dbCategories as { id: string; slug: string; name: string }[])
     : null;
+  const emptyStateContent = getEmptyStateContent(filters, isRainyDay);
+
+  // ── Onboarding hint ────────────────────────────────────────────────────────
+  // Session-only: shown on first load, dismissed by tap. No persistence needed —
+  // it reappears next session which is fine; it's a hint not a blocking modal.
+  const [hintDismissed, setHintDismissed] = useState(false);
+  const showHint = !hintDismissed && !hasActiveFilters && !isSearchActive;
 
   return (
     <SafeAreaView className="flex-1 bg-pp-sand" edges={['top']}>
@@ -445,8 +489,42 @@ export default function SearchScreen() {
               {f.label}
             </Chip>
           ))}
+          {/* Clear button — visible in the chip row whenever filters are active */}
+          {hasActiveFilters && (
+            <Pressable
+              onPress={() => { resetFilters(); setIsRainyDay(false); }}
+              hitSlop={8}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 9999,
+                borderWidth: 1,
+                borderColor: '#FF6B6B',
+                backgroundColor: '#FFF0F0',
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Remove active filters"
+            >
+              <Icon name="close" size={12} color="#FF6B6B" />
+              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: '#FF6B6B' }}>
+                Clear
+              </Text>
+            </Pressable>
+          )}
         </ScrollView>
       </View>
+
+      {/* ── Filter feedback label ─────────────────────────────────── */}
+      {filterLabel != null && (
+        <View style={{ paddingHorizontal: 20, paddingBottom: 8 }}>
+          <Text style={{ fontFamily: 'Nunito-SemiBold', fontSize: 12, color: pp.skyDeep }}>
+            {filterLabel}
+          </Text>
+        </View>
+      )}
 
       {/* ── Empty state (query < 2 chars) ────────────────────────── */}
       {!isSearchActive && (
@@ -454,6 +532,34 @@ export default function SearchScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 24 }}
         >
+          {/* Onboarding hint — session-only, dismissible by tap */}
+          {showHint && (
+            <Pressable
+              onPress={() => setHintDismissed(true)}
+              style={{
+                marginHorizontal: 20,
+                marginBottom: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                backgroundColor: pp.skyWash,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: pp.skySoft,
+                paddingHorizontal: 14,
+                paddingVertical: 11,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss tip"
+            >
+              <Text style={{ fontSize: 18 }}>💡</Text>
+              <Text style={{ flex: 1, fontFamily: 'Nunito-SemiBold', fontSize: 13, color: pp.skyDeep, lineHeight: 18 }}>
+                Use filters to find free places, indoor activities, and more.
+              </Text>
+              <Icon name="close" size={14} color={pp.mute} />
+            </Pressable>
+          )}
+
           {/* Try searching — suggestion chips (each triggers a real filter) */}
           <View style={{ paddingHorizontal: 20 }}>
             <Text
@@ -524,55 +630,27 @@ export default function SearchScreen() {
             <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
               {hasActiveFilters ? (
                 <>
-                  <Text
-                    style={{
-                      fontFamily: 'Nunito-Bold',
-                      fontSize: 16,
-                      color: pp.ink,
-                      textAlign: 'center',
-                      marginBottom: 8,
-                    }}
-                  >
-                    No {filterDescription} venues found nearby.
+                  <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 6 }}>
+                    {emptyStateContent.title}
+                  </Text>
+                  <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center', marginBottom: 16 }}>
+                    {emptyStateContent.subtitle}
                   </Text>
                   <TouchableOpacity
                     onPress={() => { resetFilters(); setIsRainyDay(false); }}
-                    style={{
-                      backgroundColor: pp.sky,
-                      borderRadius: 9999,
-                      paddingHorizontal: 20,
-                      paddingVertical: 10,
-                      marginTop: 4,
-                    }}
+                    style={{ backgroundColor: pp.sky, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
                     accessibilityRole="button"
                     accessibilityLabel="Clear all filters"
                   >
-                    <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.paper }}>
-                      Clear filters
-                    </Text>
+                    <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.paper }}>Clear filters</Text>
                   </TouchableOpacity>
                 </>
               ) : (
                 <>
-                  <Text
-                    style={{
-                      fontFamily: 'Nunito-Bold',
-                      fontSize: 16,
-                      color: pp.ink,
-                      textAlign: 'center',
-                      marginBottom: 8,
-                    }}
-                  >
+                  <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 8 }}>
                     No venues available
                   </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'Nunito-Regular',
-                      fontSize: 14,
-                      color: pp.mute,
-                      textAlign: 'center',
-                    }}
-                  >
+                  <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center' }}>
                     Check back soon — new venues are added regularly.
                   </Text>
                 </>
@@ -627,59 +705,31 @@ export default function SearchScreen() {
               removeClippedSubviews
               getItemLayout={(_data, index) => ({ length: 86, offset: 86 * index + 12 * index, index })}
               ListEmptyComponent={
-                <View style={{ alignItems: 'center', paddingTop: 80 }}>
+                <View style={{ alignItems: 'center', paddingTop: 80, paddingHorizontal: 20 }}>
                   {hasActiveFilters ? (
                     <>
-                      <Text
-                        style={{
-                          fontFamily: 'Nunito-Bold',
-                          fontSize: 16,
-                          color: pp.ink,
-                          textAlign: 'center',
-                          marginBottom: 8,
-                        }}
-                      >
-                        No {filterDescription} venues found for "{debouncedQuery}".
+                      <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 6 }}>
+                        {emptyStateContent.title}
+                      </Text>
+                      <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center', marginBottom: 16 }}>
+                        {emptyStateContent.subtitle}
                       </Text>
                       <TouchableOpacity
                         onPress={() => { resetFilters(); setIsRainyDay(false); }}
-                        style={{
-                          backgroundColor: pp.sky,
-                          borderRadius: 9999,
-                          paddingHorizontal: 20,
-                          paddingVertical: 10,
-                          marginTop: 4,
-                        }}
+                        style={{ backgroundColor: pp.sky, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
                         accessibilityRole="button"
                         accessibilityLabel="Clear all filters"
                       >
-                        <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.paper }}>
-                          Clear filters
-                        </Text>
+                        <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.paper }}>Clear filters</Text>
                       </TouchableOpacity>
                     </>
                   ) : (
                     <>
-                      <Text
-                        style={{
-                          fontFamily: 'Nunito-Bold',
-                          fontSize: 16,
-                          color: pp.ink,
-                          textAlign: 'center',
-                          marginBottom: 8,
-                        }}
-                      >
-                        No venues found
+                      <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 8 }}>
+                        No venues found for "{debouncedQuery}"
                       </Text>
-                      <Text
-                        style={{
-                          fontFamily: 'Nunito-Regular',
-                          fontSize: 14,
-                          color: pp.mute,
-                          textAlign: 'center',
-                        }}
-                      >
-                        Try a different search term or remove some filters.
+                      <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center' }}>
+                        Try different words, a postcode, or check the spelling.
                       </Text>
                     </>
                   )}
