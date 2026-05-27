@@ -3,8 +3,7 @@
  * Three-step review flow for parents rating a UK children's venue.
  *
  * Privacy notes:
- * - We collect: rating, optional tags, body text. Visit date is NOT shown in
- *   the main flow UI but validateVisitDate is kept for potential future use.
+ * - We collect: rating, optional tags, body text.
  * - Review body and tags are NEVER logged — they may contain personal information
  *   the parent has written about their children or family.
  * - Anonymous toggle: hides the display name on the review card. Children's
@@ -63,9 +62,6 @@ const PP = {
 const BODY_MIN  = 10;
 const BODY_MAX  = 500;   // data minimisation + easier moderation
 
-// Regex for YYYY-MM-DD format — kept for potential future use
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
 const TAG_LIST = [
   { id: 'pram-friendly',   label: 'Pram friendly' },
   { id: 'clean-toilets',   label: 'Clean toilets' },
@@ -106,37 +102,6 @@ interface ReviewFormProps {
   venueSubmittedBy?: string | null;
   /** Called after the success step's "Back to venue" button is pressed. */
   onSuccess: () => void;
-}
-
-// ---------------------------------------------------------------------------
-// Validation helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Returns an error string if visitDate is provided but invalid/in the future.
- * Returns null if the value is empty (field is optional) or valid.
- * Kept here even though the field is not shown in the current UI so that
- * any future caller has a validated helper ready.
- */
-function validateVisitDate(value: string): string | null {
-  if (!value.trim()) return null;
-
-  if (!DATE_REGEX.test(value.trim())) {
-    return 'Please use the format YYYY-MM-DD (e.g. 2026-03-15)';
-  }
-
-  const parsed = new Date(value.trim());
-  if (isNaN(parsed.getTime())) {
-    return 'That does not look like a valid date';
-  }
-
-  const today = new Date();
-  today.setHours(23, 59, 59, 999);
-  if (parsed > today) {
-    return 'Visit date cannot be in the future';
-  }
-
-  return null;
 }
 
 // ---------------------------------------------------------------------------

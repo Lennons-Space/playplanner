@@ -32,17 +32,6 @@ const C = {
 } as const;
 
 export default function WelcomeScreen() {
-
-  // ── TODO: Google OAuth via Supabase ──────────────────────────────────────
-  // When OAuth is ready, uncomment and wire up this handler + button below.
-  //
-  // import { supabase } from '@/lib/supabase';
-  // async function handleGoogleSignIn() {
-  //   const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
-  //   if (error) console.error('Google sign-in error:', error.message);
-  // }
-  // ──────────────────────────────────────────────────────────────────────────
-
   return (
     <SafeAreaView style={styles.root}>
 

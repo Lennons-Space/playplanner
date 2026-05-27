@@ -31,11 +31,6 @@
  * 500ms debounce. Venue query re-fires on the new center as the user pans.
  *
  * LIST MODE: ClusterMapView fully unmounts to reclaim memory and battery.
- *
- * SAVE / UNSAVE: the new VenueCard supports an onToggleSave prop. A dedicated
- * useFavourite hook does not yet exist at the home screen level — save/unsave
- * is currently handled inline on the venue detail screen (app/venue/[id].tsx).
- * TODO: extract a useFavouriteToggle hook and wire it here in Phase 3.
  */
 
 import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
@@ -373,17 +368,10 @@ function MapScreen({
     };
   }, []);
 
-  // TODO (Phase 3): personalise the greeting with the user's first name by
-  // reading profile.full_name from the auth store. This requires adding an
-  // authStore mock to app/(tabs)/__tests__/index.test.tsx first, to avoid
-  // the test suite failing due to the supabase client throwing on missing env vars.
-  // For now the greeting is time-of-day only ("Good morning 👋").
-
   // Derive a display location label.
   // We avoid reverse-geocoding live coordinates — that would process location
   // data beyond what is needed (GDPR Art.5(1)(c) data minimisation).
   // The location label shown is the radius setting only, which is non-personal.
-  // TODO (Phase 3): allow the user to set a home area label in their profile.
   const locationLabel = useMemo(() => {
     if (trackLocation && locLoading) return null; // show "Getting location…" spinner state
     return null; // no postcode label without profile access in this phase
@@ -1206,7 +1194,6 @@ function MapScreen({
             {/* "See all" pill — bottom-right */}
             {/* Opens the full venue list (list mode). Label updated from "Full map"
                 which was misleading — this button switches to list view, not a map. */}
-            {/* TODO (Phase 3): navigate to a dedicated full-screen map route when built. */}
             <TouchableOpacity
               style={{
                 position: 'absolute', bottom: 12, right: 12,
@@ -1342,9 +1329,6 @@ function MapScreen({
                 venue={venue}
                 onPress={() => router.push(`/venue/${venue.id}`)}
                 weatherBadge={weatherBadgeMap.get(venue.id) ?? null}
-                // TODO (Phase 3): wire up save/unsave via a useFavouriteToggle hook.
-                // The hook does not yet exist at the home screen level — save/unsave
-                // is currently handled inline on app/venue/[id].tsx.
               />
             ))
           )}

@@ -116,7 +116,7 @@ export function useVenueReviews(venueId: string) {
         throw new Error('Could not load reviews. Please try again.');
       }
 
-      return (data ?? []) as unknown as Review[];
+      return (data ?? []) as Review[];
     },
     enabled: !!venueId,
     // Reviews are fetched on every venue-detail visit. Without staleTime React
@@ -182,9 +182,10 @@ export function useSubmitReview() {
 
   return useMutation({
     mutationFn: async (payload: SubmitReviewPayload) => {
-      // Re-read user inside mutationFn — the session may have expired between
-      // the button render and the tap (token revocation, sign-out on another device).
-      // Using user!.id from the outer closure would crash with a TypeError here.
+      // Guard against a null session — the user may have been signed out or
+      // their token revoked between when the form rendered and when they tapped
+      // submit. The Supabase insert would also fail server-side with an expired
+      // JWT, but failing early gives a clearer user-facing message.
       if (!user?.id) {
         throw new Error('Your session has expired. Please sign in again to submit a review.');
       }
@@ -369,7 +370,7 @@ export function usePublicProfileReviews(userId: string | undefined) {
         throw new Error('Could not load reviews.');
       }
 
-      return (data ?? []) as unknown as PublicReviewItem[];
+      return (data ?? []) as PublicReviewItem[];
     },
     enabled: !!userId,
     staleTime: 60_000,

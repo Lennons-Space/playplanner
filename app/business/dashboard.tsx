@@ -3,7 +3,7 @@
  * Shows analytics, lets them edit their venue, post offers, and upgrade plan.
  */
 import { useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -25,7 +25,7 @@ export default function BusinessDashboard() {
     }
   }, [user]);
 
-  const { data: claimedVenues = [] } = useQuery({
+  const { data: claimedVenues = [], isLoading, error } = useQuery({
     queryKey: ['claimed-venues', user?.id],
     queryFn: async () => {
       const { data } = await supabase
@@ -39,8 +39,31 @@ export default function BusinessDashboard() {
     enabled: !!user,
   });
 
-  // Render nothing while the redirect is in-flight for unauthenticated users.
   if (!user) return null;
+
+  if (isLoading) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate items-center justify-center" edges={['top']}>
+        <ActivityIndicator size="large" color="#4ECDC4" />
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate" edges={['top']}>
+        <View className="flex-row items-center gap-2 pt-4 pb-2 px-4">
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text className="text-sky">←</Text>
+          </TouchableOpacity>
+          <Text className="text-2xl font-extrabold text-charcoal">Business Dashboard</Text>
+        </View>
+        <Text className="text-coral text-center mt-16 px-4">
+          Could not load your venues. Please check your connection and try again.
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-slate" edges={['top']}>
@@ -79,7 +102,9 @@ export default function BusinessDashboard() {
                   <Text className="text-grey text-xs">Reviews</Text>
                 </View>
                 <View className="flex-1 bg-sandDark rounded-xl p-3 items-center">
-                  <Text className="text-2xl font-extrabold text-coral">★{venue.average_rating.toFixed(1)}</Text>
+                  <Text className="text-2xl font-extrabold text-coral">
+                    {venue.average_rating != null ? `★${venue.average_rating.toFixed(1)}` : '—'}
+                  </Text>
                   <Text className="text-grey text-xs">Rating</Text>
                 </View>
                 <View className="flex-1 bg-sandDark rounded-xl p-3 items-center">
@@ -89,22 +114,14 @@ export default function BusinessDashboard() {
               </View>
 
               {/* Actions */}
-              <View className="gap-2">
+              {!venue.is_premium && (
                 <TouchableOpacity
-                  className="bg-sky rounded-xl py-3 items-center"
-                  onPress={() => {/* TODO: edit venue */}}
+                  className="border-2 border-sun rounded-xl py-3 items-center"
+                  onPress={() => router.push('/business/upgrade')}
                 >
-                  <Text className="text-white font-bold">Edit listing</Text>
+                  <Text className="text-charcoal font-bold">⭐ Upgrade to Premium</Text>
                 </TouchableOpacity>
-                {!venue.is_premium && (
-                  <TouchableOpacity
-                    className="border-2 border-sun rounded-xl py-3 items-center"
-                    onPress={() => router.push('/business/upgrade')}
-                  >
-                    <Text className="text-charcoal font-bold">⭐ Upgrade to Premium</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              )}
             </View>
           ))
         )}

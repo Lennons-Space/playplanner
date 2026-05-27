@@ -416,8 +416,6 @@ Deno.serve(async (req: Request) => {
       // ----------------------------------------------------------------
       case 'customer.subscription.trial_will_end': {
         const subscription = event.data.object as Stripe.Subscription;
-        // TODO: trigger a push notification to the business owner
-        // reminding them their trial ends in 3 days.
         console.log(
           `[stripe-webhook] customer.subscription.trial_will_end: sub ${subscription.id} — notification hook (no DB change)`,
         );
