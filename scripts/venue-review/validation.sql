@@ -35,6 +35,29 @@ FROM venues;
 -- 'exclude' bucket (spam / adult / gambling / no-category / malformed).
 
 
+-- ── 1b. Shape-of-data sanity check ──────────────────────────────────────────
+-- Run this immediately after applying migration 044. It shows every combination
+-- of the three visibility flags so you can spot problems at a glance:
+--   • published venues unexpectedly hidden (is_published=true + discovery_approved=false)
+--   • moderation drift (moderation_status values you didn't expect)
+--   • weird count ratios between any of the three columns
+SELECT
+  discovery_approved,
+  moderation_status,
+  is_published,
+  count(*)
+FROM venues
+GROUP BY discovery_approved, moderation_status, is_published
+ORDER BY discovery_approved, moderation_status;
+-- EXPECT (normal distribution):
+--   discovery_approved=true  / approved  / true   → the bulk of live venues
+--   discovery_approved=false / approved  / true   → excluded but live (small number)
+--   Other combinations (draft, pending, not published) → fine, just smaller counts
+-- RED FLAG: a large count in discovery_approved=false + is_published=true + approved
+-- means the gate is hiding a significant chunk of your live, moderated venues —
+-- cross-reference with Q6 before proceeding.
+
+
 -- ── 2. Cross-tab: discovery_approved vs the review recommendation ────────────
 -- This is the integrity check — it must line up exactly with the backfill rule.
 SELECT
