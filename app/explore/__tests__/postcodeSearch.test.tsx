@@ -27,7 +27,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 import { supabase } from '@/lib/supabase';
-import ExploreScreen from '../index';
+import ExploreScreen from '../map';
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 // All jest.mock() calls are hoisted before imports by Jest's transform.

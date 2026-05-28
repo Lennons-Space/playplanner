@@ -1,0 +1,118 @@
+// ─────────────────────────────────────────────────────────────────
+// NearbyPreview — a short "good right now" teaser on the Home screen.
+//
+// IMPORTANT (privacy): this component calls useLocation(), which can
+// trigger the OS location prompt. It must therefore ONLY be mounted once
+// the user has GRANTED location consent (the Home screen guards this via
+// useLocationConsent). When consent is missing, Home renders a calm
+// prompt card instead — never this.
+//
+// It is a teaser, not a feed: at most three curated cards, then a clear
+// "See all" into the full decision flow.
+// ─────────────────────────────────────────────────────────────────
+
+import { useMemo } from 'react';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { useLocation } from '@/hooks/location';
+import { useWeather } from '@/hooks/useWeather';
+import { useNearbyVenues } from '@/hooks/useVenues';
+import { getWeatherBadge } from '@/lib/weather';
+import { curateVenues } from '@/lib/curation';
+import { VenueCard } from '@/components/ui';
+import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
+import { FALLBACK_LOCATION } from '@/constants/location';
+import { DEFAULT_FILTERS } from '@/types';
+import type { Venue } from '@/types';
+
+const C = {
+  ink: '#1D2630',
+  mute: '#7B8794',
+  skyDeep: '#1B8A85',
+} as const;
+
+export interface NearbyPreviewProps {
+  onSeeAll: () => void;
+  onVenuePress: (venue: Venue) => void;
+}
+
+export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
+  const { coords, isLoading: locLoading } = useLocation();
+
+  const ready = !!coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
+  const center = ready ? coords : FALLBACK_LOCATION;
+
+  const weather = useWeather(center.latitude, center.longitude);
+
+  const { data: venues = [], isLoading, error } = useNearbyVenues(
+    center,
+    DEFAULT_FILTERS,
+    !locLoading,
+  );
+
+  // Curate to the top 3 using context. 'auto' lets weather decide the lean.
+  const curated = useMemo(
+    () => curateVenues(venues, { weather, mood: 'auto' }, { limit: 3 }),
+    [venues, weather],
+  );
+
+  const header = (
+    <View
+      style={{
+        paddingHorizontal: 20,
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+      }}
+    >
+      <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 18, color: C.ink, letterSpacing: -0.3 }}>
+        Good right now
+      </Text>
+      <TouchableOpacity onPress={onSeeAll} accessibilityRole="button" accessibilityLabel="See all suggestions">
+        <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 13, color: C.skyDeep }}>See all</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  let body: React.ReactNode;
+  if (locLoading || isLoading) {
+    body = (
+      <View style={{ paddingHorizontal: 20, gap: 10 }}>
+        <VenueRowSkeleton />
+        <VenueRowSkeleton />
+      </View>
+    );
+  } else if (error) {
+    body = (
+      <Text style={{ paddingHorizontal: 20, fontFamily: 'Nunito-Regular', fontSize: 13, color: C.mute }}>
+        Couldn’t load nearby places. Pull to refresh, or tap “Find something for us”.
+      </Text>
+    );
+  } else if (curated.length === 0) {
+    body = (
+      <Text style={{ paddingHorizontal: 20, fontFamily: 'Nunito-Regular', fontSize: 13, color: C.mute }}>
+        Nothing close by right now — try “Find something for us” to widen the search.
+      </Text>
+    );
+  } else {
+    body = (
+      <View style={{ paddingHorizontal: 20, gap: 10 }}>
+        {curated.map(({ venue }) => (
+          <VenueCard
+            key={venue.id}
+            venue={venue}
+            onPress={() => onVenuePress(venue)}
+            weatherBadge={weather ? getWeatherBadge(venue.category?.slug, weather.condition) : null}
+          />
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      {header}
+      {body}
+    </View>
+  );
+}

@@ -32,7 +32,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // ─── Imports (after mocks) ───────────────────────────────────────────────────
 import * as SecureStore from 'expo-secure-store';
 import { useNearbyVenues } from '@/hooks/useVenues';
-import ExploreScreen from '../index';
+import ExploreScreen from '../map';
 import type { Venue } from '@/types';
 
 // ─── Module mocks ────────────────────────────────────────────────────────────
