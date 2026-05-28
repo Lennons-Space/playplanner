@@ -19,12 +19,13 @@ import React from 'react';
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase }            from '@/lib/supabase';
-import { useNearbyVenues }     from '../useVenues';
+import { useNearbyVenues, useVenue, useVenueSearch } from '../useVenues';
 import type { Coordinates, VenueFilters } from '@/types';
 
 jest.mock('@/lib/supabase', () => ({
   supabase: {
     rpc: jest.fn(),
+    from: jest.fn(),
   },
 }));
 
@@ -283,5 +284,112 @@ describe('VENUE_SELECT_BASE includes category slug', () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { VENUE_SELECT_BASE } = require('../useVenues');
     expect(VENUE_SELECT_BASE).toContain('slug');
+  });
+});
+
+// ======================================================================
+// discovery_approved gate (migrations 044 + 045)
+// ======================================================================
+// These tests lock the APP-LAYER contract: useVenue and useVenueSearch must add
+// `.eq('discovery_approved', true)` so review-excluded venues (spam / adult /
+// gambling / uncategorised / malformed) cannot surface in discovery.
+//
+// The actual ROW-level outcome (excluded rows absent, discovery_limited rows
+// present) is enforced by Postgres — discovery_limited venues carry
+// discovery_approved = true after the backfill, so they pass the same filter.
+// That DB behaviour is validated separately via scripts/venue-review/validation.sql
+// (queries 2, 4, 5), not simulated here.
+//
+// The get_nearby_venues RPC applies the filter inside SQL (migration 045), so its
+// JS call signature is unchanged — the existing "correct parameter names" test
+// above is the regression guard that map/home-feed callers don't break.
+
+const mockFrom = supabase.from as jest.MockedFunction<typeof supabase.from>;
+
+/**
+ * Build a chainable Supabase query-builder mock.
+ *  - select / eq / ilike / order return the builder so the chain continues
+ *  - single() and limit() are terminal and resolve to `result`
+ *  - every .eq(col, val) is recorded in `eqCalls` for assertions
+ */
+function makeQueryBuilder(result: { data: unknown; error: unknown }) {
+  const eqCalls: [string, unknown][] = [];
+  const builder: Record<string, jest.Mock> = {};
+  const chain = () => builder;
+  builder.select = jest.fn(chain);
+  builder.eq     = jest.fn((col: string, val: unknown) => { eqCalls.push([col, val]); return builder; });
+  builder.ilike  = jest.fn(chain);
+  builder.order  = jest.fn(chain);
+  builder.limit  = jest.fn(() => Promise.resolve(result));
+  builder.single = jest.fn(() => Promise.resolve(result));
+  return { builder, eqCalls };
+}
+
+describe('discovery_approved gate — useVenueSearch', () => {
+  it('filters search results to discovery_approved = true (excluded venues cannot appear)', async () => {
+    const { builder, eqCalls } = makeQueryBuilder({ data: [], error: null });
+    mockFrom.mockReturnValue(builder as never);
+
+    const { result } = renderHook(
+      () => useVenueSearch('soft play', LONDON),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockFrom).toHaveBeenCalledWith('venues');
+    // Discovery gate must sit alongside the existing safeguards, not replace them.
+    expect(eqCalls).toContainEqual(['discovery_approved', true]);
+    expect(eqCalls).toContainEqual(['is_published', true]);
+    expect(eqCalls).toContainEqual(['moderation_status', 'approved']);
+  });
+
+  it('still returns discovery_limited venues (they carry discovery_approved = true)', async () => {
+    // Smaller rural / niche venues are discovery_limited but discovery_approved = true,
+    // so the DB returns them through the filter and the hook must pass them through.
+    const limitedVenue = {
+      id: 'rural-1', name: 'Tiny Village Playground', city: 'Hayle', postcode: 'TR27',
+      average_rating: null, review_count: 0, is_verified: false, is_premium: false,
+      min_age: 0, max_age: 12, price_range: 'free',
+      latitude: 50.18, longitude: -5.42, category: null, photos: [],
+    };
+    const { builder } = makeQueryBuilder({ data: [limitedVenue], error: null });
+    mockFrom.mockReturnValue(builder as never);
+
+    const { result } = renderHook(
+      () => useVenueSearch('playground', LONDON),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(1);
+    expect(result.current.data![0].id).toBe('rural-1');
+  });
+});
+
+describe('discovery_approved gate — useVenue (detail)', () => {
+  it('applies discovery_approved = true to the detail query', async () => {
+    const venue = { id: 'v1', name: 'Adventure Play', average_rating: '4.5', photos: [] };
+    const { builder, eqCalls } = makeQueryBuilder({ data: venue, error: null });
+    mockFrom.mockReturnValue(builder as never);
+
+    const { result } = renderHook(() => useVenue('v1'), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(eqCalls).toContainEqual(['discovery_approved', true]);
+    expect(eqCalls).toContainEqual(['id', 'v1']);
+  });
+
+  it('surfaces an error gracefully when the venue is excluded from discovery', async () => {
+    // An excluded venue (discovery_approved = false) is filtered out, so .single()
+    // matches no row and Supabase returns a PGRST116 error. useVenue rethrows it;
+    // the detail screen renders "Venue not found." instead of crashing.
+    const noRow = { data: null, error: { code: 'PGRST116', message: 'no rows returned' } };
+    const { builder } = makeQueryBuilder(noRow);
+    mockFrom.mockReturnValue(builder as never);
+
+    const { result } = renderHook(() => useVenue('excluded-1'), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.data).toBeUndefined();
   });
 });

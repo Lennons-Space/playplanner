@@ -527,6 +527,48 @@ async function main() {
 
   console.log('\n');
 
+  // ── Propagate discovery_approved → venues table ───────────────────────────
+  // venue_review_scores holds the detailed "why". venues.discovery_approved is
+  // the fast boolean the app filters on. Keep them in sync here so the app
+  // immediately reflects re-scored venues (e.g. a venue that was excluded but
+  // now scores as approved is flipped back to visible).
+  //
+  // Mapping: discovery_recommendation === 'exclude' -> false, otherwise -> true.
+  // (discovery_approved + discovery_limited both stay visible.)
+  console.log('Propagating discovery_approved to venues...');
+
+  const approveIds = [];
+  const excludeIds = [];
+  for (const s of scored) {
+    if (s.discoveryRecommendation === 'exclude') excludeIds.push(s.venue.id);
+    else                                         approveIds.push(s.venue.id);
+  }
+
+  // Chunk IN lists to keep each PostgREST request URL within length limits.
+  const IN_CHUNK = 200;
+
+  async function setDiscoveryApproved(ids, value) {
+    let done = 0;
+    for (let i = 0; i < ids.length; i += IN_CHUNK) {
+      const chunk = ids.slice(i, i + IN_CHUNK);
+      const { error } = await supabase
+        .from('venues')
+        .update({ discovery_approved: value })
+        .in('id', chunk);
+      if (error) {
+        console.error(`\nFailed to set discovery_approved=${value}:`, error.message);
+        process.exit(1);
+      }
+      done += chunk.length;
+      process.stdout.write(`\r  discovery_approved=${value}: ${done}/${ids.length}`);
+    }
+    if (ids.length) process.stdout.write('\n');
+  }
+
+  await setDiscoveryApproved(excludeIds, false);
+  await setDiscoveryApproved(approveIds, true);
+  console.log(`  Done — ${approveIds.length} approved, ${excludeIds.length} excluded.\n`);
+
   // ── Summary ───────────────────────────────────────────────────────────────
   const modeCounts = { public_import: 0, business_submission: 0 };
   const discCounts = { discovery_approved: 0, discovery_limited: 0, exclude: 0 };

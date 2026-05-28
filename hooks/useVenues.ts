@@ -47,6 +47,10 @@ export function useVenue(id: string) {
         .eq('id', id)
         .eq('is_published', true)
         .eq('moderation_status', 'approved')
+        // Hide venues the venue-review system flagged as 'exclude' (spam,
+        // adult/gambling, no category). Defaults to true, so normal venues are
+        // unaffected — this is an additional gate on top of moderation_status.
+        .eq('discovery_approved', true)
         .single();
 
       if (error) throw error;
@@ -212,6 +216,9 @@ export function useVenueSearch(query: string, coords: Coordinates) {
         `)
         .eq('is_published', true)
         .eq('moderation_status', 'approved')
+        // Same discovery gate as useVenue / get_nearby_venues — keep search
+        // results consistent with what appears on the map and venue detail.
+        .eq('discovery_approved', true)
         .ilike('name', `%${escapeLikePattern(query)}%`)
         .limit(30);
 
