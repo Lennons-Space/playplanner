@@ -26,6 +26,7 @@ import {
 } from '@/constants/pricing';
 import { useSubscribe } from '@/hooks/useSubscribe';
 import { fetchPlanPriceIds, type PlanPriceIds } from '@/lib/stripe';
+import { PAYMENTS_ENABLED } from '@/constants/features';
 
 // ─── Feature list ────────────────────────────────────────────────────────────
 
@@ -126,9 +127,51 @@ function PlanCard({ tier, selected, onSelect }: PlanCardProps) {
   );
 }
 
-// ─── Screen ──────────────────────────────────────────────────────────────────
-
+// ─── Route entry ───────────────────────────────────────────────────────────
+// Payments are postponed until after launch validation. While disabled we show
+// an honest "Coming soon" screen instead of the live paywall — no checkout, no
+// edge-function calls, no dead buttons. The full paywall below is preserved and
+// returns automatically once EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY is set again.
 export default function UpgradeScreen() {
+  if (!PAYMENTS_ENABLED) return <ComingSoon />;
+  return <UpgradePaywall />;
+}
+
+// ─── Coming soon (payments disabled) ─────────────────────────────────────────
+function ComingSoon() {
+  return (
+    <SafeAreaView className="flex-1 bg-slate" edges={['top', 'bottom']}>
+      <View className="flex-1 px-6 items-center justify-center">
+        <View className="w-16 h-16 rounded-full bg-sky/15 items-center justify-center mb-5">
+          <Text className="text-3xl">✨</Text>
+        </View>
+        <Text className="text-xs font-bold text-sky tracking-widest uppercase mb-2">
+          PlayPlanner Pass
+        </Text>
+        <Text className="text-2xl font-extrabold text-charcoal text-center mb-3">
+          Premium is coming soon
+        </Text>
+        <Text className="text-grey text-sm text-center leading-relaxed mb-8">
+          We’re focused on getting the core experience right first. Premium listings
+          and featured placement will arrive after our beta — we’ll let you know the
+          moment they’re ready.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Back to dashboard"
+          className="bg-sky rounded-2xl px-8 py-3"
+        >
+          <Text className="text-white font-bold text-base">Back to dashboard</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// ─── Paywall (payments enabled) ──────────────────────────────────────────────
+
+function UpgradePaywall() {
   const [selectedTier, setSelectedTier] = useState<PlanTier>('annual');
   const { mutate: subscribe, isPending } = useSubscribe();
 

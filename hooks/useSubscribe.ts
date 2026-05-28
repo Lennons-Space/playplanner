@@ -37,6 +37,7 @@ import { useMutation } from '@tanstack/react-query'
 import * as WebBrowser from 'expo-web-browser'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { PAYMENTS_ENABLED } from '@/constants/features'
 
 interface SubscribeInput {
   tier: 'annual' | 'monthly'
@@ -48,6 +49,12 @@ export function useSubscribe() {
 
   return useMutation({
     mutationFn: async ({ tier }: SubscribeInput) => {
+      // Defence-in-depth: payments are postponed (constants/features.ts). The
+      // upgrade screen already shows "Coming soon" instead of calling this hook
+      // when disabled, but guard here too so checkout can never fire without a
+      // Stripe key configured.
+      if (!PAYMENTS_ENABLED) throw new Error('Payments are not available yet.')
+
       // Guard: user must be signed in before we attempt a checkout.
       // This should never fire in normal use (the upgrade screen is
       // gated behind auth) but acts as a safety net.

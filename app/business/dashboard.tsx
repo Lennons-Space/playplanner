@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
+import { PAYMENTS_ENABLED } from '@/constants/features';
 import type { Venue } from '@/types';
 
 export default function BusinessDashboard() {
@@ -119,7 +120,9 @@ export default function BusinessDashboard() {
                   className="border-2 border-sun rounded-xl py-3 items-center"
                   onPress={() => router.push('/business/upgrade')}
                 >
-                  <Text className="text-charcoal font-bold">⭐ Upgrade to Premium</Text>
+                  <Text className="text-charcoal font-bold">
+                    {PAYMENTS_ENABLED ? '⭐ Upgrade to Premium' : '⭐ Premium — coming soon'}
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>

@@ -166,12 +166,14 @@ describe('BusinessDashboard — authenticated, with venues', () => {
     });
   });
 
-  it('shows "Upgrade to Premium" only for non-premium venues', async () => {
+  it('shows the premium upgrade CTA only for non-premium venues', async () => {
     const { getAllByText } = render(<BusinessDashboard />, { wrapper: makeWrapper() });
 
     await waitFor(() => {
-      // Only one of the two venues is non-premium
-      const upgradeBtns = getAllByText(/upgrade to premium/i);
+      // Only one of the two venues is non-premium. The CTA wording depends on
+      // whether payments are enabled ("Upgrade to Premium" vs "Premium — coming
+      // soon"), so match the flag-agnostic "⭐ …Premium" pattern.
+      const upgradeBtns = getAllByText(/⭐ .*Premium/i);
       expect(upgradeBtns).toHaveLength(1);
     });
   });

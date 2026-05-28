@@ -1,7 +1,11 @@
 import { initStripe } from '@stripe/stripe-react-native';
 import { supabase } from '@/lib/supabase';
+import { PAYMENTS_ENABLED } from '@/constants/features';
 
 export async function setupStripe() {
+  // Payments postponed (constants/features.ts). Without a publishable key,
+  // initStripe would receive `undefined` and throw — so no-op when disabled.
+  if (!PAYMENTS_ENABLED) return;
   await initStripe({
     publishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
     merchantIdentifier: 'merchant.com.playplanner.app', // for Apple Pay

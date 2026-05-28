@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import { useFonts } from 'expo-font';
+import { PAYMENTS_ENABLED } from '@/constants/features';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import { useAuthListener, useProfileForegroundRefresh } from '@/hooks/useAuth';
@@ -87,18 +88,23 @@ export default function RootLayout() {
 
   if (!fontsLoaded) return null;
 
-  if (!process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY) {
-    throw new Error(
-      'Missing EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY — copy .env.example to .env and fill in your Stripe publishable key.'
-    );
-  }
+  // Payments are postponed until after launch validation (see constants/features.ts).
+  // When the Stripe key is absent (e.g. EAS preview / beta), we must NOT mount
+  // StripeProvider — initialising it without a publishable key throws and would
+  // crash the app on boot. We render the same tree without the provider instead;
+  // every payment CTA is guarded by PAYMENTS_ENABLED so nothing reaches Stripe.
+  const tree = <RootLayoutInner queryClient={queryClient} />;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
-        <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY}>
-          <RootLayoutInner queryClient={queryClient} />
-        </StripeProvider>
+        {PAYMENTS_ENABLED ? (
+          <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}>
+            {tree}
+          </StripeProvider>
+        ) : (
+          tree
+        )}
       </QueryClientProvider>
     </GestureHandlerRootView>
   );
