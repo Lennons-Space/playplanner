@@ -39,6 +39,7 @@
     "fuse.js": "^7.3.0",
     "nativewind": "^4.0.1",
     "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-google-places-autocomplete": "^2.5.6",
