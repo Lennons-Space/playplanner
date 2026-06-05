@@ -8,8 +8,10 @@
  *   - Hard filters (free, easy-parking, has-cafe, accessible) must NEVER pass
  *     when the relevant data field is null/missing.
  *   - Soft filters must NEVER exclude a venue solely because data is missing.
- *   - applyQuickFilters must return the full list when no venue matches
- *     (safety net — never blank the screen due to missing data coverage).
+ *   - Soft filters must never return an empty list — they sort matching venues
+ *     to the top but always return the full input.
+ *   - Hard filters return [] when nothing confirms the feature — callers render
+ *     a "no confirmed data" state rather than an unrelated list.
  */
 
 import {
@@ -541,9 +543,10 @@ describe('applyQuickFilters', () => {
     expect(result).toHaveLength(2);
   });
 
-  it('filters to only outdoors venues when "outdoors" selected', () => {
+  it('sorts outdoor venues first when "outdoors" selected (soft filter — never excludes)', () => {
+    // outdoors is a soft filter: all venues return, park surfaces first.
     const result = applyQuickFilters([parkVenue, softPlayVenue], ['outdoors']);
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(2);
     expect(result[0].id).toBe('park');
   });
 
@@ -560,11 +563,19 @@ describe('applyQuickFilters', () => {
     expect(result[0].id).toBe('free');
   });
 
-  it('safety net: returns all venues when nothing passes', () => {
-    // Accessible filter with no facilities — nothing passes.
+  it('hard filter returns empty array when no venues confirm the feature', () => {
+    // accessible is a hard filter — when nothing passes, return [] so the
+    // caller can render a "no confirmed data" state instead of unrelated venues.
     const result = applyQuickFilters([parkVenue, softPlayVenue], ['accessible']);
-    // Safety net: returns full list rather than empty screen.
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(0);
+  });
+
+  it('soft filter never returns empty — sorts matching venues first', () => {
+    // rainy-day is soft: even when no venue matches, all venues are still returned.
+    const outdoorOnlyVenue = makeVenue({ id: 'out', category: makeCategory('park') });
+    const result = applyQuickFilters([outdoorOnlyVenue], ['rainy-day']);
+    // park is outdoor so rainy-day fails, but soft filter still returns the venue.
+    expect(result).toHaveLength(1);
   });
 
   it('handles unknown filter IDs gracefully (skips them)', () => {

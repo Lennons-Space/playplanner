@@ -34,7 +34,7 @@ export const VENUE_SELECT_BASE = `
   category:categories(id, name, slug, icon, color),
   photos:venue_photos(id, url, is_cover, status, caption, sort_order),
   opening_hours(id, day_of_week, opens_at, closes_at, is_closed),
-  facilities:venue_facilities(facility:facilities(id, name, icon))
+  facilities:venue_facilities(facility:facilities(id, name, slug, icon))
 `;
 
 export function useVenue(id: string) {

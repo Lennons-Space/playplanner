@@ -24,10 +24,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLocation } from '@/hooks/location';
 import { useWeather } from '@/hooks/useWeather';
-import { useNearbyVenues } from '@/hooks/useVenues';
+import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { curateVenues, type Mood, type CuratedVenue } from '@/lib/curation';
-import { applyQuickFilters, type QuickFilterId } from '@/lib/quickFilters';
+import {
+  getQuickFilter,
+  HARD_FILTER_IDS,
+  type QuickFilter,
+  type QuickFilterId,
+} from '@/lib/quickFilters';
+import type { Category } from '@/types';
 import { LocationConsentPrompt } from '@/components/consent';
 import { VenueCard, Icon } from '@/components/ui';
 import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
@@ -87,7 +93,13 @@ function parseQuickFilters(raw: string | string[] | undefined): QuickFilterId[] 
 export default function ResultsScreen() {
   const params = useLocalSearchParams<{ mood?: string; quickFilters?: string }>();
   const mood = parseMood(params.mood);
-  const quickFilters = parseQuickFilters(params.quickFilters);
+  // Memoised so the array reference stays stable between renders.
+  // Without this, parseQuickFilters creates a new array every render and
+  // propagates a false dependency change into ResultsBody's useMemo.
+  const quickFilters = useMemo(
+    () => parseQuickFilters(params.quickFilters),
+    [params.quickFilters],
+  );
   const { status, grant, decline } = useLocationConsent();
 
   if (status === 'checking') {
@@ -156,13 +168,85 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
     refetch,
   } = useNearbyVenues(coords, filters, !locLoading);
 
+  // ── Category enrichment ──────────────────────────────────────────────────
+  // get_nearby_venues RPC returns `category_id` (UUID) but no `category` object.
+  // Quick filter tests and getVenueAttributes() both need `venue.category.slug`
+  // to match against indoor/outdoor/toddler slug sets. Without this enrichment,
+  // every category-based test fails silently and filters show 0 or wrong results.
+  const { data: categories = [] } = useCategories();
+  const categoryMap = useMemo<Record<string, Category>>(
+    () => Object.fromEntries(categories.map((c) => [c.id, c])),
+    [categories],
+  );
+  const enrichedVenues = useMemo(
+    () =>
+      venues.map((v) => ({
+        ...v,
+        // Only set category if the RPC didn't already include it (it never does,
+        // but guard with ?? so we don't accidentally overwrite detail-page data).
+        category: v.category ?? (v.category_id ? categoryMap[v.category_id] : undefined),
+      })),
+    [venues, categoryMap],
+  );
+
+  // ── Curated results with quick-filter support ────────────────────────────
+  //
+  // Hard filters (free, easy-parking, has-cafe, accessible) are strict promises:
+  //   apply them first. If nothing passes, return [] so we can show a helpful
+  //   "no confirmed data yet" message rather than unrelated venues.
+  //
+  // Soft filters (rainy-day, toddlers, burn-energy, etc.) are ranking hints:
+  //   curate a larger pool (20 instead of 6), then re-sort the pool by how
+  //   many soft filters each venue matches and take the top 6. This guarantees
+  //   results always appear — matching venues simply surface first.
   const curated = useMemo(() => {
-    // Apply quick filters first (client-side pre-filter), then curate.
-    // applyQuickFilters has a safety net: if nothing passes, it returns all
-    // venues rather than producing a blank screen.
-    const preFiltered = applyQuickFilters(venues, quickFilters);
-    return curateVenues(preFiltered, { weather: weather ?? null, mood }, { limit: 6 });
-  }, [venues, weather, mood, quickFilters]);
+    const hardFilterIds = quickFilters.filter((id) => HARD_FILTER_IDS.has(id));
+    const softFilterIds  = quickFilters.filter((id) => !HARD_FILTER_IDS.has(id));
+
+    // Hard filter pass 1: exclude venues that don't confirm the feature.
+    const hardCandidates =
+      hardFilterIds.length > 0
+        ? enrichedVenues.filter((v) =>
+            hardFilterIds.every((id) => {
+              const f = getQuickFilter(id);
+              return f ? f.test(v).passes : true;
+            }),
+          )
+        : enrichedVenues;
+
+    // If hard filters applied but zero venues confirmed → return [] so the
+    // "no confirmed data" empty state renders (not the generic empty state).
+    if (hardFilterIds.length > 0 && hardCandidates.length === 0) return [];
+
+    // Curate. Use a larger pool when soft filters will re-rank.
+    const pool = curateVenues(
+      hardCandidates,
+      { weather: weather ?? null, mood },
+      { limit: softFilterIds.length > 0 ? 20 : 6 },
+    );
+
+    if (softFilterIds.length === 0) return pool;
+
+    // Soft filter pass 2: boost matching venues to the top of the curated pool.
+    const softFilters = softFilterIds
+      .map((id) => getQuickFilter(id))
+      .filter((f): f is QuickFilter => f !== undefined);
+
+    return [...pool]
+      .map((item) => ({
+        item,
+        softScore: softFilters.filter((f) => f.test(item.venue).passes).length,
+      }))
+      .sort((a, b) => b.softScore - a.softScore)
+      .slice(0, 6)
+      .map((s) => s.item);
+  }, [enrichedVenues, weather, mood, quickFilters]);
+
+  // True only when a hard-promise filter was active and zero venues confirmed it.
+  // Used to show a specific "no confirmed data" message rather than the generic
+  // "nothing nearby" empty state, so parents understand they can try a different chip.
+  const hardFilterEmpty =
+    curated.length === 0 && quickFilters.some((id) => HARD_FILTER_IDS.has(id));
 
   const radiusMiles = Math.round(DEFAULT_FILTERS.maxDistanceKm * 0.621371);
 
@@ -236,6 +320,8 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
           </>
         ) : error ? (
           <ErrorState onRetry={() => refetch()} />
+        ) : hardFilterEmpty ? (
+          <HardFilterEmptyState onOpenMap={() => router.push('/explore/map')} />
         ) : curated.length === 0 ? (
           <EmptyState onOpenMap={() => router.push('/explore/map')} />
         ) : (
@@ -297,6 +383,32 @@ function RefineChip({ label, active, onPress }: { label: string; active: boolean
         {label}
       </Text>
     </Pressable>
+  );
+}
+
+// ─── HardFilterEmptyState ────────────────────────────────────────────
+// Shown when a hard-promise filter (Free Entry, Easy Parking, Has Cafe,
+// Accessible) matched zero venues — meaning we don't have confirmed data yet,
+// not that there are no nearby venues. A specific message prevents confusion.
+function HardFilterEmptyState({ onOpenMap }: { onOpenMap: () => void }) {
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
+      <Text style={{ fontSize: 40 }}>🔍</Text>
+      <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 16, color: C.ink, marginTop: 12, textAlign: 'center' }}>
+        We don't have enough data for this filter yet
+      </Text>
+      <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 13, color: C.mute, marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
+        Try another idea — we can't confirm this feature for venues near you right now.
+      </Text>
+      <TouchableOpacity
+        onPress={onOpenMap}
+        accessibilityRole="button"
+        accessibilityLabel="Open the map"
+        style={{ marginTop: 16, backgroundColor: C.skyDeep, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
+      >
+        <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: '#FFFFFF' }}>Explore the map</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 

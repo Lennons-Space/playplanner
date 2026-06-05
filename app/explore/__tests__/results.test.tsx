@@ -33,6 +33,8 @@ jest.mock('@/hooks/useWeather', () => ({
 const mockUseNearbyVenues = jest.fn();
 jest.mock('@/hooks/useVenues', () => ({
   useNearbyVenues: (...args: unknown[]) => mockUseNearbyVenues(...args),
+  // Return an empty category list so enrichedVenues works without erroring.
+  useCategories: jest.fn(() => ({ data: [], isLoading: false, error: null })),
 }));
 
 const mockParams = jest.fn(() => ({ mood: 'auto' }));

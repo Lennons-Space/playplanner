@@ -36,9 +36,16 @@ function norm(s: string): string {
 
 function hasFacility(venue: Venue, ...targets: string[]): boolean {
   if (!venue.facilities || venue.facilities.length === 0) return false;
-  return venue.facilities.some((f) => {
-    const s = norm(f.slug ?? '');
-    const n = (f.name ?? '').toLowerCase();
+  return venue.facilities.some((facilityRow) => {
+    // Supabase returns two possible shapes depending on the query:
+    //   Flat:   { id, name, slug, icon }           — direct facilities query
+    //   Nested: { facility: { id, name, slug, icon } } — via venue_facilities join
+    // Handle both so this function works regardless of which hook fetched the venue.
+    const obj =
+      (facilityRow as unknown as { facility?: Record<string, unknown> }).facility ??
+      (facilityRow as unknown as Record<string, unknown>);
+    const s = norm((obj.slug as string | undefined) ?? '');
+    const n = ((obj.name as string | undefined) ?? '').toLowerCase();
     return targets.some((t) => s.includes(norm(t)) || n.includes(t.toLowerCase()));
   });
 }
@@ -94,6 +101,27 @@ export interface FilterMatchResult {
   /** How confident we are in the match. */
   confidence: FilterConfidence;
 }
+
+// ── Hard vs soft filter classification ───────────────────────────────────────
+//
+// Hard filters are PROMISES to the parent:
+//   "Free Entry" must only show confirmed-free venues.
+//   "Easy Parking" must only show venues with confirmed parking data.
+// If we include a venue and it turns out to be wrong, that's a broken promise.
+// Hard filters exclude non-matching venues and return [] when nothing confirmed.
+//
+// Soft filters are HINTS:
+//   "Rainy Day" means "show me indoor options" — but if we only have parks nearby
+//   we should still show them, just at the bottom of the list.
+// Soft filters BOOST matching venues to the top without excluding anything.
+//
+// Exported for use in results.tsx when deciding which empty state to render.
+export const HARD_FILTER_IDS = new Set<QuickFilterId>([
+  'free',
+  'easy-parking',
+  'has-cafe',
+  'accessible',
+]);
 
 // ── Filter IDs ────────────────────────────────────────────────────────────────
 
@@ -386,16 +414,24 @@ export function getQuickFilter(id: string): QuickFilter | undefined {
 /**
  * Apply one or more quick filters to a venue list.
  *
- * Logic:
- *   - "Hard" filters (free, easy-parking, has-cafe, accessible) require
- *     passes=true to keep the venue. Venues without the data are excluded.
- *   - "Soft" filters keep a venue if passes=true. If no venue passes, we
- *     fall through gracefully and return all venues (never an empty screen
- *     due to over-filtering).
+ * HARD filters (free, easy-parking, has-cafe, accessible):
+ *   These are promises. If we include a venue that doesn't have the feature,
+ *   we've lied to the parent. So we strictly exclude non-matching venues.
+ *   If nothing passes (no confirmed data in the local area), we return []
+ *   so the caller can show a "no confirmed data yet" empty state rather than
+ *   silently ignoring the filter and showing unrelated venues.
  *
- * Multiple filters are AND-ed: a venue must satisfy ALL selected filters.
+ * SOFT filters (rainy-day, toddlers, burn-energy, outdoors, indoors, etc.):
+ *   These are hints, not promises. We want "Rainy Day" venues at the top,
+ *   but if only parks are nearby, showing parks is better than a blank screen.
+ *   Soft filters SORT the list — matching venues rise to the top, non-matching
+ *   venues stay at the bottom — but nothing is excluded.
  *
- * @param venues   Full venue list from useNearbyVenues.
+ * When hard AND soft filters are combined:
+ *   Hard filters apply first (strict exclusion), then soft filters re-rank
+ *   the surviving venues.
+ *
+ * @param venues    Full venue list from useNearbyVenues (should be category-enriched).
  * @param filterIds The selected quick filter IDs (empty array = no filtering).
  */
 export function applyQuickFilters(venues: Venue[], filterIds: QuickFilterId[]): Venue[] {
@@ -407,13 +443,26 @@ export function applyQuickFilters(venues: Venue[], filterIds: QuickFilterId[]): 
 
   if (filters.length === 0) return venues;
 
-  const filtered = venues.filter((venue) =>
-    filters.every((filter) => filter.test(venue).passes),
-  );
+  const hardFilters = filters.filter((f) => HARD_FILTER_IDS.has(f.id));
+  const softFilters = filters.filter((f) => !HARD_FILTER_IDS.has(f.id));
 
-  // Safety net: if the combination filtered everything out, return the full
-  // list rather than a blank screen. This protects against bad data coverage.
-  return filtered.length > 0 ? filtered : venues;
+  // Step 1: Hard exclusion
+  let candidates = venues;
+  if (hardFilters.length > 0) {
+    candidates = venues.filter((v) => hardFilters.every((f) => f.test(v).passes));
+    // Return empty so the caller can show "no confirmed data" — not the full
+    // venue list, which would silently break the hard filter promise.
+    if (candidates.length === 0) return [];
+  }
+
+  // Step 2: Soft boost — sort matching venues to the top, keep all
+  if (softFilters.length === 0) return candidates;
+
+  return [...candidates].sort((a, b) => {
+    const scoreA = softFilters.filter((f) => f.test(a).passes).length;
+    const scoreB = softFilters.filter((f) => f.test(b).passes).length;
+    return scoreB - scoreA; // higher match count → earlier in list
+  });
 }
 
 /**
