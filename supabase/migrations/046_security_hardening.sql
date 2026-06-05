@@ -334,6 +334,7 @@ $$;
 --   The table itself and any existing rows are untouched.
 -- ─────────────────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "Anyone can register interest" ON public.pass_interest;
+DROP POLICY IF EXISTS "Authenticated users can register interest" ON public.pass_interest;
 
 CREATE POLICY "Authenticated users can register interest"
   ON public.pass_interest
