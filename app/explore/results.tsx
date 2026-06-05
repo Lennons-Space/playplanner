@@ -27,6 +27,7 @@ import { useWeather } from '@/hooks/useWeather';
 import { useNearbyVenues } from '@/hooks/useVenues';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { curateVenues, type Mood, type CuratedVenue } from '@/lib/curation';
+import { applyQuickFilters, type QuickFilterId } from '@/lib/quickFilters';
 import { LocationConsentPrompt } from '@/components/consent';
 import { VenueCard, Icon } from '@/components/ui';
 import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
@@ -65,10 +66,28 @@ function headerTitle(mood: Mood): string {
   }
 }
 
+// ─── Parse quickFilters URL param ───────────────────────────────────
+// Accepts a comma-separated list of known QuickFilterId strings.
+// Any unknown or tampered value is silently dropped (never crashes).
+const VALID_QUICK_FILTER_IDS = new Set<string>([
+  'rainy-day', 'free', 'toddlers', 'burn-energy', 'outdoors', 'indoors',
+  'parent-friendly', 'easy-parking', 'has-cafe', 'accessible', 'under-2-hours',
+]);
+
+function parseQuickFilters(raw: string | string[] | undefined): QuickFilterId[] {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  if (!v) return [];
+  return v
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s): s is QuickFilterId => VALID_QUICK_FILTER_IDS.has(s));
+}
+
 // ─── Default export: consent gate ───────────────────────────────────
 export default function ResultsScreen() {
-  const params = useLocalSearchParams<{ mood?: string }>();
+  const params = useLocalSearchParams<{ mood?: string; quickFilters?: string }>();
   const mood = parseMood(params.mood);
+  const quickFilters = parseQuickFilters(params.quickFilters);
   const { status, grant, decline } = useLocationConsent();
 
   if (status === 'checking') {
@@ -80,20 +99,29 @@ export default function ResultsScreen() {
   }
 
   if (status === 'granted') {
-    return <ResultsWithLocation mood={mood} />;
+    return <ResultsWithLocation mood={mood} quickFilters={quickFilters} />;
   }
 
   // declined — use a default area, no GPS, clearly labelled.
-  return <ResultsBody mood={mood} coords={FALLBACK_LOCATION} locLoading={false} isFallback />;
+  return (
+    <ResultsBody
+      mood={mood}
+      quickFilters={quickFilters}
+      coords={FALLBACK_LOCATION}
+      locLoading={false}
+      isFallback
+    />
+  );
 }
 
 // ─── Granted: wire up live location ─────────────────────────────────
-function ResultsWithLocation({ mood }: { mood: Mood }) {
+function ResultsWithLocation({ mood, quickFilters }: { mood: Mood; quickFilters: QuickFilterId[] }) {
   const { coords, isLoading } = useLocation();
   const ready = !!coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
   return (
     <ResultsBody
       mood={mood}
+      quickFilters={quickFilters}
       coords={ready ? coords : FALLBACK_LOCATION}
       locLoading={isLoading}
       isFallback={false}
@@ -104,12 +132,14 @@ function ResultsWithLocation({ mood }: { mood: Mood }) {
 // ─── Body ───────────────────────────────────────────────────────────
 interface ResultsBodyProps {
   mood: Mood;
+  /** Quick filters passed from the Home screen chips. May be empty. */
+  quickFilters: QuickFilterId[];
   coords: Coordinates;
   locLoading: boolean;
   isFallback: boolean;
 }
 
-function ResultsBody({ mood: paramMood, coords, locLoading, isFallback }: ResultsBodyProps) {
+function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFallback }: ResultsBodyProps) {
   // Refine state. `mood` can be nudged by the Indoor/Outdoor/Free chips.
   const [mood, setMood] = useState<Mood>(paramMood);
   const [openNow, setOpenNow] = useState(false);
@@ -126,10 +156,13 @@ function ResultsBody({ mood: paramMood, coords, locLoading, isFallback }: Result
     refetch,
   } = useNearbyVenues(coords, filters, !locLoading);
 
-  const curated = useMemo(
-    () => curateVenues(venues, { weather: weather ?? null, mood }, { limit: 6 }),
-    [venues, weather, mood],
-  );
+  const curated = useMemo(() => {
+    // Apply quick filters first (client-side pre-filter), then curate.
+    // applyQuickFilters has a safety net: if nothing passes, it returns all
+    // venues rather than producing a blank screen.
+    const preFiltered = applyQuickFilters(venues, quickFilters);
+    return curateVenues(preFiltered, { weather: weather ?? null, mood }, { limit: 6 });
+  }, [venues, weather, mood, quickFilters]);
 
   const radiusMiles = Math.round(DEFAULT_FILTERS.maxDistanceKm * 0.621371);
 

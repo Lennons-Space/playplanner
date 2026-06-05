@@ -19,6 +19,7 @@ import { useNearbyVenues } from '@/hooks/useVenues';
 import { getWeatherBadge } from '@/lib/weather';
 import { curateVenues } from '@/lib/curation';
 import { calculateRecommendationScore } from '@/lib/recommendations/familyScore';
+import { deriveVenueBadges } from '@/lib/quickFilters';
 import { VenueCard } from '@/components/ui';
 import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
 import { FALLBACK_LOCATION } from '@/constants/location';
@@ -124,14 +125,18 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
   } else {
     body = (
       <View style={{ paddingHorizontal: 20, gap: 10 }}>
-        {curated.map(({ venue }) => (
-          <VenueCard
-            key={venue.id}
-            venue={venue}
-            onPress={() => onVenuePress(venue)}
-            weatherBadge={weather ? getWeatherBadge(venue.category?.slug, weather.condition) : null}
-          />
-        ))}
+        {curated.map(({ venue }) => {
+          const { recommendationScore } = calculateRecommendationScore(venue);
+          return (
+            <VenueCard
+              key={venue.id}
+              venue={venue}
+              onPress={() => onVenuePress(venue)}
+              weatherBadge={weather ? getWeatherBadge(venue.category?.slug, weather.condition) : null}
+              familyBadges={deriveVenueBadges(venue, recommendationScore)}
+            />
+          );
+        })}
       </View>
     );
   }

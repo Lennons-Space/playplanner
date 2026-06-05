@@ -59,9 +59,15 @@ export interface VenueCardProps {
    * pill overlay on the photo rail. Pass null/undefined to hide the badge.
    */
   weatherBadge?: string | null;
+  /**
+   * Family-friendly badges derived from the venue data (e.g. "Family Favourite",
+   * "Great for Toddlers"). At most 2 are shown. Derived via deriveVenueBadges()
+   * in lib/quickFilters.ts. Pass an empty array or undefined to hide all badges.
+   */
+  familyBadges?: string[];
 }
 
-export function VenueCard({ venue, saved = false, onToggleSave, onPress, weatherBadge }: VenueCardProps) {
+export function VenueCard({ venue, saved = false, onToggleSave, onPress, weatherBadge, familyBadges }: VenueCardProps) {
   // Resolve category slug — the joined `category` object has the slug.
   const categorySlug = venue.category?.slug ?? null;
   const meta = getCategoryMeta(categorySlug);
@@ -300,6 +306,39 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
                 {openStatus ? 'OPEN NOW' : 'CLOSED'}
               </Text>
             </View>
+          </View>
+        )}
+
+        {/* Family-friendly badges (max 2). Only shown when the caller passes
+            them — see deriveVenueBadges() in lib/quickFilters.ts.
+            These are deliberately subtle (sand tint, small text) so they
+            don't compete with the venue name or the open/closed pill. */}
+        {familyBadges && familyBadges.length > 0 && (
+          <View style={{ flexDirection: 'row', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
+            {familyBadges.slice(0, 2).map((badge) => (
+              <View
+                key={badge}
+                style={{
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                  borderRadius: 9999,
+                  backgroundColor: '#FFF9F0',
+                  borderWidth: 1,
+                  borderColor: '#E6E2DB',
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: 'Nunito-Bold',
+                    fontSize: 9,
+                    color: '#4A5560',
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  {badge.toUpperCase()}
+                </Text>
+              </View>
+            ))}
           </View>
         )}
       </View>

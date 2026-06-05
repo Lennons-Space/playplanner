@@ -20,6 +20,7 @@
  * header (app/explore/map.tsx), not the front door.
  */
 
+import { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,7 +31,9 @@ import { Icon } from '@/components/ui';
 import { HeroCard } from '@/components/home/HeroCard';
 import { QuickPicks } from '@/components/home/QuickPicks';
 import { NearbyPreview } from '@/components/home/NearbyPreview';
+import { QuickFilterChips } from '@/components/home/QuickFilterChips';
 import type { Mood } from '@/lib/curation';
+import type { QuickFilterId } from '@/lib/quickFilters';
 import type { Venue } from '@/types';
 
 const C = {
@@ -54,9 +57,29 @@ export default function HomeScreen() {
   const profile = useProfile();
   const { status } = useLocationConsent();
 
+  // Quick filter chips state — persists while the user is on this screen.
+  // Cleared each time the parent navigates away (component unmounts).
+  const [activeFilters, setActiveFilters] = useState<QuickFilterId[]>([]);
+
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? null;
 
-  const goResults = (mood: Mood) => router.push(`/explore/results?mood=${mood}`);
+  // Toggle a chip on/off. Multiple chips can be active at once (AND logic).
+  const toggleFilter = (id: QuickFilterId) => {
+    setActiveFilters((prev) =>
+      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
+    );
+  };
+
+  // Navigate to results. When quick filters are active, pass them as a
+  // comma-separated URL param so the results screen can apply them.
+  const goResults = (mood: Mood) => {
+    const params = new URLSearchParams({ mood });
+    if (activeFilters.length > 0) {
+      params.set('quickFilters', activeFilters.join(','));
+    }
+    router.push(`/explore/results?${params.toString()}`);
+  };
+
   const openMap = () => router.push('/explore/map');
   const openVenue = (venue: Venue) => router.push(`/venue/${venue.id}`);
 
@@ -128,8 +151,16 @@ export default function HomeScreen() {
         </View>
 
         {/* ── Quick picks ───────────────────────────────────────────── */}
-        <View style={{ marginBottom: 26 }}>
+        <View style={{ marginBottom: 22 }}>
           <QuickPicks onPick={goResults} />
+        </View>
+
+        {/* ── Quick filter chips ────────────────────────────────────── */}
+        {/* These narrow the "Find something for us" results before the
+            parent even leaves this screen. Selection is passed as a
+            URL param to the results screen (see goResults above).    */}
+        <View style={{ marginBottom: 26 }}>
+          <QuickFilterChips selected={activeFilters} onToggle={toggleFilter} />
         </View>
 
         {/* ── Nearby teaser (consent-aware) ─────────────────────────── */}
