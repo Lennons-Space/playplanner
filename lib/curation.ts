@@ -120,12 +120,8 @@ export function resolveAutoMood(
   return 'surprise';
 }
 
-/** UK-convention distance label: metres under 1km, otherwise miles. */
-function formatDistance(km: number | undefined): string | null {
-  if (km == null || !Number.isFinite(km)) return null;
-  if (km < 1) return `${Math.round(km * 1000)}m away`;
-  return `${(km * 0.621371).toFixed(1)} mi away`;
-}
+// formatDistance was removed when the distance reason pill was removed from
+// CuratedResult (task 2, June 2026 UX polish). VenueCard already shows distance.
 
 function isFeaturedNow(venue: Venue, now: Date): boolean {
   if (!venue.is_premium || !venue.featured_until) return false;
@@ -223,11 +219,10 @@ function buildReasons(
     else if (venue.average_rating >= 4.0) reasons.push('⭐ Well reviewed');
   }
 
-  // 4. Distance — always useful, fills remaining slots.
-  if (reasons.length < 3) {
-    const d = formatDistance(venue.distance_km);
-    if (d) reasons.push(`📍 ${d}`);
-  }
+  // 4. Distance pill removed — VenueCard already shows the distance inline
+  //    (e.g. "520m"), so repeating it as a reason pill was redundant and
+  //    made the results page feel cluttered. Context: this was task 2 of the
+  //    June 2026 UX polish pass.
 
   // 5. Mood echo — only if we still have room and nothing better said it.
   if (reasons.length < 2 && effectiveMood === 'active' && ACTIVE_SLUGS.has(venue.category?.slug ?? '')) {

@@ -2,17 +2,33 @@
  * Search tab — text search with live results + category filter support.
  *
  * Privacy note:
- * useLocation() is intentionally NOT called here. Search is text-based and
- * does not require GPS. Using FALLBACK_LOCATION for the "recent venues"
- * fallback means we never trigger the OS location permission dialog from
- * this screen — which would bypass the LocationConsentPrompt flow required
- * by ICO Children's Code Standard 10.
+ * Location consent is respected via useLocationConsent(). If the user has
+ * already granted consent (stored in SecureStore), we mount SearchNearbyResults
+ * — a child component that calls useLocation() and useNearbyVenues(). Mounting
+ * it conditionally (only when consentGranted === true) is the correct fix for
+ * the Rules-of-Hooks constraint: the hook lives inside a child that is itself
+ * only rendered when consent is confirmed.
+ *
+ * CRITICAL PRIVACY GUARANTEE: useLocation() calls
+ * Location.requestForegroundPermissionsAsync() on mount. Therefore SearchNearbyResults
+ * must NEVER be mounted before consent is confirmed. The parent SearchScreen
+ * checks consent via useLocationConsent (SecureStore only — no OS prompt) and
+ * only mounts SearchNearbyResults when consentStatus === 'granted'.
+ *
+ * If consent has NOT been granted, the "Nearby venues" section shows a prompt
+ * card that routes the user into the Results flow (where consent is requested
+ * properly), rather than silently falling back to London — which would show
+ * irrelevant data and mislead the user.
+ *
+ * This matches the same pattern used by NearbyPreview on the home screen:
+ * the parent reads consent via useLocationConsent, the child that needs GPS
+ * is only mounted after consent is confirmed.
  *
  * Filter integration:
  * When search has results, we apply the active VenueFilters client-side
  * (on the ≤30-row result set). This avoids coupling the Supabase text-search
  * query to the PostGIS RPC and keeps the search hook simple. For the empty-query
- * "recent venues" fallback we pass filters into useNearbyVenues so the RPC
+ * "nearby venues" section we pass filters into useNearbyVenues so the RPC
  * handles them server-side.
  *
  * Chip trust rules:
@@ -41,13 +57,15 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useVenueSearch, useNearbyVenues, useCategories } from '@/hooks/useVenues';
+import { useLocation } from '@/hooks/location';
+import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { useFilterStore } from '@/store/filterStore';
 import { useMapStore } from '@/store/mapStore';
 import FilterSheet from '@/components/filters/FilterSheet';
 import { VenueCard, Icon, Chip, ScreenTitle, IconBtn } from '@/components/ui';
-import { FALLBACK_LOCATION } from '@/constants/location';
+import { MAX_SEARCH_RADIUS_KM } from '@/constants/location';
 import { getVenueAttributes } from '@/lib/venueAttributes';
-import type { Venue, VenueFilters, PriceRange } from '@/types';
+import type { Venue, VenueFilters, PriceRange, Coordinates } from '@/types';
 
 // ── Design tokens (pp- palette) ────────────────────────────────────────────────
 const pp = {
@@ -185,6 +203,115 @@ function getEmptyStateContent(
   };
 }
 
+// ─── SearchNearbyResults ──────────────────────────────────────────────────────
+// This child component is the ONLY place in the Search tab that calls
+// useLocation(). It must NEVER be mounted unless location consent has already
+// been confirmed by the parent (SearchScreen).
+//
+// WHY A CHILD COMPONENT (not a conditional hook call):
+// React's Rules of Hooks forbid calling hooks conditionally inside a single
+// component. The only safe way to conditionally activate useLocation() is to
+// put it inside a component that is itself conditionally mounted. When
+// SearchScreen only renders <SearchNearbyResults> after consentStatus===
+// 'granted', useLocation() (and its Location.requestForegroundPermissionsAsync
+// call) is guaranteed never to run pre-consent.
+interface SearchNearbyResultsProps {
+  searchFilters:      VenueFilters & { maxDistanceKm: number };
+  isRainyDay:         boolean;
+  hasActiveFilters:   boolean;
+  emptyStateContent:  EmptyStateContent;
+  onVenuePress:       (id: string) => void;
+  onResetFilters:     () => void;
+}
+
+function SearchNearbyResults({
+  searchFilters,
+  isRainyDay,
+  hasActiveFilters,
+  emptyStateContent,
+  onVenuePress,
+  onResetFilters,
+}: SearchNearbyResultsProps) {
+  // Safe to call here: this component is only mounted when consent is granted.
+  const { coords: rawCoords, isLoading: locLoading } = useLocation();
+
+  const coords: Coordinates | null = useMemo(() => {
+    if (!rawCoords || !Number.isFinite(rawCoords.latitude) || !Number.isFinite(rawCoords.longitude)) {
+      return null;
+    }
+    return rawCoords;
+  }, [rawCoords]);
+
+  // "Nearby venues" query — enabled only when real coordinates are available.
+  // The 50-mile (80 km) radius cap is already baked into searchFilters.maxDistanceKm.
+  const {
+    data: recentVenues = [],
+    isLoading: recentLoading,
+  } = useNearbyVenues(
+    coords ?? { latitude: 0, longitude: 0 },
+    searchFilters,
+    coords !== null && !locLoading,
+  );
+
+  const displayedVenues: Venue[] = isRainyDay
+    ? applyRainyDayFilter(recentVenues as Venue[])
+    : recentVenues as Venue[];
+
+  const isLoading = recentLoading || locLoading;
+
+  return (
+    <>
+      {/* Nearby venues list (idle state, location granted) */}
+      {(locLoading || recentLoading) ? (
+        <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+          <ActivityIndicator color={pp.sky} size="large" />
+        </View>
+      ) : displayedVenues.length === 0 ? (
+        <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
+          {hasActiveFilters ? (
+            <>
+              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 6 }}>
+                {emptyStateContent.title}
+              </Text>
+              <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center', marginBottom: 16 }}>
+                {emptyStateContent.subtitle}
+              </Text>
+              <TouchableOpacity
+                onPress={onResetFilters}
+                style={{ backgroundColor: pp.sky, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel="Clear all filters"
+              >
+                <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.paper }}>Clear filters</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 8 }}>
+                No venues nearby
+              </Text>
+              <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center' }}>
+                Check back soon — new venues are added regularly.
+              </Text>
+            </>
+          )}
+        </View>
+      ) : (
+        <View style={{ paddingHorizontal: 20, gap: 12, paddingTop: 4 }}>
+          {displayedVenues.map((item) => (
+            <VenueCard
+              key={item.id}
+              venue={item}
+              saved={false}
+              onPress={() => onVenuePress(item.id)}
+            />
+          ))}
+        </View>
+      )}
+    </>
+  );
+}
+
 // ─── SearchScreen ─────────────────────────────────────────────────────────────
 export default function SearchScreen() {
   const [query, setQuery]               = useState('');
@@ -205,29 +332,46 @@ export default function SearchScreen() {
   // useCategories is cached for 24h — very cheap to call here.
   const { data: dbCategories = [] } = useCategories();
 
+  // ── Location consent — privacy gate ────────────────────────────────────────
+  // useLocationConsent reads only SecureStore. It NEVER triggers the OS location
+  // dialog. It is safe to call unconditionally here.
+  //
+  // The OS location prompt fires only inside useLocation(), which lives in
+  // SearchNearbyResults. That child is only mounted when consentStatus ===
+  // 'granted', so the prompt is guaranteed never to appear pre-consent.
+  const { status: consentStatus } = useLocationConsent();
+  const consentGranted = consentStatus === 'granted';
+
   const looksLikePostcode = UK_POSTCODE_RE.test(query.trim());
 
   const handleExploreOnMap = useCallback(() => {
     setPendingPostcode(query.trim().toUpperCase());
-    router.push('/(tabs)/');
+    router.push('/');
   }, [query, setPendingPostcode]);
 
   const isSearchActive = debouncedQuery.length >= 2;
 
+  // ── Apply 50-mile (80.47 km) radius cap ────────────────────────────────────
+  // We use MAX_SEARCH_RADIUS_KM (80 km ≈ 50 miles) as the outer cap so the
+  // "nearby" list stays proportionate (GDPR data minimisation) and meaningful.
+  const searchFilters = useMemo(
+    () => ({
+      ...filters,
+      maxDistanceKm: Math.min(filters.maxDistanceKm, MAX_SEARCH_RADIUS_KM),
+    }),
+    [filters],
+  );
+
+  // Text search: coords are not required for name-match search — we pass a zero
+  // origin. If we have coords (from SearchNearbyResults) in future, server-side
+  // distance sorting could be added, but currently the hook ignores them.
   const {
     data: searchResults = [],
     isLoading: searchLoading,
-  } = useVenueSearch(debouncedQuery, FALLBACK_LOCATION);
-
-  const {
-    data: recentVenues = [],
-    isLoading: recentLoading,
-  } = useNearbyVenues(FALLBACK_LOCATION, filters, !isSearchActive);
+  } = useVenueSearch(debouncedQuery, { latitude: 0, longitude: 0 });
 
   const handleFiltersPress      = useCallback(() => setFilterSheetVisible(true), []);
   const handleFilterSheetClose  = useCallback(() => setFilterSheetVisible(false), []);
-
-  const isLoading = isSearchActive ? searchLoading : recentLoading;
 
   // ── Chip active-state derivation ────────────────────────────────────────────
   function isChipActive(id: QuickFilterId): boolean {
@@ -334,20 +478,15 @@ export default function SearchScreen() {
     [activateCategoryChip, activateRainyDay, activateFreeFilter],
   );
 
-  // ── Display venues pipeline ────────────────────────────────────────────────
-  const displayedVenues: Venue[] = useMemo(() => {
-    // Step 1: pick base list (search results or nearby).
-    let base: Venue[] = isSearchActive
-      ? applyFiltersToResults(searchResults, filters)
-      : (recentVenues as Venue[]);
-
-    // Step 2: apply rainy-day client-side post-filter if active.
-    if (isRainyDay) {
-      base = applyRainyDayFilter(base);
-    }
-
+  // ── Display venues pipeline (search-active path only) ─────────────────────
+  // The nearby-venues (idle) path is handled entirely inside SearchNearbyResults.
+  // The parent only needs to compute the filtered+rainy-day list for text search.
+  const displayedSearchVenues: Venue[] = useMemo(() => {
+    if (!isSearchActive) return [];
+    let base = applyFiltersToResults(searchResults, filters);
+    if (isRainyDay) base = applyRainyDayFilter(base);
     return base;
-  }, [isSearchActive, searchResults, recentVenues, filters, isRainyDay]);
+  }, [isSearchActive, searchResults, filters, isRainyDay]);
 
   // ── Active filter presence (for empty state and clear button) ─────────────
   const hasActiveFilters =
@@ -355,6 +494,9 @@ export default function SearchScreen() {
     filters.openNow ||
     filters.priceRange.length > 0 ||
     filters.categoryIds.length > 0;
+
+  // Convenience: total displayed venues for the search-active header count.
+  const displayedSearchCount = displayedSearchVenues.length;
 
   // ── Navigation ─────────────────────────────────────────────────────────────
   const handleVenuePress = useCallback((id: string) => {
@@ -602,71 +744,95 @@ export default function SearchScreen() {
             </View>
           </View>
 
-          {/* Results header when idle */}
-          <View
-            style={{
-              paddingHorizontal: 20,
-              paddingTop: 20,
-              paddingBottom: 4,
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 14, color: pp.ink }}>
-              Nearby venues
-            </Text>
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 12, color: pp.mute }}>
-              Sort: Nearest
-            </Text>
-          </View>
+          {/* Nearby venues section — hidden during the 'checking' state to avoid
+              a blank flash (50–200 ms on cold open) while SecureStore resolves
+              the stored consent value. Matches the same guard used on the home
+              screen (NearbyPreview). */}
+          {consentStatus !== 'checking' && (
+            <>
+              {/* Results header when idle */}
+              <View
+                style={{
+                  paddingHorizontal: 20,
+                  paddingTop: 20,
+                  paddingBottom: 4,
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 14, color: pp.ink }}>
+                  Nearby venues
+                </Text>
+                {consentGranted && (
+                  <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 12, color: pp.mute }}>
+                    Sort: Nearest
+                  </Text>
+                )}
+              </View>
 
-          {/* Nearby venues list (idle state) */}
-          {recentLoading ? (
-            <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-              <ActivityIndicator color={pp.sky} size="large" />
-            </View>
-          ) : displayedVenues.length === 0 ? (
-            <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
-              {hasActiveFilters ? (
-                <>
-                  <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 6 }}>
-                    {emptyStateContent.title}
-                  </Text>
-                  <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center', marginBottom: 16 }}>
-                    {emptyStateContent.subtitle}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => { resetFilters(); setIsRainyDay(false); }}
-                    style={{ backgroundColor: pp.sky, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear all filters"
+              {/* Location consent nudge — shown when consent has not been granted.
+                  We never silently fall back to London: that would mislead the user
+                  into thinking they are seeing venues near them when they are not.
+                  PRIVACY: This branch is shown precisely because consentGranted is
+                  false — SearchNearbyResults is NOT mounted here, so useLocation()
+                  never fires and the OS prompt never appears. */}
+              {!consentGranted && (
+                <Pressable
+                  onPress={() => router.push('/explore/results?mood=auto')}
+                  style={{
+                    marginHorizontal: 20,
+                    marginTop: 4,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 14,
+                    backgroundColor: pp.skyWash,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: pp.skySoft,
+                    padding: 16,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Turn on location to see venues near you"
+                >
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 14,
+                      backgroundColor: pp.skySoft,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
-                    <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.paper }}>Clear filters</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 8 }}>
-                    No venues available
-                  </Text>
-                  <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center' }}>
-                    Check back soon — new venues are added regularly.
-                  </Text>
-                </>
+                    <Icon name="locate" size={20} color={pp.skyDeep} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 14, color: pp.ink }}>
+                      See venues near you
+                    </Text>
+                    <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 12, color: pp.mute, marginTop: 2 }}>
+                      Turn on location for local results.
+                    </Text>
+                  </View>
+                  <Icon name="chevR" size={16} color={pp.mute} />
+                </Pressable>
               )}
-            </View>
-          ) : (
-            <View style={{ paddingHorizontal: 20, gap: 12, paddingTop: 4 }}>
-              {displayedVenues.map((item) => (
-                <VenueCard
-                  key={item.id}
-                  venue={item}
-                  saved={false}
-                  onPress={() => handleVenuePress(item.id)}
+
+              {/* SearchNearbyResults is ONLY mounted when consent is confirmed.
+                  This is the structural guarantee that useLocation() (and therefore
+                  Location.requestForegroundPermissionsAsync) never fires pre-consent. */}
+              {consentGranted && (
+                <SearchNearbyResults
+                  searchFilters={searchFilters}
+                  isRainyDay={isRainyDay}
+                  hasActiveFilters={hasActiveFilters}
+                  emptyStateContent={emptyStateContent}
+                  onVenuePress={handleVenuePress}
+                  onResetFilters={() => { resetFilters(); setIsRainyDay(false); }}
                 />
-              ))}
-            </View>
+              )}
+            </>
           )}
         </ScrollView>
       )}
@@ -686,20 +852,20 @@ export default function SearchScreen() {
             }}
           >
             <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 14, color: pp.ink }}>
-              {displayedVenues.length} result{displayedVenues.length !== 1 ? 's' : ''}
+              {displayedSearchCount} result{displayedSearchCount !== 1 ? 's' : ''}
             </Text>
             <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 12, color: pp.mute }}>
               Sort: Nearest
             </Text>
           </View>
 
-          {isLoading ? (
+          {searchLoading ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               <ActivityIndicator color={pp.sky} size="large" />
             </View>
           ) : (
             <FlatList
-              data={displayedVenues}
+              data={displayedSearchVenues}
               keyExtractor={(item) => item.id}
               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24, gap: 12 }}
               removeClippedSubviews

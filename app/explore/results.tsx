@@ -174,10 +174,16 @@ function ResultsBody({ mood: paramMood, coords, locLoading, isFallback }: Result
       </View>
 
       {/* ── Refine chips ─────────────────────────────────────────── */}
+      {/* The outer View with an explicit height is the pattern used throughout
+          this app (see search.tsx quick-filter row) to prevent the horizontal
+          ScrollView from being vertically clipped by its flex parent. Without
+          the fixed height, the SafeAreaView/flex layout squeezes the row and
+          cuts off the chip text top and bottom. */}
+      <View style={{ height: 52 }}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingBottom: 12 }}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingBottom: 12, alignItems: 'center', height: 52 }}
         style={{ flexGrow: 0 }}
       >
         <RefineChip label="Open now" active={openNow} onPress={() => setOpenNow((v) => !v)} />
@@ -185,6 +191,7 @@ function ResultsBody({ mood: paramMood, coords, locLoading, isFallback }: Result
         <RefineChip label="Outdoor" active={mood === 'outdoor'} onPress={() => toggleMood('outdoor')} />
         <RefineChip label="Free" active={mood === 'free'} onPress={() => toggleMood('free')} />
       </ScrollView>
+      </View>
 
       {/* ── Body ─────────────────────────────────────────────────── */}
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false}>

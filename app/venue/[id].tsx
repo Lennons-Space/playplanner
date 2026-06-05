@@ -29,7 +29,7 @@ import { useVenue } from '@/hooks/useVenues';
 import { useVenueReviews, useMyReview } from '@/hooks/useReviews';
 import { useUser } from '@/hooks/useAuth';
 import { useReportVenue } from '@/hooks/useVenueReport';
-import { useVenueClaimStatus } from '@/hooks/useVenueClaims';
+// useVenueClaimStatus intentionally removed — claim flow disabled at launch.
 import { supabase } from '@/lib/supabase';
 import { ReviewCard } from '@/components/reviews/ReviewCard';
 import { VenuePhotoUpload } from '@/components/venue/VenuePhotoUpload';
@@ -145,8 +145,6 @@ export default function VenueDetailScreen() {
   // Treat missing id (undefined) as an empty string so the enabled guards in
   // each hook catch it rather than passing undefined through as a cast.
   const venueId = id ?? '';
-
-  const { data: claimStatus } = useVenueClaimStatus(venueId || undefined, user?.id);
 
   const { data: venue, isLoading, error } = useVenue(venueId);
   const { data: reviews, isLoading: reviewsLoading } = useVenueReviews(venueId);
@@ -550,7 +548,9 @@ export default function VenueDetailScreen() {
           {/* ── Photo upload — authenticated users only ──────────────── */}
           {user && venueId && <VenuePhotoUpload venueId={venueId} />}
 
-          {/* ── Report / Claim links ──────────────────────────────────── */}
+          {/* ── Report link ──────────────────────────────────────────── */}
+          {/* Claim link intentionally removed — the claim flow is being
+              redesigned for security. It will return in a future release. */}
           <View style={styles.reportClaimRow}>
             <TouchableOpacity
               onPress={handleReport}
@@ -560,26 +560,6 @@ export default function VenueDetailScreen() {
             >
               <Text style={styles.reportLink}>Report an issue</Text>
             </TouchableOpacity>
-
-            {user && !venue.claimed_by && !claimStatus && (
-              <TouchableOpacity
-                onPress={() =>
-                  router.push({
-                    pathname: '/venue/claim',
-                    params: { venueId: venueId, venueName: venue.name },
-                  })
-                }
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Claim this venue as the owner"
-              >
-                <Text style={styles.claimLink}>Claim this venue</Text>
-              </TouchableOpacity>
-            )}
-
-            {user && claimStatus?.status === 'pending' && (
-              <Text style={styles.mutedText}>Claim pending review</Text>
-            )}
           </View>
 
           {/* ── Address + ODbL ────────────────────────────────────────── */}
@@ -959,12 +939,7 @@ const styles = StyleSheet.create({
     color: pp.mute,
     textDecorationLine: 'underline',
   },
-  claimLink: {
-    fontFamily: 'Nunito-SemiBold',
-    fontSize: 13,
-    color: pp.skyDeep,
-    textDecorationLine: 'underline',
-  },
+  // claimLink style removed — claim flow disabled at launch.
 
   // Address
   addressText: {

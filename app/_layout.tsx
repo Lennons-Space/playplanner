@@ -54,10 +54,6 @@ function RootLayoutInner({ queryClient }: { queryClient: QueryClient }) {
       <Stack.Screen name="profile" options={{ headerShown: false }} />
       {/* Business upgrade — modal sheet for the subscription upsell flow */}
       <Stack.Screen name="business/upgrade" options={{ headerShown: false, presentation: 'modal' }} />
-      {/* Venue claim flow — three-step card sequence */}
-      <Stack.Screen name="venue/claim"         options={{ headerShown: false }} />
-      <Stack.Screen name="venue/claim-verify"  options={{ headerShown: false }} />
-      <Stack.Screen name="venue/claim-success" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -71,9 +71,9 @@ export default function HomeScreen() {
           style={{
             paddingHorizontal: 20,
             paddingTop: 8,
-            paddingBottom: 18,
+            paddingBottom: 16,
             flexDirection: 'row',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
@@ -84,14 +84,14 @@ export default function HomeScreen() {
             <Text
               style={{
                 fontFamily: 'Nunito-ExtraBold',
-                fontSize: 26,
+                fontSize: 28,
                 color: C.ink,
-                letterSpacing: -0.5,
-                lineHeight: 30,
+                letterSpacing: -0.6,
+                lineHeight: 33,
                 marginTop: 2,
               }}
             >
-              Let’s find something
+              Let's find something
             </Text>
           </View>
 
@@ -105,10 +105,16 @@ export default function HomeScreen() {
               gap: 6,
               backgroundColor: C.paper,
               borderRadius: 999,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
+              paddingHorizontal: 14,
+              paddingVertical: 9,
               borderWidth: 1,
               borderColor: C.line,
+              // Subtle shadow makes the Map pill feel like a floating control.
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.06,
+              shadowRadius: 3,
+              elevation: 2,
             }}
           >
             <Icon name="map" size={15} color={C.skyDeep} />
@@ -147,7 +153,7 @@ function LocationNudge({ onEnable }: { onEnable: () => void }) {
       <Pressable
         onPress={onEnable}
         accessibilityRole="button"
-        accessibilityLabel="See what’s near you"
+        accessibilityLabel="See what's near you"
         style={({ pressed }) => ({
           backgroundColor: C.paper,
           borderRadius: 20,
@@ -174,7 +180,7 @@ function LocationNudge({ onEnable }: { onEnable: () => void }) {
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 15, color: C.ink }}>
-            See what’s near you
+            See what's near you
           </Text>
           <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 13, color: C.mute, marginTop: 2 }}>
             Turn on location to get suggestions tailored to where you are.

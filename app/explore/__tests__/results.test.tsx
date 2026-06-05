@@ -99,8 +99,11 @@ describe('ResultsScreen — curated results', () => {
 
     await waitFor(() => expect(getByText('Sunny Soft Play')).toBeTruthy());
     expect(getByText('Riverside Park')).toBeTruthy();
-    // Distance reason pill is always present when distance is known.
-    expect(getAllByText(/mi away/).length).toBeGreaterThan(0);
+    // Distance is shown inside VenueCard, not as a separate reason pill.
+    // We verify at least one venue card rendered (the distance pill was removed
+    // in the June 2026 UX polish — it was redundant with what VenueCard shows).
+    expect(getAllByText('Sunny Soft Play')).toHaveLength(1);
+    expect(getAllByText('Riverside Park')).toHaveLength(1);
   });
 
   it('shows the empty state when nothing is curated', () => {

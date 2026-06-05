@@ -18,6 +18,7 @@ import { useWeather } from '@/hooks/useWeather';
 import { useNearbyVenues } from '@/hooks/useVenues';
 import { getWeatherBadge } from '@/lib/weather';
 import { curateVenues } from '@/lib/curation';
+import { calculateRecommendationScore } from '@/lib/recommendations/familyScore';
 import { VenueCard } from '@/components/ui';
 import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
 import { FALLBACK_LOCATION } from '@/constants/location';
@@ -46,13 +47,34 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
   const { data: venues = [], isLoading, error } = useNearbyVenues(
     center,
     DEFAULT_FILTERS,
-    !locLoading,
+    // Only enable when location is resolved AND we have valid coordinates.
+    // This prevents the query from firing with the FALLBACK_LOCATION (London)
+    // during the brief moment before GPS resolves.
+    !locLoading && ready,
+  );
+
+  // Pre-sort by recommendation score so that when curateVenues encounters
+  // tied curation scores, the tiebreak favours the more family-appropriate
+  // venue rather than raw RPC insertion order.
+  //
+  // WHY this is safe: curateVenues re-sorts entirely by its own scoring, so
+  // this pre-sort only affects ties. It does NOT change Supabase calls,
+  // discovery_approved filters, or the Venue type. Map markers are unaffected
+  // because they use a separate useNearbyVenues call in the map screen.
+  const ranked = useMemo(
+    () =>
+      [...venues].sort(
+        (a, b) =>
+          calculateRecommendationScore(b).recommendationScore -
+          calculateRecommendationScore(a).recommendationScore,
+      ),
+    [venues],
   );
 
   // Curate to the top 3 using context. 'auto' lets weather decide the lean.
   const curated = useMemo(
-    () => curateVenues(venues, { weather, mood: 'auto' }, { limit: 3 }),
-    [venues, weather],
+    () => curateVenues(ranked, { weather, mood: 'auto' }, { limit: 3 }),
+    [ranked, weather],
   );
 
   const header = (
@@ -75,7 +97,12 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
   );
 
   let body: React.ReactNode;
-  if (locLoading || isLoading) {
+  // Show skeletons only while location OR venue data is actively loading.
+  // If location is not ready (no GPS fix yet) AND we're still loading, show
+  // skeletons. But if location is done and venue query is disabled (no coords),
+  // fall through to the empty state rather than spinning indefinitely.
+  const isActuallyLoading = (locLoading && !ready) || (ready && isLoading);
+  if (isActuallyLoading) {
     body = (
       <View style={{ paddingHorizontal: 20, gap: 10 }}>
         <VenueRowSkeleton />

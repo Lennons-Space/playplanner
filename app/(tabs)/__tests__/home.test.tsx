@@ -70,6 +70,6 @@ describe('HomeScreen', () => {
 
   it('shows the location nudge (not the GPS preview) when consent is not granted', () => {
     const { getByText } = render(<HomeScreen />);
-    expect(getByText('See what’s near you')).toBeTruthy();
+    expect(getByText("See what's near you")).toBeTruthy();
   });
 });

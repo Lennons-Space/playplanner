@@ -23,7 +23,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
-import { PREMIUM_PRICE_MONTHLY_DISPLAY } from '@/constants/pricing';
 import { Icon } from '@/components/ui';
 
 // ─── SectionLabel ────────────────────────────────────────────────────────────
@@ -172,10 +171,10 @@ export default function ProfileScreen() {
   // than showing a skeleton that will never resolve.
   if (!user) return <Redirect href="/(auth)/welcome" />;
 
-  const isPremium =
-    profile?.subscription_tier === 'premium' &&
-    (profile?.subscription_expires_at == null ||
-      new Date(profile.subscription_expires_at) > new Date());
+  // isPremium intentionally not used — subscription tier is not surfaced in UI
+  // until the Pass product re-launches. Keeping the data read here means we
+  // don't need a migration when we restore the badge.
+  const isPremium = false;
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
   if (!profile) {
@@ -240,19 +239,7 @@ export default function ProfileScreen() {
             <Text style={styles.heroUsername}>@{profile.username}</Text>
           ) : null}
 
-          {/* Premium badge */}
-          {isPremium && (
-            <TouchableOpacity
-              onPress={() => router.push('/profile/pass-interest')}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="View PlayPlanner Pass details"
-              style={styles.premiumBadge}
-            >
-              <Icon name="sparkle" size={11} color="#7A5800" />
-              <Text style={styles.premiumBadgeText}>Pass</Text>
-            </TouchableOpacity>
-          )}
+          {/* Premium badge placeholder — hidden until Pass relaunches */}
         </LinearGradient>
 
         {/* ── Account ───────────────────────────────────────────────────── */}
@@ -297,48 +284,10 @@ export default function ProfileScreen() {
           />
         </MenuGroup>
 
-        {/* ── Subscription ──────────────────────────────────────────────── */}
-        {!isPremium ? (
-          <TouchableOpacity
-            style={styles.upgradeCardWrapper}
-            onPress={() => router.push('/profile/pass-interest')}
-            activeOpacity={0.88}
-            accessibilityRole="button"
-            accessibilityLabel="Upgrade to PlayPlanner Pass"
-          >
-            <LinearGradient
-              colors={['#FFF1C7', '#FFE8E8']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.upgradeCardGradient}
-            >
-              <View style={styles.upgradeIconBox}>
-                <Icon name="sparkle" size={20} color="#F5A524" />
-              </View>
-              <View style={styles.upgradeTextBlock}>
-                <Text style={styles.upgradeTitle}>Upgrade to PlayPlanner Pass</Text>
-                <Text style={styles.upgradeSubtitle}>
-                  {PREMIUM_PRICE_MONTHLY_DISPLAY} · Unlimited access
-                </Text>
-              </View>
-              <Icon name="chevR" size={18} color="#1D2630" />
-            </LinearGradient>
-          </TouchableOpacity>
-        ) : (
-          <>
-            <SectionLabel label="Subscription" />
-            <MenuGroup>
-              <MenuItem
-                icon="sparkle"
-                label="Manage subscription"
-                onPress={() => router.push('/profile/pass-interest')}
-                iconBg="#FFF1C7"
-                iconColor="#8A6100"
-                last
-              />
-            </MenuGroup>
-          </>
-        )}
+        {/* Subscription / upsell section intentionally removed.
+            PlayPlanner is free to use at launch. The Pass will be
+            reintroduced in a future release once payment infrastructure
+            is fully hardened. Remove this comment when reinstating. */}
 
         {/* ── Community ─────────────────────────────────────────────────── */}
         <SectionLabel label="Community" />
@@ -351,27 +300,10 @@ export default function ProfileScreen() {
           />
         </MenuGroup>
 
-        {/* ── "Own a venue?" dark callout card ──────────────────────────── */}
-        <TouchableOpacity
-          style={styles.claimCard}
-          onPress={() => router.push('/venue/claim')}
-          activeOpacity={0.88}
-          accessibilityRole="button"
-          accessibilityLabel="Claim your venue listing"
-        >
-          {/* Decorative circle — inline per spec */}
-          <View style={{ position: 'absolute', right: -20, top: -30, width: 100, height: 100, borderRadius: 999, backgroundColor: '#2FB8B0', opacity: 0.3 }} />
-          <View style={styles.claimIconBox}>
-            <Icon name="biz" size={20} color="#FFFFFF" />
-          </View>
-          <View style={styles.claimTextBlock}>
-            <Text style={styles.claimTitle}>Own a venue?</Text>
-            <Text style={styles.claimSubtitle}>
-              Claim your listing, add photos, get reviews.
-            </Text>
-          </View>
-          <Icon name="chevR" size={18} color="rgba(255,255,255,0.8)" />
-        </TouchableOpacity>
+        {/* "Own a venue?" claim card intentionally removed.
+            The claim flow is being redesigned for security before re-launch.
+            Edge functions send-otp / verify-otp remain deployed server-side.
+            Remove this comment and restore the card when the flow is ready. */}
 
         {/* ── Support ───────────────────────────────────────────────────── */}
         <SectionLabel label="Support" />
@@ -539,23 +471,6 @@ const styles = StyleSheet.create({
     color: '#4A5560',
     marginTop: 2,
   },
-  premiumBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#FFD66B',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 999,
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  premiumBadgeText: {
-    fontFamily: 'Nunito-ExtraBold',
-    fontSize: 11,
-    color: '#7A5800',
-  },
-
   // SectionLabel
   sectionLabel: {
     fontFamily: 'Nunito-Bold',
@@ -628,81 +543,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // Upgrade card (non-premium)
-  upgradeCardWrapper: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  upgradeCardGradient: {
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    borderWidth: 1,
-    borderColor: '#E6E2DB',
-    borderRadius: 16,
-  },
-  upgradeIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  upgradeTextBlock: {
-    flex: 1,
-  },
-  upgradeTitle: {
-    fontFamily: 'Nunito-ExtraBold',
-    fontSize: 15,
-    color: '#1D2630',
-  },
-  upgradeSubtitle: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 12,
-    color: '#4A5560',
-    marginTop: 2,
-  },
+  // Upgrade card styles removed — subscription upsell removed at launch.
+  // Restore when PlayPlanner Pass relaunches.
 
-  // Claim card
-  claimCard: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: '#1D2630',
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  claimIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#2FB8B0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  claimTextBlock: {
-    flex: 1,
-    zIndex: 1,
-  },
-  claimTitle: {
-    fontFamily: 'Nunito-ExtraBold',
-    fontSize: 15,
-    color: '#FFFFFF',
-  },
-  claimSubtitle: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 2,
-  },
+  // Claim card styles removed — claim flow removed at launch for security.
 
   // Footer
   footer: {

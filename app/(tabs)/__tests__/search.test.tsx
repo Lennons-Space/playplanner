@@ -18,6 +18,9 @@ import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+// ─── Import screen (after mocks) ─────────────────────────────────────────────
+import SearchScreen from '../search';
+
 // ─── Module mocks (hoisted before imports) ────────────────────────────────────
 
 // Capture the filter store state so tests can read and manipulate it.
@@ -162,10 +165,31 @@ jest.mock('@/components/ui', () => {
 
 jest.mock('@/constants/location', () => ({
   FALLBACK_LOCATION: { latitude: 51.5074, longitude: -0.1278 },
+  MAX_SEARCH_RADIUS_KM: 80,
+  DEFAULT_SEARCH_RADIUS_KM: 32,
 }));
 
-// ─── Import screen (after mocks) ─────────────────────────────────────────────
-import SearchScreen from '../search';
+// Mock useLocationConsent — default to 'granted' so tests see the nearby section.
+// Individual tests can override this per-test if they want to test the consent nudge.
+jest.mock('@/hooks/useLocationConsent', () => ({
+  useLocationConsent: jest.fn(() => ({
+    status: 'granted',
+    grant: jest.fn(),
+    decline: jest.fn(),
+  })),
+}));
+
+// Mock useLocation — return a real Shropshire-like coordinate so tests don't
+// depend on expo-location's native module, and so we can verify real location
+// is used rather than the London fallback.
+jest.mock('@/hooks/location', () => ({
+  useLocation: jest.fn(() => ({
+    coords: { latitude: 52.7065, longitude: -2.7419 }, // Shrewsbury
+    hasPermission: true,
+    isLoading: false,
+    error: null,
+  })),
+}));
 
 // ─── Venue factory ────────────────────────────────────────────────────────────
 function makeVenue(overrides: Record<string, unknown> = {}) {
