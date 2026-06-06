@@ -180,8 +180,85 @@ function proximityScore(distanceKm: number | undefined): number {
   if (distanceKm == null || !Number.isFinite(distanceKm)) {
     return W.proximity * 0.4; // unknown distance → neutral-ish, don't bury it
   }
-  const t = Math.max(0, 1 - distanceKm / PROXIMITY_FALLOFF_KM);
+  // sqrt curve: same 0km=40, 32km=0 endpoints as linear but compresses the
+  // 1–5km band upward — venues a short walk away score meaningfully higher
+  // than venues on the edge of the radius.
+  const t = Math.max(0, 1 - Math.sqrt(distanceKm / PROXIMITY_FALLOFF_KM));
   return W.proximity * t;
+}
+
+// ── Contextual boost slugs ─────────────────────────────────────────
+// Kept here (not as module-level Sets) so the functions that use them are
+// self-contained and easy to read side-by-side.
+
+const MORNING_SLUGS = new Set(['cafe', 'soft-play', 'indoor-play', 'library', 'sensory']);
+const AFTER_SCHOOL_SLUGS = new Set(['soft-play', 'indoor-play', 'trampoline', 'bowling']);
+const VERY_HOT_OUTDOOR_SLUGS = new Set(['swimming', 'water-park', 'park', 'outdoor-sports', 'outdoor']);
+const VERY_HOT_INDOOR_SLUGS = new Set(['soft-play', 'indoor-play', 'library', 'museum', 'bowling', 'sensory', 'trampoline', 'arts', 'swimming']);
+const HOT_OUTDOOR_SLUGS = new Set(['park', 'outdoor-sports', 'farm', 'outdoor']);
+const COLD_INDOOR_SLUGS = new Set(['soft-play', 'indoor-play', 'library', 'museum', 'bowling', 'sensory', 'trampoline']);
+const PRECIP_INDOOR_SLUGS = new Set(['soft-play', 'indoor-play', 'library', 'museum', 'bowling', 'sensory', 'trampoline', 'arts', 'swimming']);
+const PRECIP_OUTDOOR_SLUGS = new Set(['park', 'outdoor-sports', 'farm', 'playground', 'nature_trail', 'outdoor']);
+
+/**
+ * Boost venues by category based on the hour of day.
+ * Reflects real parent behaviour: cafes/soft-play in the morning,
+ * indoor activity venues at after-school pickup time.
+ * Returns 0 for unknown time so existing tests are unaffected.
+ */
+export function timeOfDayScore(venue: Venue, hourOfDay: number): number {
+  if (hourOfDay < 0) return 0; // -1 sentinel: ctx.now was absent
+  const slug = venue.category?.slug ?? '';
+  if (hourOfDay >= 6 && hourOfDay <= 11) {
+    return MORNING_SLUGS.has(slug) ? 8 : 0;
+  }
+  if (hourOfDay >= 12 && hourOfDay <= 16) {
+    return 0; // all venue types work in the afternoon
+  }
+  if (hourOfDay >= 17 && hourOfDay <= 19) {
+    // Parents collecting kids want something immediate and sheltered
+    return AFTER_SCHOOL_SLUGS.has(slug) ? 8 : 0;
+  }
+  return 0; // evening/night edge cases — no penalty
+}
+
+/**
+ * Temperature-specific boost, layered on top of the existing scoreVenueForWeather
+ * which handles condition (rain/sun/etc). This handles the temperature dimension
+ * independently — hot days make indoor venues uncomfortable; cold days reward indoor.
+ */
+export function temperatureBoost(venue: Venue, weather: WeatherState | null): number {
+  if (!weather) return 0;
+  const slug = venue.category?.slug ?? '';
+  const t = weather.temperatureC;
+  if (t >= 28) {
+    if (VERY_HOT_OUTDOOR_SLUGS.has(slug)) return 6;
+    // Light indoor penalty: heat makes enclosed venues uncomfortable — parents
+    // naturally prefer outdoor/water on very hot days. Not a bug.
+    if (VERY_HOT_INDOOR_SLUGS.has(slug)) return -3;
+    return 0;
+  }
+  if (t >= 23) {
+    return HOT_OUTDOOR_SLUGS.has(slug) ? 4 : 0;
+  }
+  if (t <= 5) {
+    return COLD_INDOOR_SLUGS.has(slug) ? 4 : 0;
+  }
+  return 0;
+}
+
+/**
+ * Uses precipitation probability to tilt indoor/outdoor when mood is neutral.
+ * Kept separate from moodScore so it still fires on 'surprise' and 'auto' paths
+ * where moodScore deliberately returns 0.
+ */
+export function indoorOutdoorContextBoost(venue: Venue, weather: WeatherState | null): number {
+  if (!weather) return 0;
+  const slug = venue.category?.slug ?? '';
+  const precip = weather.precipProbabilityPct;
+  if (precip >= 70 && PRECIP_INDOOR_SLUGS.has(slug)) return 5;
+  if (precip <= 10 && weather.temperatureC >= 15 && PRECIP_OUTDOOR_SLUGS.has(slug)) return 3;
+  return 0;
 }
 
 function ratingScore(venue: Venue): number {
@@ -251,6 +328,9 @@ export function curateVenues(
   const limit = opts.limit ?? 6;
   const now = ctx.now ?? new Date();
   const effectiveMood = resolveAutoMood(ctx.mood, ctx.weather);
+  // Derived once before the loop — avoids re-calling getHours() per venue.
+  // -1 sentinel means ctx.now was absent; timeOfDayScore treats -1 as 0.
+  const hourOfDay = ctx.now ? ctx.now.getHours() : -1;
 
   const scored: { c: CuratedVenue; idx: number }[] = [];
 
@@ -276,6 +356,12 @@ export function curateVenues(
     const intel = computeVenueIntelligence(venue);
     score += (intel.familyScore / 100) * 15;  // family quality nudge (max +15)
     score += (intel.trustScore / 100) * 8;    // trust nudge (max +8)
+
+    // Contextual boosts — additive, small relative to mood+proximity so they
+    // personalise at the margin without overriding a parent's explicit intent.
+    score += timeOfDayScore(venue, hourOfDay);
+    score += temperatureBoost(venue, ctx.weather);
+    score += indoorOutdoorContextBoost(venue, ctx.weather);
 
     scored.push({
       c: { venue, score, reasons: buildReasons(venue, ctx, effectiveMood) },

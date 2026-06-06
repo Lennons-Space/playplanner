@@ -9,7 +9,7 @@
  *   • Output is small and DETERMINISTIC (no randomness, stable ties).
  */
 
-import { curateVenues, resolveAutoMood, type CurationContext } from '../curation';
+import { curateVenues, resolveAutoMood, timeOfDayScore, temperatureBoost, indoorOutdoorContextBoost, type CurationContext } from '../curation';
 import type { WeatherState } from '../weather';
 import type { Venue } from '@/types';
 
@@ -171,5 +171,225 @@ describe('curateVenues — reasons', () => {
       ctx({}),
     );
     expect(result[0].reasons.some((r) => /rated|reviewed/i.test(r))).toBe(false);
+  });
+});
+
+// ── Helpers shared by the contextual-boost tests ───────────────────────────
+// venueWithSlug: creates a venue whose category slug matches the given string,
+// which is how every scoring function identifies the venue type.
+function venueWithSlug(id: string, slug: string): Venue {
+  return venue({ id, category: cat(slug) });
+}
+
+function weather(over: Partial<WeatherState>): WeatherState {
+  return {
+    condition: 'clear',
+    temperatureC: 15,
+    precipProbabilityPct: 10,
+    emoji: '☀️',
+    label: 'Clear',
+    ...over,
+  };
+}
+
+describe('contextual boosts — Step 3A', () => {
+  describe('timeOfDayScore', () => {
+    // Without the -1 guard, a missing ctx.now would produce a score based on
+    // whatever hour getHours() returns on the test machine — making results
+    // non-deterministic and breaking existing baseline tests.
+    it('sentinel -1 always returns 0', () => {
+      expect(timeOfDayScore(venueWithSlug('sp', 'soft-play'), -1)).toBe(0);
+      expect(timeOfDayScore(venueWithSlug('cafe', 'cafe'), -1)).toBe(0);
+    });
+
+    // A parent heading out at 9am with a toddler would expect soft-play and
+    // cafes to surface first; without the morning boost, irrelevant evening
+    // venues could outrank them.
+    it('morning hour 9: soft-play gets +8', () => {
+      expect(timeOfDayScore(venueWithSlug('sp', 'soft-play'), 9)).toBe(8);
+    });
+
+    // Parks score 0 in the morning so the morning window doesn't accidentally
+    // reward every venue — only the genuinely morning-appropriate ones.
+    it('morning hour 9: park gets 0', () => {
+      expect(timeOfDayScore(venueWithSlug('park', 'park'), 9)).toBe(0);
+    });
+
+    // Afternoon is the most flexible window; applying a bonus here would skew
+    // results away from the standard quality/distance ranking for no reason.
+    it('afternoon hour 14: soft-play gets 0', () => {
+      expect(timeOfDayScore(venueWithSlug('sp', 'soft-play'), 14)).toBe(0);
+    });
+
+    // At 6pm parents need something that's actually suitable for kids just out
+    // of school. If the after-school boost is broken, a distant cafe could
+    // beat a nearby soft-play that's the obvious choice.
+    it('after-school hour 18: soft-play gets +8', () => {
+      expect(timeOfDayScore(venueWithSlug('sp', 'soft-play'), 18)).toBe(8);
+    });
+
+    // Trampolines are explicitly in AFTER_SCHOOL_SLUGS; if the Set is ever
+    // accidentally edited, this test catches the regression immediately.
+    it('after-school hour 18: trampoline gets +8', () => {
+      expect(timeOfDayScore(venueWithSlug('tr', 'trampoline'), 18)).toBe(8);
+    });
+
+    // Parks are not in AFTER_SCHOOL_SLUGS (too weather-dependent at pickup
+    // time); confirming 0 prevents someone adding park to that Set by mistake.
+    it('after-school hour 18: park gets 0', () => {
+      expect(timeOfDayScore(venueWithSlug('park', 'park'), 18)).toBe(0);
+    });
+
+    // Evening / night edge cases: parents are unlikely to be looking for
+    // venues but if they do the function must not crash or apply a stale bonus.
+    it('evening hour 21: returns 0', () => {
+      expect(timeOfDayScore(venueWithSlug('sp', 'soft-play'), 21)).toBe(0);
+      expect(timeOfDayScore(venueWithSlug('park', 'park'), 21)).toBe(0);
+    });
+  });
+
+  describe('temperatureBoost', () => {
+    // If null-weather isn't guarded, every venue would receive a spurious
+    // score change whenever the weather API is unavailable — breaking the
+    // "degrade gracefully" contract.
+    it('null weather returns 0', () => {
+      expect(temperatureBoost(venueWithSlug('sp', 'soft-play'), null)).toBe(0);
+    });
+
+    // At 28°C parents want outdoor water venues. Swimming belongs to both the
+    // "outdoor boost" set AND the "indoor penalty" set; the outdoor boost (+6)
+    // must win because VERY_HOT_OUTDOOR_SLUGS is checked first.
+    it('28°C: outdoor slug (swimming) gets +6', () => {
+      expect(temperatureBoost(venueWithSlug('swim', 'swimming'), weather({ temperatureC: 28 }))).toBe(6);
+    });
+
+    // On very hot days indoor venues become stuffy. The -3 penalty is a
+    // deliberate UX decision; if temperatureBoost returns 0 here, soft-play
+    // incorrectly ties with outdoor venues on hot days.
+    it('28°C: indoor slug (soft-play) gets -3', () => {
+      expect(temperatureBoost(venueWithSlug('sp', 'soft-play'), weather({ temperatureC: 28 }))).toBe(-3);
+    });
+
+    // A cafe is in neither hot-outdoor nor hot-indoor set; it should stay
+    // score-neutral so it rises or falls purely on quality/proximity.
+    it('28°C: neutral slug (cafe) gets 0', () => {
+      expect(temperatureBoost(venueWithSlug('cafe', 'cafe'), weather({ temperatureC: 28 }))).toBe(0);
+    });
+
+    // 25°C is a nice warm-but-not-scorching day; parks should be prioritised
+    // without penalising indoor venues. +4 for outdoor slugs only.
+    it('25°C: outdoor slug (park) gets +4', () => {
+      expect(temperatureBoost(venueWithSlug('park', 'park'), weather({ temperatureC: 25 }))).toBe(4);
+    });
+
+    // At 25°C libraries should be score-neutral — parents should still be
+    // able to choose them without being actively discouraged.
+    it('25°C: indoor slug (library) gets 0', () => {
+      expect(temperatureBoost(venueWithSlug('lib', 'library'), weather({ temperatureC: 25 }))).toBe(0);
+    });
+
+    // At 4°C parents strongly prefer indoor venues. Museum is in COLD_INDOOR_SLUGS;
+    // if the cold boost is missing, parents on a freezing day still see outdoor
+    // venues ranked equally, which is misleading.
+    it('4°C: indoor slug (museum) gets +4', () => {
+      expect(temperatureBoost(venueWithSlug('mus', 'museum'), weather({ temperatureC: 4 }))).toBe(4);
+    });
+
+    // Parks should not be boosted in freezing weather — confirming 0 prevents
+    // accidentally adding park to COLD_INDOOR_SLUGS.
+    it('4°C: outdoor slug (park) gets 0', () => {
+      expect(temperatureBoost(venueWithSlug('park', 'park'), weather({ temperatureC: 4 }))).toBe(0);
+    });
+
+    // 15°C is the "neutral" band (>5, <23); no venue should be biased by
+    // temperature at this point — ranking falls back to quality and proximity.
+    it('15°C (neutral): all slugs get 0', () => {
+      expect(temperatureBoost(venueWithSlug('sp', 'soft-play'), weather({ temperatureC: 15 }))).toBe(0);
+      expect(temperatureBoost(venueWithSlug('park', 'park'), weather({ temperatureC: 15 }))).toBe(0);
+      expect(temperatureBoost(venueWithSlug('cafe', 'cafe'), weather({ temperatureC: 15 }))).toBe(0);
+    });
+  });
+
+  describe('indoorOutdoorContextBoost', () => {
+    // Same graceful-degradation requirement: no weather data must produce no
+    // score change, otherwise the ranking becomes unpredictable offline.
+    it('null weather returns 0', () => {
+      expect(indoorOutdoorContextBoost(venueWithSlug('sp', 'soft-play'), null)).toBe(0);
+    });
+
+    // At 80% precip, parents need indoor cover. If this +5 is absent, rainy-day
+    // results feel random rather than contextually helpful.
+    it('precip 80%, indoor slug (soft-play) returns +5', () => {
+      expect(
+        indoorOutdoorContextBoost(venueWithSlug('sp', 'soft-play'), weather({ precipProbabilityPct: 80 }))
+      ).toBe(5);
+    });
+
+    // An outdoor venue should NOT be boosted when rain is likely — confirming
+    // 0 here prevents a logic inversion where parks rise on rainy days.
+    it('precip 80%, outdoor slug (park) returns 0', () => {
+      expect(
+        indoorOutdoorContextBoost(venueWithSlug('park', 'park'), weather({ precipProbabilityPct: 80 }))
+      ).toBe(0);
+    });
+
+    // Low precip + warm enough = ideal outdoor day. The +3 surfaces parks
+    // without mood-matching being required, so 'surprise' mode still feels
+    // weather-aware.
+    it('precip 5%, temp 18°C, outdoor slug (park) returns +3', () => {
+      expect(
+        indoorOutdoorContextBoost(
+          venueWithSlug('park', 'park'),
+          weather({ precipProbabilityPct: 5, temperatureC: 18 })
+        )
+      ).toBe(3);
+    });
+
+    // Library is indoor, so it must not receive the outdoor sunny-day boost.
+    it('precip 5%, temp 18°C, indoor slug (library) returns 0', () => {
+      expect(
+        indoorOutdoorContextBoost(
+          venueWithSlug('lib', 'library'),
+          weather({ precipProbabilityPct: 5, temperatureC: 18 })
+        )
+      ).toBe(0);
+    });
+
+    // temperatureC < 15 means the fine-weather outdoor boost should NOT fire
+    // even if precip is low — it's too cold to recommend outdoor by default.
+    it('precip 5%, temp 12°C (below threshold), outdoor slug returns 0', () => {
+      expect(
+        indoorOutdoorContextBoost(
+          venueWithSlug('park', 'park'),
+          weather({ precipProbabilityPct: 5, temperatureC: 12 })
+        )
+      ).toBe(0);
+    });
+
+    // 50% precip satisfies neither the >=70 (rainy-indoor) nor the <=10
+    // (sunny-outdoor) threshold — no venue should be biased by this.
+    it('precip 50% (neither threshold): all slugs get 0', () => {
+      expect(
+        indoorOutdoorContextBoost(venueWithSlug('sp', 'soft-play'), weather({ precipProbabilityPct: 50 }))
+      ).toBe(0);
+      expect(
+        indoorOutdoorContextBoost(venueWithSlug('park', 'park'), weather({ precipProbabilityPct: 50 }))
+      ).toBe(0);
+    });
+  });
+
+  describe('curateVenues — proximity curve', () => {
+    // Under the sqrt curve, a venue at 5km earns meaningfully more proximity
+    // credit than one at 28km. This test confirms the curve change hasn't
+    // accidentally swapped that ordering (e.g. due to a sign error in the
+    // sqrt formula).
+    it('near venue (5km) beats far venue (28km) when all other signals are equal', () => {
+      const venues = [
+        venue({ id: 'far', distance_km: 28 }),
+        venue({ id: 'near', distance_km: 5 }),
+      ];
+      const result = curateVenues(venues, ctx({ mood: 'surprise', weather: null }));
+      expect(result[0].venue.id).toBe('near');
+    });
   });
 });
