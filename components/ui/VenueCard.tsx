@@ -61,8 +61,8 @@ export interface VenueCardProps {
   weatherBadge?: string | null;
   /**
    * Family-friendly badges derived from the venue data (e.g. "Family Favourite",
-   * "Great for Toddlers"). At most 2 are shown. Derived via deriveVenueBadges()
-   * in lib/quickFilters.ts. Pass an empty array or undefined to hide all badges.
+   * "Great for Toddlers"). At most 3 are shown. Derived via generateRecommendationReasons()
+   * in lib/recommendations/recommendationReasons.ts. Pass an empty array or undefined to hide all badges.
    */
   familyBadges?: string[];
 }
@@ -309,13 +309,14 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
           </View>
         )}
 
-        {/* Family-friendly badges (max 2). Only shown when the caller passes
-            them — see deriveVenueBadges() in lib/quickFilters.ts.
+        {/* Family-friendly badges (max 3). Only shown when the caller passes
+            them — see generateRecommendationReasons() in
+            lib/recommendations/recommendationReasons.ts.
             These are deliberately subtle (sand tint, small text) so they
             don't compete with the venue name or the open/closed pill. */}
         {familyBadges && familyBadges.length > 0 && (
           <View style={{ flexDirection: 'row', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
-            {familyBadges.slice(0, 2).map((badge) => (
+            {familyBadges.slice(0, 3).map((badge) => (
               <View
                 key={badge}
                 style={{

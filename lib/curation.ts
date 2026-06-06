@@ -29,6 +29,7 @@ import {
   getWeatherBadge,
   type WeatherState,
 } from './weather';
+import { computeVenueIntelligence } from './recommendations/venueIntelligence';
 
 // ── Moods ──────────────────────────────────────────────────────────
 // A mood is the single intent the parent expressed (or 'auto' when they
@@ -267,6 +268,14 @@ export function curateVenues(
       score += scoreVenueForWeather(venue.category?.slug, ctx.weather.condition) * W.weather;
     }
     if (isFeaturedNow(venue, now)) score += W.featured;
+
+    // Intelligence nudges — additive only; existing signals are unchanged.
+    // Max contribution: +15 (family quality) + +8 (trust) = +23 points.
+    // This is kept well below the moodMatch weight (25) so context still
+    // dominates over intrinsic quality when a parent expresses a clear intent.
+    const intel = computeVenueIntelligence(venue);
+    score += (intel.familyScore / 100) * 15;  // family quality nudge (max +15)
+    score += (intel.trustScore / 100) * 8;    // trust nudge (max +8)
 
     scored.push({
       c: { venue, score, reasons: buildReasons(venue, ctx, effectiveMood) },

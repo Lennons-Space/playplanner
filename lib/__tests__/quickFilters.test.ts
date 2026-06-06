@@ -16,7 +16,6 @@
 
 import {
   applyQuickFilters,
-  deriveVenueBadges,
   getQuickFilter,
   parseQuickFilterId,
   QUICK_FILTERS,
@@ -582,83 +581,6 @@ describe('applyQuickFilters', () => {
     const result = applyQuickFilters([parkVenue], ['unknown-id' as QuickFilterId]);
     // Unknown filter is silently dropped, no filtering applied.
     expect(result).toHaveLength(1);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// deriveVenueBadges
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('deriveVenueBadges', () => {
-  it('returns "Family Favourite" for high recommendation score', () => {
-    const v = makeVenue();
-    const badges = deriveVenueBadges(v, 75);
-    expect(badges).toContain('Family Favourite');
-  });
-
-  it('does not return "Family Favourite" for score below 70', () => {
-    const v = makeVenue();
-    const badges = deriveVenueBadges(v, 65);
-    expect(badges).not.toContain('Family Favourite');
-  });
-
-  it('returns "Great for Toddlers" when min_age <= 2', () => {
-    const v = makeVenue({ min_age: 0, max_age: 5 });
-    const badges = deriveVenueBadges(v, 40);
-    expect(badges).toContain('Great for Toddlers');
-  });
-
-  it('does not return "Great for Toddlers" when min_age=3', () => {
-    const v = makeVenue({ min_age: 3, max_age: 12 });
-    const badges = deriveVenueBadges(v, 40);
-    expect(badges).not.toContain('Great for Toddlers');
-  });
-
-  it('returns "Rainy Day Spot" for soft-play', () => {
-    const v = makeVenue({ category: makeCategory('soft-play') });
-    const badges = deriveVenueBadges(v, 40);
-    expect(badges).toContain('Rainy Day Spot');
-  });
-
-  it('returns "Outdoor Play" for park', () => {
-    const v = makeVenue({ category: makeCategory('park') });
-    const badges = deriveVenueBadges(v, 40);
-    expect(badges).toContain('Outdoor Play');
-  });
-
-  it('returns "Free Entry" for free venue (when no higher-priority badge took the slot)', () => {
-    const v = makeVenue({ price_range: 'free' });
-    // recommendationScore = 40 (no Family Favourite), no toddler age, no indoor/outdoor slug
-    const badges = deriveVenueBadges(v, 40);
-    expect(badges).toContain('Free Entry');
-  });
-
-  it('never returns more than 2 badges', () => {
-    // Venue that would qualify for many badges.
-    const v = makeVenue({
-      min_age: 0,
-      max_age: 3,
-      price_range: 'free',
-      category: makeCategory('soft-play'),
-    });
-    const badges = deriveVenueBadges(v, 80);
-    expect(badges.length).toBeLessThanOrEqual(2);
-  });
-
-  it('returns empty array when score is low and no special data', () => {
-    // Use min_age=5 so "Great for Toddlers" does not fire (min_age must be <= 2).
-    // price_range='budget' so "Free Entry" does not fire.
-    // No indoor/outdoor category so "Rainy Day Spot" / "Outdoor Play" do not fire.
-    // recommendationScore=30 so "Family Favourite" does not fire.
-    const v = makeVenue({ price_range: 'budget', min_age: 5, max_age: 16 });
-    const badges = deriveVenueBadges(v, 30);
-    expect(badges).toHaveLength(0);
-  });
-
-  it('does not return "Free Entry" when price_range is null (unknown)', () => {
-    const v = makeVenue({ price_range: null });
-    const badges = deriveVenueBadges(v, 30);
-    expect(badges).not.toContain('Free Entry');
   });
 });
 

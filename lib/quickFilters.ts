@@ -466,65 +466,6 @@ export function applyQuickFilters(venues: Venue[], filterIds: QuickFilterId[]): 
 }
 
 /**
- * Derive venue card badges from the family score and venue data.
- * Returns at most 2 badges. Never claims something without data support.
- *
- * Badge rules:
- *   "Family Favourite"     — recommendationScore >= 70 (see familyScore.ts)
- *   "Great for Toddlers"   — min_age <= 2 and max_age > 0
- *   "Rainy Day Spot"       — isIndoor === true or RAINY_DAY_SLUGS category
- *   "Outdoor Play"         — isOutdoor === true or OUTDOOR_SLUGS category
- *   "Free Entry"           — price_range === 'free'
- */
-export function deriveVenueBadges(
-  venue: Venue,
-  recommendationScore: number,
-): string[] {
-  const badges: string[] = [];
-  const attrs = getVenueAttributes(venue);
-  const slug = venue.category?.slug ?? '';
-
-  // Badge 1: Family Favourite — based on recommendation score quality signal.
-  if (recommendationScore >= 70) {
-    badges.push('Family Favourite');
-  }
-
-  // Badge 2 (earliest slot available): Toddler-friendly.
-  if (
-    badges.length < 2 &&
-    typeof venue.min_age === 'number' &&
-    venue.min_age <= 2 &&
-    typeof venue.max_age === 'number' &&
-    venue.max_age > 0
-  ) {
-    badges.push('Great for Toddlers');
-  }
-
-  // Badge 3: Rainy Day.
-  if (
-    badges.length < 2 &&
-    (attrs.isIndoor === true || RAINY_DAY_SLUGS.has(norm(slug)))
-  ) {
-    badges.push('Rainy Day Spot');
-  }
-
-  // Badge 4: Outdoor Play.
-  if (
-    badges.length < 2 &&
-    (attrs.isOutdoor === true || OUTDOOR_SLUGS.has(norm(slug)))
-  ) {
-    badges.push('Outdoor Play');
-  }
-
-  // Badge 5: Free Entry — only when we KNOW it's free.
-  if (badges.length < 2 && attrs.isFree === true) {
-    badges.push('Free Entry');
-  }
-
-  return badges.slice(0, 2);
-}
-
-/**
  * Validate a quick filter ID from a URL param.
  * Returns null if the value is not a known filter ID (tamper protection).
  */

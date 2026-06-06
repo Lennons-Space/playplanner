@@ -27,6 +27,7 @@ import { useWeather } from '@/hooks/useWeather';
 import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { curateVenues, type Mood, type CuratedVenue } from '@/lib/curation';
+import { generateRecommendationReasons } from '@/lib/recommendations/recommendationReasons';
 import {
   getQuickFilter,
   HARD_FILTER_IDS,
@@ -338,12 +339,13 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
 // A standard VenueCard plus the honest "why" — the reasons that put this
 // venue on the shortlist. The reasons are the trust payload of this screen.
 function CuratedResult({ item, onPress }: { item: CuratedVenue; onPress: () => void }) {
+  const reasons = generateRecommendationReasons(item.venue);
   return (
     <View>
       <VenueCard venue={item.venue} onPress={onPress} />
-      {item.reasons.length > 0 && (
+      {reasons.length > 0 && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8, marginLeft: 4 }}>
-          {item.reasons.map((r) => (
+          {reasons.map((r) => (
             <View
               key={r}
               style={{
