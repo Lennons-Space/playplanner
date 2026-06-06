@@ -11,7 +11,9 @@
     "test:ci": "jest --ci",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "enrich:dry-run": "tsx scripts/enrich/enrichVenues.ts --dry-run",
+    "enrich:dry-run:single": "tsx scripts/enrich/enrichVenues.ts --dry-run --limit=1"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -60,12 +62,14 @@
     "@babel/core": "^7.24.0",
     "@testing-library/react-native": "^12.6.1",
     "@types/jest": "^29.5.14",
+    "@types/node": "^20.0.0",
     "@types/react": "~19.1.10",
     "eslint": "^8.57.0",
     "eslint-config-expo": "~10.0.0",
     "jest": "^29.7.0",
     "jest-expo": "~54.0.17",
     "sharp": "^0.34.5",
+    "tsx": "^4.19.3",
     "typescript": "~5.9.2"
   },
   "jest": {
