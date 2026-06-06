@@ -1,0 +1,39 @@
+-- =============================================================================
+-- 048_restore_is_admin_execute.sql
+--
+-- HOTFIX: restore EXECUTE on public.is_admin() to anon + authenticated.
+--
+-- WHAT BROKE
+-- ----------
+-- Migrations 046 (line 296) and 047 (line 69) revoked EXECUTE on
+-- public.is_admin() from anon, authenticated, and PUBLIC. Their stated
+-- reasoning was that is_admin() "is not called from any app code".
+--
+-- That reasoning missed the critical use: is_admin() is referenced in the
+-- USING clause of ~15 Row-Level-Security policies created in migration 001
+-- (venues, reviews, venue_photos, venue_reports, venue_review_scores, and
+-- more) so that admins can moderate records. PostgreSQL evaluates an RLS
+-- policy AS THE QUERYING ROLE. When the anon (or authenticated) role runs any
+-- query against one of those tables, Postgres must call is_admin() to evaluate
+-- the policy. With EXECUTE revoked, that call fails with:
+--     ERROR: 42501: permission denied for function is_admin
+-- which makes the ENTIRE query fail. The app (anon role) could therefore load
+-- ZERO venues anywhere: map, nearby list, search, and venue detail all went
+-- empty, with no error surfaced to the user (just the "No Venues Nearby" state).
+--
+-- WHY THIS IS SAFE
+-- ----------------
+-- is_admin() is SECURITY DEFINER, STABLE, and returns:
+--     coalesce((select is_admin from profiles where id = auth.uid()), false)
+-- For an anonymous caller auth.uid() is NULL, so it returns false. It exposes
+-- no data and grants no privilege; it only answers "is the current user an
+-- admin?" Restoring EXECUTE is the function's intended posture — it must be
+-- callable by every role that evaluates an RLS policy referencing it.
+--
+-- This migration does NOT undo the other (correct) hardening in 046/047:
+-- search_path locking, the pass_interest tightening, and the revokes on
+-- genuine maintenance/RPC functions (rls_auto_enable, review_venue_claim,
+-- delete_own_account, handle_new_user, redact_*) are all left in place.
+-- =============================================================================
+
+GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated;
