@@ -40,6 +40,7 @@ import { IconBtn } from '@/components/ui/IconBtn';
 import { Stars } from '@/components/ui/Stars';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
 import { getCategoryMeta } from '@/constants/categories';
+import { RecommendationExplanation } from '@/components/venues/RecommendationExplanation';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const pp = {
@@ -455,6 +456,9 @@ export default function VenueDetailScreen() {
               </View>
             </View>
           </View>
+
+          {/* ── Why we recommended this ───────────────────────────────── */}
+          <RecommendationExplanation venue={venue} />
 
           {/* ── About section ─────────────────────────────────────────── */}
           <View style={styles.section}>
