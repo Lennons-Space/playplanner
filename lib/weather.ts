@@ -93,8 +93,11 @@ const INDOOR_SLUGS = new Set([
 ]);
 
 // Category slugs that are primarily outdoors.
+// 'playground' is unambiguously outdoor; it was previously missing here, so
+// playgrounds got no sunny-day weather boost/badge and no rainy-day warning
+// (Sprint B3 fix — see lib/venueAttributes.ts OUTDOOR_SLUGS for the matching change).
 const OUTDOOR_SLUGS = new Set([
-  'park', 'outdoor-sports', 'farm',
+  'park', 'outdoor-sports', 'farm', 'playground',
 ]);
 
 /**

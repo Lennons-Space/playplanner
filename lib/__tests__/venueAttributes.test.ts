@@ -158,6 +158,14 @@ describe('getVenueAttributes — isRainyDaySuitable', () => {
     expect(getVenueAttributes(v).isRainyDaySuitable).toBe(false);
   });
 
+  // Sprint B3: now correctly classified as outdoor (was previously null/
+  // unclassified), so it is correctly excluded from rainy-day suggestions —
+  // consistent with park and outdoor-sports above.
+  it('is false for playground (known outdoor — Sprint B3 fix)', () => {
+    const v = makeVenue({ category: makeCategory('playground') });
+    expect(getVenueAttributes(v).isRainyDaySuitable).toBe(false);
+  });
+
   it('is null for farm (mixed / unknown indoor/outdoor)', () => {
     const v = makeVenue({ category: makeCategory('farm') });
     expect(getVenueAttributes(v).isRainyDaySuitable).toBeNull();
@@ -193,6 +201,16 @@ describe('getVenueAttributes — isIndoor / isOutdoor', () => {
 
   it('isIndoor=false, isOutdoor=true for park', () => {
     const v = makeVenue({ category: makeCategory('park') });
+    const attrs = getVenueAttributes(v);
+    expect(attrs.isIndoor).toBe(false);
+    expect(attrs.isOutdoor).toBe(true);
+  });
+
+  // Sprint B3: playground was missing from OUTDOOR_SLUGS, leaving it
+  // unclassified (isOutdoor=null) and forfeiting the sunny-day mood-match
+  // boost in curation. It is unambiguously outdoor — this locks the fix.
+  it('isIndoor=false, isOutdoor=true for playground', () => {
+    const v = makeVenue({ category: makeCategory('playground') });
     const attrs = getVenueAttributes(v);
     expect(attrs.isIndoor).toBe(false);
     expect(attrs.isOutdoor).toBe(true);

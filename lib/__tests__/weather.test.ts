@@ -161,6 +161,14 @@ describe('getWeatherBadge', () => {
     expect(getWeatherBadge('outdoor-sports', 'clear')).toBe('☀️ Ideal today');
   });
 
+  // Sprint B3: 'playground' was missing from weather.ts OUTDOOR_SLUGS, so it
+  // previously got no badge at all (neither outdoor warning nor ideal-day
+  // badge). Playgrounds are unambiguously outdoor — this locks the fix.
+  it('returns outdoor badges for playground (Sprint B3 fix — was unclassified)', () => {
+    expect(getWeatherBadge('playground', 'clear')).toBe('☀️ Ideal today');
+    expect(getWeatherBadge('playground', 'rain')).toBe('🌧 Wet today');
+  });
+
   it('returns null for indoor venue on a clear day', () => {
     expect(getWeatherBadge('soft-play', 'clear')).toBeNull();
   });
@@ -263,6 +271,15 @@ describe('scoreVenueForWeather', () => {
 
   it('scores outdoor venues higher on clear days', () => {
     expect(scoreVenueForWeather('park', 'clear')).toBeGreaterThan(0);
+  });
+
+  // Sprint B3: 'playground' was missing from OUTDOOR_SLUGS in weather.ts,
+  // so it scored 0 (neutral) on both clear and rainy days like an
+  // unclassified category — burying it vs. parks on sunny days. It is
+  // unambiguously outdoor; these are the corrected expected scores.
+  it('scores playground as outdoor: +1 on clear days, -1 on rainy days (Sprint B3 fix)', () => {
+    expect(scoreVenueForWeather('playground', 'clear')).toBe(1);
+    expect(scoreVenueForWeather('playground', 'rain')).toBe(-1);
   });
 
   it('returns 0 for neutral/uncategorised venues', () => {

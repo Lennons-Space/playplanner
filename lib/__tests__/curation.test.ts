@@ -127,6 +127,26 @@ describe('curateVenues — ranking', () => {
     expect(result[0].venue.id).toBe('park');
   });
 
+  // Sprint B3: 'playground' was missing from OUTDOOR_SLUGS in both
+  // venueAttributes.ts and weather.ts, so on a sunny day with mood:'auto'
+  // (which resolves to 'outdoor') a playground forfeited the +25 mood-match
+  // boost AND the +18 weather boost vs. an equally-placed park — despite
+  // being unambiguously outdoor and the highest-family-score outdoor
+  // category. This locks the corrected behaviour: playground now ranks
+  // level with park (same outdoor mood-match + weather treatment) rather
+  // than being buried behind it.
+  it('playground gets the outdoor mood-match boost and ranks level with park on a sunny "auto" day (Sprint B3 fix)', () => {
+    const venues = [
+      venue({ id: 'playground', category: cat('playground'), distance_km: 2 }),
+      venue({ id: 'soft', category: cat('soft-play'), distance_km: 2 }),
+    ];
+    const result = curateVenues(venues, ctx({ weather: SUN, mood: 'auto' }));
+    // Not excluded by the resolved 'outdoor' hard constraint, and beats an
+    // equally-placed indoor venue thanks to the outdoor mood-match + weather boost.
+    expect(result.map((r) => r.venue.id)).toContain('playground');
+    expect(result[0].venue.id).toBe('playground');
+  });
+
   it('respects the limit', () => {
     const venues = Array.from({ length: 20 }, (_, i) =>
       venue({ id: String(i), distance_km: i }),

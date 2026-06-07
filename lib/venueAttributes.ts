@@ -31,6 +31,10 @@ const INDOOR_SLUGS = new Set([
 const OUTDOOR_SLUGS = new Set([
   'park',
   'outdoor-sports',
+  // Playgrounds are unambiguously outdoor; they were previously missing here,
+  // which incorrectly left them unclassified (isOutdoor=null) and caused them
+  // to forfeit the sunny-day mood-match boost in curation (Sprint B3 fix).
+  'playground',
 ]);
 
 /**
