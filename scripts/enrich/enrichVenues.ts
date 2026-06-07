@@ -7,8 +7,12 @@
 //   npx tsx scripts/enrich/enrichVenues.ts [flags]
 //
 // Flags:
-//   --dry-run          Always active in Phase 2A. Included for clarity.
-//   --limit=20         How many venues to process. Default: 20.
+//   --dry-run          Default mode. Prints a report; writes nothing. Always
+//                      the behaviour unless --write is explicitly passed.
+//   --write            Persist results to venue_enrichment. Requires --limit
+//                      to be explicitly provided AND <= 20. See SAFETY below.
+//   --limit=20         How many venues to process. Default: 20 (dry-run only;
+//                      --write requires this to be passed explicitly).
 //   --venue-id=<uuid>  Single venue mode (overrides --limit).
 //   --phase=osm        Enrichment phase. Default and only supported: osm.
 //   --skip-curated     Skip venues where manually_curated = true. Default: true.
@@ -17,10 +21,19 @@
 //   SUPABASE_URL              Your Supabase project URL.
 //   SUPABASE_SERVICE_ROLE_KEY Your service role key (bypasses RLS).
 //
-// SAFETY: This script never writes to the database. It only reads from
-// Supabase and reads local OSM archive files. The --write flag does not exist
-// in Phase 2A — it will be added in Phase 2B after manual review of dry-run
-// output.
+// SAFETY (write mode):
+//   - Dry-run is the default; --write must be explicitly passed.
+//   - --write REQUIRES an explicit --limit=N. The script refuses to run
+//     without it (no silent "default to 20 venues written").
+//   - --write REFUSES to run if N > 20. This cap is intentional and temporary
+//     while we manually validate output quality — raise it deliberately later.
+//   - Rows where manually_curated = true are always skipped, never overwritten,
+//     regardless of --skip-curated.
+//   - Writes go ONLY to venue_enrichment via upsert on venue_id. The venues
+//     table, get_nearby_venues, and the app are never touched by this script.
+//   - manually_curated, raw_geoapify, and raw_wikidata are deliberately
+//     omitted from the upsert payload so this OSM-only run can never clobber
+//     curated data or future enrichment from other sources.
 //
 // No '@/' path alias — this file runs outside the Expo app bundle.
 // =============================================================================
@@ -43,7 +56,12 @@ try {
 import { createClient } from '@supabase/supabase-js';
 import { extractRawFacts } from './osmExtract';
 import { computeIntelligence, type VenueForScoring } from './intelligence';
-import type { RawFacts, EnrichmentConfidence } from '../../types/enrichment';
+import type {
+  RawFacts,
+  EnrichmentConfidence,
+  RecommendedForTag,
+  ScoreBreakdown,
+} from '../../types/enrichment';
 
 // ── Validate environment ──────────────────────────────────────────────────────
 
@@ -68,28 +86,42 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // ── Parse CLI flags ───────────────────────────────────────────────────────────
 
 interface ScriptFlags {
-  dryRun:       boolean;
-  limit:        number;
-  venueId:      string | null;
-  phase:        string;
-  skipCurated:  boolean;
+  dryRun:        boolean;
+  write:         boolean;
+  limit:         number;
+  limitProvided: boolean;
+  venueId:       string | null;
+  phase:         string;
+  skipCurated:   boolean;
 }
+
+// Hard cap on how many rows --write may persist in a single run. Intentional
+// and temporary while we manually validate output quality on real data.
+// Raised 20 -> 100 for the second controlled validation batch (2026-06-07).
+const WRITE_LIMIT_CAP = 100;
 
 function parseFlags(argv: string[]): ScriptFlags {
   const flags: ScriptFlags = {
-    dryRun:      true,   // always true in Phase 2A
-    limit:       20,
-    venueId:     null,
-    phase:       'osm',
-    skipCurated: true,
+    dryRun:        true,
+    write:         false,
+    limit:         20,
+    limitProvided: false,
+    venueId:       null,
+    phase:         'osm',
+    skipCurated:   true,
   };
 
   for (const arg of argv.slice(2)) {
     if (arg === '--dry-run') {
       flags.dryRun = true; // already true, but explicit flag is accepted
+    } else if (arg === '--write') {
+      flags.write = true;
     } else if (arg.startsWith('--limit=')) {
       const val = parseInt(arg.split('=')[1] ?? '', 10);
-      if (!isNaN(val) && val > 0) flags.limit = val;
+      if (!isNaN(val) && val > 0) {
+        flags.limit = val;
+        flags.limitProvided = true;
+      }
     } else if (arg.startsWith('--venue-id=')) {
       flags.venueId = arg.split('=')[1] ?? null;
     } else if (arg.startsWith('--phase=')) {
@@ -98,6 +130,9 @@ function parseFlags(argv: string[]): ScriptFlags {
       flags.skipCurated = true;
     }
   }
+
+  // --write always implies the script is not in dry-run mode.
+  if (flags.write) flags.dryRun = false;
 
   return flags;
 }
@@ -332,6 +367,78 @@ function deriveReason(field: string, tags: Record<string, string>): string {
   }
 }
 
+// ── Write-mode payload builder ────────────────────────────────────────────────
+// Maps Layer 1/2/3 results into the venue_enrichment upsert payload.
+//
+// IMPORTANT: manually_curated, raw_geoapify, and raw_wikidata are deliberately
+// NOT included here. Supabase's upsert() only writes columns present in the
+// payload object — omitting these means an existing row's values are left
+// untouched (and a new row gets the table's DEFAULT values: manually_curated
+// = false, raw_geoapify/raw_wikidata = NULL). This is defense-in-depth: even
+// if the manually_curated pre-filter below had a bug, this script could not
+// physically overwrite curated data or another source's enrichment via this
+// payload shape.
+
+interface EnrichmentUpsertRow {
+  venue_id:              string;
+  indoor_outdoor:        RawFacts['indoor_outdoor'];
+  parking_available:     RawFacts['parking_available'];
+  cafe_available:        RawFacts['cafe_available'];
+  toilets_available:     RawFacts['toilets_available'];
+  baby_change_available: RawFacts['baby_change_available'];
+  wheelchair_accessible: RawFacts['wheelchair_accessible'];
+  visit_duration_mins:   RawFacts['visit_duration_mins'];
+  activity_level:        RawFacts['activity_level'];
+  parent_convenience_score: number;
+  rainy_day_score:          number;
+  active_play_score:        number;
+  learning_score:           number;
+  budget_score:             number;
+  accessibility_score:      number;
+  recommended_for:       RecommendedForTag[];
+  enrichment_confidence: EnrichmentConfidence;
+  enrichment_sources:    string[];
+  raw_osm_tags:          Record<string, string>;
+  intelligence_version:  number;
+  score_breakdown:       ScoreBreakdown;
+  last_enriched_at:      string;
+}
+
+function buildEnrichmentRow(
+  venue:      VenueForScoring,
+  tags:       Record<string, string>,
+  facts:      RawFacts,
+  result:     ReturnType<typeof computeIntelligence>,
+  confidence: EnrichmentConfidence,
+): EnrichmentUpsertRow {
+  const { scores, recommended_for, score_breakdown } = result;
+
+  return {
+    venue_id:                 venue.id,
+    indoor_outdoor:           facts.indoor_outdoor,
+    parking_available:        facts.parking_available,
+    cafe_available:           facts.cafe_available,
+    toilets_available:        facts.toilets_available,
+    baby_change_available:    facts.baby_change_available,
+    wheelchair_accessible:    facts.wheelchair_accessible,
+    visit_duration_mins:      facts.visit_duration_mins,
+    activity_level:           facts.activity_level,
+    parent_convenience_score: scores.parent_convenience_score,
+    rainy_day_score:          scores.rainy_day_score,
+    active_play_score:        scores.active_play_score,
+    learning_score:           scores.learning_score,
+    budget_score:             scores.budget_score,
+    accessibility_score:      scores.accessibility_score,
+    recommended_for:          recommended_for,
+    enrichment_confidence:    confidence,
+    enrichment_sources:       ['osm_archive'],
+    raw_osm_tags:             tags,
+    intelligence_version:     1,
+    score_breakdown:          score_breakdown,
+    last_enriched_at:         new Date().toISOString(),
+  };
+}
+
 // ── Supabase venue query type ─────────────────────────────────────────────────
 // Matches the select() columns we request from Supabase.
 
@@ -353,13 +460,47 @@ type SupabaseVenueRow = {
 async function main(): Promise<void> {
   const flags = parseFlags(process.argv);
 
+  // ── Write-mode safety gate ──────────────────────────────────────────────────
+  // These checks run BEFORE anything else (no archive load, no Supabase query)
+  // so an invalid invocation fails immediately and obviously.
+  if (flags.write) {
+    if (!flags.venueId && !flags.limitProvided) {
+      console.error(
+        'ERROR: --write requires an explicit --limit=N (no default).\n' +
+        '       This prevents accidentally writing to every matching venue.\n' +
+        '       Example: npx tsx scripts/enrich/enrichVenues.ts --phase=osm --limit=20 --write',
+      );
+      process.exit(1);
+    }
+    if (!flags.venueId && flags.limit > WRITE_LIMIT_CAP) {
+      console.error(
+        `ERROR: --write refuses to run with --limit=${flags.limit}.\n` +
+        `       The write-mode cap is ${WRITE_LIMIT_CAP} for now, while we manually\n` +
+        '       validate output quality on real data. Raise WRITE_LIMIT_CAP\n' +
+        '       deliberately once that review is complete.',
+      );
+      process.exit(1);
+    }
+  }
+
   console.log('\nPlayPlanner Venue Enrichment Engine — Phase 2A');
   console.log('================================================');
   console.log(`Phase  : ${flags.phase}`);
-  console.log(`Mode   : DRY RUN (no writes)`);
+  if (flags.write) {
+    console.log('Mode   : *** WRITE — LIVE DATABASE WRITES TO venue_enrichment ***');
+  } else {
+    console.log('Mode   : DRY RUN (no writes)');
+  }
   console.log(`Limit  : ${flags.venueId ? 'single venue' : flags.limit}`);
   console.log(`Venue  : ${flags.venueId ?? 'all OSM venues'}`);
   console.log('');
+
+  if (flags.write) {
+    console.log('⚠️  WRITE MODE ACTIVE — this run will upsert rows into venue_enrichment.');
+    console.log('    manually_curated rows are always skipped and never overwritten.');
+    console.log('    Only venue_enrichment is touched — venues and get_nearby_venues are not.');
+    console.log('');
+  }
 
   // ── Load OSM archive ────────────────────────────────────────────────────────
   const archiveDir = path.join(__dirname, '../data/raw/osm_archive_20260425');
@@ -400,8 +541,38 @@ async function main(): Promise<void> {
 
   console.log(`Found ${venues.length} venue(s) to process.\n`);
 
+  // ── Pre-fetch manually_curated venue_ids (write mode only) ──────────────────
+  // Curated rows are protected by checking BEFORE the loop runs, so a curated
+  // venue is never sent to buildEnrichmentRow / upsert in the first place —
+  // not just filtered out of a report. This is the authoritative skip list,
+  // independent of the --skip-curated flag (which only affects dry-run framing).
+  const curatedVenueIds = new Set<string>();
+  if (flags.write) {
+    const venueIds = venues.map((v) => v.id);
+    const { data: curatedRows, error: curatedError } = await supabase
+      .from('venue_enrichment')
+      .select('venue_id')
+      .in('venue_id', venueIds)
+      .eq('manually_curated', true)
+      .returns<{ venue_id: string }[]>();
+
+    if (curatedError) {
+      console.error('ERROR: Failed to check manually_curated rows before writing.');
+      console.error(curatedError.message);
+      process.exit(1);
+    }
+
+    for (const r of curatedRows ?? []) curatedVenueIds.add(r.venue_id);
+    if (curatedVenueIds.size > 0) {
+      console.log(
+        `Found ${curatedVenueIds.size} manually_curated row(s) in this batch — they will be skipped.\n`,
+      );
+    }
+  }
+
   // ── Process each venue ──────────────────────────────────────────────────────
   let processed = 0;
+  let written   = 0;
   let skipped   = 0;
 
   for (const row of venues) {
@@ -427,6 +598,14 @@ async function main(): Promise<void> {
       continue;
     }
 
+    // Never write over manually curated data — checked first, before any
+    // scoring work, so a curated row never reaches buildEnrichmentRow/upsert.
+    if (flags.write && curatedVenueIds.has(venue.id)) {
+      console.log(`[SKIP] ${venue.name} (${venue.id}) — manually_curated = true, never overwritten by script`);
+      skipped++;
+      continue;
+    }
+
     // Look up OSM tags from the in-memory archive map
     const tags = osmMap.get(venue.osm_id);
     if (!tags) {
@@ -445,8 +624,39 @@ async function main(): Promise<void> {
       // Provenance: how confident are we in the derived facts?
       const confidence = computeConfidence(facts, tags);
 
-      // Print the dry-run report for this venue
-      renderDryRunReport(venue, tags, facts, result, confidence);
+      if (flags.write) {
+        // Writes ONLY to venue_enrichment, keyed on venue_id. manually_curated,
+        // raw_geoapify, and raw_wikidata are intentionally absent from the
+        // payload (see buildEnrichmentRow) so existing values are preserved.
+        const upsertRow = buildEnrichmentRow(venue, tags, facts, result, confidence);
+        const { error: upsertError } = await supabase
+          .from('venue_enrichment')
+          .upsert(upsertRow, { onConflict: 'venue_id' });
+
+        if (upsertError) {
+          // A write/RLS error here means something is fundamentally wrong
+          // (bad credentials, policy misconfiguration, schema mismatch) — not
+          // a per-venue data problem. Continuing would just repeat the same
+          // failure across the rest of the batch, so we halt immediately for
+          // the operator to investigate rather than silently degrade.
+          console.error(`[ERROR] ${venue.name} (${venue.id}) — upsert failed:`);
+          console.error(upsertError.message);
+          console.error(
+            `\n=== HALTED: write/RLS error on venue ${written + 1} of this batch — ` +
+            `${written} written, ${skipped} skipped before stopping ===\n`,
+          );
+          process.exit(1);
+        }
+
+        console.log(
+          `[WRITE] ${venue.name} (${venue.id}) — confidence=${confidence}, ` +
+          `recommended_for=${JSON.stringify(result.recommended_for)}`,
+        );
+        written++;
+      } else {
+        // Print the dry-run report for this venue
+        renderDryRunReport(venue, tags, facts, result, confidence);
+      }
 
       processed++;
     } catch (err) {
@@ -458,9 +668,15 @@ async function main(): Promise<void> {
   }
 
   // ── Summary ─────────────────────────────────────────────────────────────────
-  console.log(
-    `\n=== DRY RUN COMPLETE: ${processed} venues processed, ${skipped} skipped ===\n`,
-  );
+  if (flags.write) {
+    console.log(
+      `\n=== WRITE COMPLETE: ${written} venue(s) written to venue_enrichment, ${skipped} skipped ===\n`,
+    );
+  } else {
+    console.log(
+      `\n=== DRY RUN COMPLETE: ${processed} venues processed, ${skipped} skipped ===\n`,
+    );
+  }
 }
 
 // Run and surface any uncaught errors
