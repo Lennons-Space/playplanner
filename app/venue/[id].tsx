@@ -33,6 +33,7 @@ import { useReportVenue } from '@/hooks/useVenueReport';
 import { supabase } from '@/lib/supabase';
 import { ReviewCard } from '@/components/reviews/ReviewCard';
 import { VenuePhotoUpload } from '@/components/venue/VenuePhotoUpload';
+import { FacilityChips } from '@/components/venue/FacilityChips';
 import { Skeleton } from '@/components/ui/SkeletonLoader';
 import { Icon } from '@/components/ui/Icon';
 import type { IconName } from '@/components/ui/Icon';
@@ -459,6 +460,9 @@ export default function VenueDetailScreen() {
 
           {/* ── Why we recommended this ───────────────────────────────── */}
           <RecommendationExplanation venue={venue} />
+
+          {/* ── What's here? (Parent Contribution MVP — one-tap facility confirm) ── */}
+          <FacilityChips venueId={venueId} />
 
           {/* ── About section ─────────────────────────────────────────── */}
           <View style={styles.section}>
