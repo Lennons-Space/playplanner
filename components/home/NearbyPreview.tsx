@@ -15,7 +15,7 @@ import { useMemo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useLocation } from '@/hooks/location';
 import { useWeather } from '@/hooks/useWeather';
-import { useNearbyVenues } from '@/hooks/useVenues';
+import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { getWeatherBadge } from '@/lib/weather';
 import { curateVenues } from '@/lib/curation';
 import { calculateRecommendationScore } from '@/lib/recommendations/familyScore';
@@ -24,7 +24,7 @@ import { VenueCard } from '@/components/ui';
 import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { DEFAULT_FILTERS } from '@/types';
-import type { Venue } from '@/types';
+import type { Venue, Category } from '@/types';
 
 const C = {
   ink: '#1D2630',
@@ -54,6 +54,35 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
     !locLoading && ready,
   );
 
+  // ── Category enrichment ──────────────────────────────────────────────────
+  // get_nearby_venues RPC returns `category_id` (UUID) but no `category` object
+  // (see supabase/migrations/045). Without a joined `category`, every
+  // category-slug-driven signal goes dead: weather badges, time-of-day /
+  // temperature / indoor-outdoor curation boosts, mood scoring, and the
+  // "Great For Toddlers" / "Rainy Day Winner" / "Burn Energy" reason badges
+  // from generateRecommendationReasons() all silently no-op.
+  //
+  // This mirrors the proven pattern in app/explore/results.tsx (~line 172-191)
+  // so Home and the full Results screen rank/curate venues consistently —
+  // a parent should not see two different "best nearby" lists depending on
+  // which screen they're on.
+  const { data: categories = [] } = useCategories();
+  const categoryMap = useMemo<Record<string, Category>>(
+    () => Object.fromEntries(categories.map((c) => [c.id, c])),
+    [categories],
+  );
+  const enrichedVenues = useMemo(
+    () =>
+      venues.map((v) => ({
+        ...v,
+        // Only set category if the RPC didn't already include it (it never
+        // does today, but the ?? guard means we never clobber richer data
+        // from another source, e.g. the venue detail page).
+        category: v.category ?? (v.category_id ? categoryMap[v.category_id] : undefined),
+      })),
+    [venues, categoryMap],
+  );
+
   // Pre-sort by recommendation score so that when curateVenues encounters
   // tied curation scores, the tiebreak favours the more family-appropriate
   // venue rather than raw RPC insertion order.
@@ -64,12 +93,12 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
   // because they use a separate useNearbyVenues call in the map screen.
   const ranked = useMemo(
     () =>
-      [...venues].sort(
+      [...enrichedVenues].sort(
         (a, b) =>
           calculateRecommendationScore(b).recommendationScore -
           calculateRecommendationScore(a).recommendationScore,
       ),
-    [venues],
+    [enrichedVenues],
   );
 
   // Curate to the top 3 using context. 'auto' lets weather decide the lean.

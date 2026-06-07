@@ -95,14 +95,21 @@ describe('Reason: Family Favourite', () => {
 // Reason 2: Great For Toddlers
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Reason: Great For Toddlers', () => {
-  test('fires when min_age <= 2', () => {
-    const v = venue({ id: 'r2a', name: 'Baby Centre', min_age: 0 });
-    expect(generateRecommendationReasons(v)).toContain('Great For Toddlers');
+  // Discovery Sprint A (P2): min_age is an OSM-import DEFAULT catalogue-wide
+  // (scripts/import/02_transform_osm.js SLUG_AGES sets attraction/
+  // animal-attraction/etc. to min_age=0 with no real assessment). Trusting
+  // `min_age <= 2` as a positive signal falsely badged the London Dungeon,
+  // SEA LIFE and Shrek's Adventure as toddler-friendly. The signal is now
+  // CATEGORY-ONLY — see TODDLER_SLUGS in recommendationReasons.ts.
+
+  test('does NOT fire on min_age <= 2 alone (untrusted default, no toddler category)', () => {
+    const v = venue({ id: 'r2a', name: 'Baby Centre', category: cat('attraction'), min_age: 0 });
+    expect(generateRecommendationReasons(v)).not.toContain('Great For Toddlers');
   });
 
-  test('fires when min_age is exactly 2', () => {
-    const v = venue({ id: 'r2b', name: 'Toddler Place', min_age: 2 });
-    expect(generateRecommendationReasons(v)).toContain('Great For Toddlers');
+  test('does NOT fire on min_age = 2 alone (untrusted default, no toddler category)', () => {
+    const v = venue({ id: 'r2b', name: 'Toddler Place', category: cat('attraction'), min_age: 2 });
+    expect(generateRecommendationReasons(v)).not.toContain('Great For Toddlers');
   });
 
   test('fires when category slug is soft-play (regardless of min_age)', () => {
@@ -122,13 +129,33 @@ describe('Reason: Great For Toddlers', () => {
 
   test('does not fire when min_age is 3 and no toddler category', () => {
     const v = venue({ id: 'r2f', name: 'Sports Hall', category: cat('bowling'), min_age: 3 });
-    // min_age 3 is NOT <= 2, and bowling is not in TODDLER_SLUGS
     expect(generateRecommendationReasons(v)).not.toContain('Great For Toddlers');
   });
 
   test('does not fire for a high min_age with unrelated category', () => {
     const v = venue({ id: 'r2g', name: 'Teen Zone', category: cat('skating'), min_age: 10 });
     expect(generateRecommendationReasons(v)).not.toContain('Great For Toddlers');
+  });
+
+  // Regression: the exact audit-flagged false positives must never re-appear.
+  test('does NOT fire for attraction venues with defaulted min_age=0 (London Dungeon-style)', () => {
+    const v = venue({ id: 'r2h', name: 'The London Dungeon', category: cat('attraction'), min_age: 0, max_age: 18 });
+    expect(generateRecommendationReasons(v)).not.toContain('Great For Toddlers');
+  });
+
+  test('does NOT fire for animal-attraction venues with defaulted min_age=0 (SEA LIFE-style)', () => {
+    const v = venue({ id: 'r2i', name: 'SEA LIFE Aquarium', category: cat('animal-attraction'), min_age: 0, max_age: 18 });
+    expect(generateRecommendationReasons(v)).not.toContain('Great For Toddlers');
+  });
+
+  test('fires for playground category (Covent Garden Playground-style)', () => {
+    const v = venue({ id: 'r2j', name: 'Covent Garden Playground', category: cat('playground'), min_age: 0, max_age: 16 });
+    expect(generateRecommendationReasons(v)).toContain('Great For Toddlers');
+  });
+
+  test('fires for soft-play category (genuine toddler venue)', () => {
+    const v = venue({ id: 'r2k', name: 'Tiny Tots Soft Play', category: cat('soft-play'), min_age: 0, max_age: 5 });
+    expect(generateRecommendationReasons(v)).toContain('Great For Toddlers');
   });
 });
 
@@ -344,7 +371,7 @@ describe('Max-3 cap', () => {
   test('returns at most 3 reasons even when 4+ qualify', () => {
     // This venue qualifies for:
     //   1. Family Favourite (rating 4.8, 20 reviews)
-    //   2. Great For Toddlers (min_age=0)
+    //   2. Great For Toddlers (category=soft-play, in TODDLER_SLUGS)
     //   3. Rainy Day Winner (soft-play is in INDOOR_SLUGS)
     //   4. Burn Energy (soft-play is in ENERGY_SLUGS)
     // Priority order stops at 3.

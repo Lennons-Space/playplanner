@@ -197,21 +197,24 @@ function testToddlers(venue: Venue): FilterMatchResult {
   const slug = venue.category?.slug ?? '';
   const attrs = getVenueAttributes(venue);
 
-  // Explicit age data: max_age covers toddlers (up to 3).
-  // min_age <= 3 means the venue accepts toddlers.
-  // We require max_age > 0 to avoid matching venues where ages are 0/0.
-  const minAgeOk = typeof venue.min_age === 'number' && venue.min_age <= 3;
-  const maxAgeOk = typeof venue.max_age === 'number' && venue.max_age > 0;
-  if (minAgeOk && maxAgeOk) {
-    return { passes: true, confidence: 'certain' };
-  }
-
-  // Explicit toddler-friendly from venueAttributes.
+  // CATEGORY-BASED ONLY (Discovery Sprint A, P2).
+  //
+  // We previously also trusted "min_age <= 3 AND max_age > 0" as a 'certain'
+  // match. That looked like real data, but it isn't: min_age/max_age are
+  // OSM-import DEFAULTS keyed off the category slug (see
+  // scripts/import/02_transform_osm.js SLUG_AGES) — e.g. EVERY 'attraction'
+  // venue defaults to min_age=0/max_age=18, every 'animal-attraction' the
+  // same. So the age check was satisfied by thousands of venues that were
+  // never assessed for toddler-suitability — including the London Dungeon,
+  // SEA LIFE and Shrek's Adventure. A user tapping the "Toddlers" filter
+  // chip is making an explicit safety-relevant choice; showing them
+  // attractions with height/scare restrictions because of a default value
+  // would break trust badly. The venue TYPE (category) is the only signal
+  // here we can trust — see lib/toddlerSafeCategories.ts.
   if (attrs.isToddlerFriendly === true) {
     return { passes: true, confidence: 'certain' };
   }
 
-  // Category inferred.
   if (TODDLER_SLUGS.has(norm(slug))) {
     return { passes: true, confidence: 'likely' };
   }

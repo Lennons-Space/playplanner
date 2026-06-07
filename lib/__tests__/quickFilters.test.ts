@@ -201,34 +201,35 @@ describe('free filter (hard)', () => {
 describe('toddlers filter', () => {
   const f = filter('toddlers');
 
-  it('passes with certainty when min_age=0 and max_age=3', () => {
-    const v = makeVenue({ min_age: 0, max_age: 3 });
+  // Discovery Sprint A (P2): min_age/max_age are OSM-import DEFAULTS
+  // catalogue-wide (scripts/import/02_transform_osm.js SLUG_AGES — e.g. every
+  // 'attraction' defaults to 0-18). The filter previously trusted
+  // "min_age <= 3 AND max_age > 0" as a 'certain' match, which let thousands
+  // of never-assessed attractions (London Dungeon, SEA LIFE, Shrek's
+  // Adventure — all min_age=0/max_age=18) pass an explicit "Toddlers" filter
+  // a parent taps for safety reasons. The signal is now CATEGORY-ONLY.
+
+  it('does NOT pass on age range alone when category is an untrusted default (attraction)', () => {
+    const v = makeVenue({ min_age: 0, max_age: 18, category: makeCategory('attraction') });
+    expect(f.test(v).passes).toBe(false);
+  });
+
+  it('does NOT pass for an animal-attraction with defaulted ages (SEA LIFE-style)', () => {
+    const v = makeVenue({ min_age: 0, max_age: 18, category: makeCategory('animal-attraction') });
+    expect(f.test(v).passes).toBe(false);
+  });
+
+  it('passes with certainty for soft-play by category (toddler slug)', () => {
+    const v = makeVenue({
+      min_age: 0, max_age: 12, // generic ages — category is the trusted signal
+      category: makeCategory('soft-play'),
+    });
     const r = f.test(v);
     expect(r.passes).toBe(true);
     expect(r.confidence).toBe('certain');
   });
 
-  it('passes with certainty when min_age=1 (still <= 3)', () => {
-    const v = makeVenue({ min_age: 1, max_age: 8 });
-    expect(f.test(v).passes).toBe(true);
-  });
-
-  it('fails when min_age=4 (too old for toddlers)', () => {
-    const v = makeVenue({ min_age: 4, max_age: 12 });
-    expect(f.test(v).passes).toBe(false);
-  });
-
-  it('passes for soft-play by category (toddler slug)', () => {
-    const v = makeVenue({
-      min_age: 0, max_age: 12, // generic ages, but category is toddler-relevant
-      category: makeCategory('soft-play'),
-    });
-    // min_age <= 3 already passes via age check, but category check also fires
-    expect(f.test(v).passes).toBe(true);
-  });
-
   it('passes for library by category', () => {
-    // If ages are default (0–12) but library is a toddler slug
     const v = makeVenue({
       min_age: 0, max_age: 12,
       category: makeCategory('library'),
@@ -238,6 +239,14 @@ describe('toddlers filter', () => {
 
   it('fails for bowling (not a toddler category) with adult age range', () => {
     const v = makeVenue({ min_age: 5, max_age: 18, category: makeCategory('bowling') });
+    expect(f.test(v).passes).toBe(false);
+  });
+
+  it('fails for playground (not in quickFilters TODDLER_SLUGS) even with toddler-range ages', () => {
+    // Note: quickFilters.ts TODDLER_SLUGS deliberately differs from the
+    // recommendation-reason whitelist (filter-specific category set);
+    // playground is not in it, and age alone no longer counts.
+    const v = makeVenue({ min_age: 0, max_age: 16, category: makeCategory('playground') });
     expect(f.test(v).passes).toBe(false);
   });
 });

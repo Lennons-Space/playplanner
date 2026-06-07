@@ -135,7 +135,15 @@ describe('Title: Family Favourite', () => {
 // Title: Great For Toddlers
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Title: Great For Toddlers', () => {
-  test('returns "Great For Toddlers" when min_age<=3 + toddler category + age data present', () => {
+  // Discovery Sprint A (P2): the title is now CATEGORY-ONLY. We previously
+  // also required "confirmed age data" (min_age > 0 || max_age > 0) AND
+  // min_age <= 3 — but min_age/max_age are OSM-import DEFAULTS catalogue-wide
+  // (scripts/import/02_transform_osm.js SLUG_AGES), so that "safeguard" was
+  // satisfied by thousands of never-assessed attractions (London Dungeon,
+  // SEA LIFE — both min_age=0/max_age=18). Category (venue TYPE) is the only
+  // trustworthy signal — see TODDLER_SLUGS / lib/toddlerSafeCategories.ts.
+
+  test('returns "Great For Toddlers" for a toddler-category venue regardless of age data', () => {
     const v = venue({
       id: 'gt1',
       name: 'Baby Sensory World',
@@ -161,7 +169,7 @@ describe('Title: Great For Toddlers', () => {
     expect(result!.title).toBe('Great For Toddlers');
   });
 
-  test('includes age reason in reasons list', () => {
+  test('includes age reason in reasons list when age data is present', () => {
     const v = venue({
       id: 'gt3',
       name: 'Toddler Group',
@@ -176,7 +184,7 @@ describe('Title: Great For Toddlers', () => {
     expect(hasAgeReason).toBe(true);
   });
 
-  test('does NOT fire as Great For Toddlers when age data is absent (both 0) even for toddler category', () => {
+  test('fires for toddler category even when age data is absent (both 0) — category is the trusted signal', () => {
     const v = venue({
       id: 'gt4',
       name: 'Soft Play (no age)',
@@ -185,9 +193,33 @@ describe('Title: Great For Toddlers', () => {
       max_age: 0,  // unset
     });
     const result = generateRecommendationExplanation(v);
-    // Title should NOT be Great For Toddlers since no age data confirms it.
-    // The venue may still return a result (Rainy Day Winner or Burn Energy Pick),
-    // but the title must not be Great For Toddlers.
+    expect(result).not.toBeNull();
+    expect(result!.title).toBe('Great For Toddlers');
+  });
+
+  test('does NOT fire for attraction venues with defaulted min_age=0 (London Dungeon-style)', () => {
+    const v = venue({
+      id: 'gt5',
+      name: 'The London Dungeon',
+      category: cat('attraction'),
+      min_age: 0,
+      max_age: 18,
+    });
+    const result = generateRecommendationExplanation(v);
+    if (result !== null) {
+      expect(result.title).not.toBe('Great For Toddlers');
+    }
+  });
+
+  test('does NOT fire for animal-attraction venues with defaulted min_age=0 (SEA LIFE-style)', () => {
+    const v = venue({
+      id: 'gt6',
+      name: 'SEA LIFE Aquarium',
+      category: cat('animal-attraction'),
+      min_age: 0,
+      max_age: 18,
+    });
+    const result = generateRecommendationExplanation(v);
     if (result !== null) {
       expect(result.title).not.toBe('Great For Toddlers');
     }

@@ -100,6 +100,24 @@ const OUTDOOR_PLAY_SLUGS = new Set([
   'park', 'playground', 'farm', 'nature_trail', 'outdoor', 'play-area',
 ]);
 
+/**
+ * Categories confirmed toddler-appropriate by venue TYPE — used (alongside
+ * `lib/recommendations/recommendationReasons.ts` TODDLER_SLUGS, which this
+ * mirrors) to gate the 'Great For Toddlers' badge.
+ *
+ * WHY category-only, not min_age: catalogue-wide, `min_age` is an OSM-import
+ * DEFAULT (scripts/import/02_transform_osm.js SLUG_AGES sets attraction,
+ * animal-attraction, swimming, family-restaurant etc. to min_age=0 with no
+ * real assessment). Trusting `min_age <= 2` as a positive toddler signal
+ * surfaced attractions like the London Dungeon, Big Ben, SEA LIFE and
+ * Shrek's Adventure as "Great For Toddlers" — a trust/safety embarrassment
+ * for a children's app. The category (venue TYPE) is the only reliable
+ * signal we have. See lib/toddlerSafeCategories.ts for fuller rationale.
+ */
+const TODDLER_BADGE_SLUGS = new Set([
+  'soft-play', 'sensory', 'baby-gym', 'toddler-group', 'library', 'playground',
+]);
+
 // ── Keyword lists ────────────────────────────────────────────────────────────
 const CHILD_NAME_KEYWORDS = [
   'play', 'kids', 'children', 'farm', 'zoo', 'museum',
@@ -351,14 +369,16 @@ function deriveBadges(
   facilityScore: number,
   effectiveRating: number,
   reviewCount: number,
-  trustScore: number,
 ): string[] {
   const badges: string[] = [];
   const slug = getCategorySlug(venue);
 
   if (familyScore >= 70) badges.push('Family Friendly');
 
-  if (typeof venue.min_age === 'number' && venue.min_age <= 2 && venue.min_age >= 0) {
+  // Category-based ONLY — see TODDLER_BADGE_SLUGS comment for why we no
+  // longer trust `min_age <= 2` (it's an untrusted OSM-import default that
+  // falsely flagged attractions like the London Dungeon and SEA LIFE).
+  if (slugMatchesSet(slug, TODDLER_BADGE_SLUGS)) {
     badges.push('Great For Toddlers');
   }
 
@@ -382,9 +402,15 @@ function deriveBadges(
     badges.push('Good Reviews');
   }
 
-  if (trustScore <= 2) {
-    badges.push('Needs More Info');
-  }
+  // 'Needs More Info' badge REMOVED (Discovery Sprint A, P3): a 2026-06
+  // measurement found it fired on 200/200 (100%) of a live RPC sample,
+  // because trust signals (is_verified, description>50, photo, trust_score)
+  // are near-zero catalogue-wide. A badge that appears on every venue
+  // carries zero decision value for parents and just adds visual noise —
+  // worse, it reads as a subtle "don't trust this" stamp on virtually the
+  // whole catalogue, which undermines confidence in the app rather than
+  // helping anyone choose. Once real trust signals exist at meaningful
+  // density, a differentiating badge could be reconsidered from scratch.
 
   return badges;
 }
@@ -468,7 +494,6 @@ export function calculateFamilyScore(venue: Venue): FamilyScoreResult {
     facilitiesResult.score,
     socialResult.effectiveRating,
     venue.review_count ?? 0,
-    trustResult.score,
   );
 
   return {

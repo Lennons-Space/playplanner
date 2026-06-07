@@ -181,12 +181,19 @@ function selectTitle(
     return 'Family Favourite';
   }
 
-  // 2. Great For Toddlers — requires confirmed age data AND a toddler category.
-  if (
-    TODDLER_SLUGS.has(slug) &&
-    (venue.min_age > 0 || venue.max_age > 0) &&
-    venue.min_age <= 3
-  ) {
+  // 2. Great For Toddlers — category-based ONLY (Discovery Sprint A, P2).
+  //
+  // We previously also required "confirmed age data" (min_age > 0 ||
+  // max_age > 0) AND min_age <= 3. That looked like a safeguard, but it
+  // isn't: catalogue-wide, min_age/max_age are OSM-import DEFAULTS set per
+  // category slug (scripts/import/02_transform_osm.js SLUG_AGES) — e.g.
+  // every 'attraction' venue defaults to 0–18, every 'animal-attraction' to
+  // 0–18, etc. So "min_age <= 3" was satisfied by THOUSANDS of venues that
+  // were never actually assessed for toddler suitability — including the
+  // London Dungeon, SEA LIFE and Shrek's Adventure (all attraction/
+  // animal-attraction, min_age=0). The category (venue TYPE) is the only
+  // signal here we can trust. See lib/toddlerSafeCategories.ts.
+  if (TODDLER_SLUGS.has(slug)) {
     return 'Great For Toddlers';
   }
 

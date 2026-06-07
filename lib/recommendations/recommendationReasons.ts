@@ -90,13 +90,21 @@ export function generateRecommendationReasons(venue: Venue): string[] {
   }
   if (reasons.length >= 3) return reasons;
 
-  // 2. Great For Toddlers — explicit age data OR well-known toddler category.
-  const minAge = venue.min_age;
-  const toddlerByAge =
-    typeof minAge === 'number' && minAge <= 2;
+  // 2. Great For Toddlers — category-based ONLY.
+  //
+  // WHY we no longer trust `min_age <= 2` as a positive signal:
+  // catalogue-wide, min_age is an OSM-import DEFAULT (see
+  // scripts/import/02_transform_osm.js SLUG_AGES), not a confirmed fact.
+  // ~41% of approved venues carry min_age=0 purely because nobody ever
+  // assessed age-suitability — including attractions like the London
+  // Dungeon, Big Ben, SEA LIFE and Shrek's Adventure (all min_age=0,
+  // category=attraction/animal-attraction). Surfacing those as
+  // "Great For Toddlers" is a trust and safety embarrassment for a
+  // children's app. The venue TYPE (category) is the only reliable signal
+  // here — see lib/toddlerSafeCategories.ts for the fuller rationale.
   const toddlerByCategory =
     slug !== '' && TODDLER_SLUGS.has(slug);
-  if (toddlerByAge || toddlerByCategory) {
+  if (toddlerByCategory) {
     reasons.push('Great For Toddlers');
   }
   if (reasons.length >= 3) return reasons;

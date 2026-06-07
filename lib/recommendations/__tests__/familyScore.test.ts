@@ -368,3 +368,109 @@ describe('Boundary: recommendationScore is clamped 0–100', () => {
     expect(result.recommendationScore).toBeGreaterThanOrEqual(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Discovery Sprint A — Trust Repair (P2 + P3 badge fixes)
+//
+// P2 root cause: `deriveBadges` granted 'Great For Toddlers' purely from
+// `min_age <= 2`. Catalogue-wide, min_age/max_age are OSM-import DEFAULTS
+// keyed off category slug (scripts/import/02_transform_osm.js SLUG_AGES) —
+// e.g. EVERY 'attraction' and 'animal-attraction' venue defaults to
+// min_age=0/max_age=18 with no real age assessment. That made the London
+// Dungeon, Big Ben, SEA LIFE and Shrek's Adventure (all min_age=0) badge as
+// "Great For Toddlers" — a trust/safety embarrassment for a children's app.
+// The badge is now CATEGORY-ONLY (TODDLER_BADGE_SLUGS).
+//
+// P3 root cause: 'Needs More Info' fired whenever trustScore <= 2. A 2026-06
+// measurement over 200 live RPC venues found it fired on 200/200 (100%)
+// because is_verified/description>50/photo/trust_score are near-zero
+// catalogue-wide. A badge with zero differentiating power was removed.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Badge: Great For Toddlers — category-gated, not age-gated', () => {
+  test('does NOT badge an attraction with defaulted min_age=0 (London Dungeon-style)', () => {
+    const v = venue({
+      id: 'badge-attr',
+      name: 'The London Dungeon',
+      category: cat('attraction'),
+      min_age: 0,
+      max_age: 18,
+    });
+    expect(calculateFamilyScore(v).badges).not.toContain('Great For Toddlers');
+  });
+
+  test('does NOT badge an animal-attraction with defaulted min_age=0 (SEA LIFE-style)', () => {
+    const v = venue({
+      id: 'badge-animal-attr',
+      name: 'SEA LIFE Aquarium London',
+      category: cat('animal-attraction'),
+      min_age: 0,
+      max_age: 18,
+    });
+    expect(calculateFamilyScore(v).badges).not.toContain('Great For Toddlers');
+  });
+
+  test('does NOT badge a museum, sports-activity, childcare, theme-park or bowling venue', () => {
+    for (const slug of ['museum', 'sports-activity', 'childcare', 'theme-park', 'bowling']) {
+      const v = venue({
+        id: `badge-${slug}`,
+        name: `Test ${slug}`,
+        category: cat(slug),
+        min_age: 0,
+        max_age: 18,
+      });
+      expect(calculateFamilyScore(v).badges).not.toContain('Great For Toddlers');
+    }
+  });
+
+  test('badges a playground regardless of (defaulted) age data', () => {
+    const v = venue({
+      id: 'badge-playground',
+      name: 'Covent Garden Playground',
+      category: cat('playground'),
+      min_age: 0,
+      max_age: 16,
+    });
+    expect(calculateFamilyScore(v).badges).toContain('Great For Toddlers');
+  });
+
+  test('badges a soft-play venue regardless of (defaulted) age data', () => {
+    const v = venue({
+      id: 'badge-soft-play',
+      name: 'Tiny Tots Soft Play',
+      category: cat('soft-play'),
+      min_age: 0,
+      max_age: 18,
+    });
+    expect(calculateFamilyScore(v).badges).toContain('Great For Toddlers');
+  });
+
+  test('does not badge a venue with no category, even with min_age=0', () => {
+    const v = venue({ id: 'badge-no-cat', name: 'Mystery Venue', min_age: 0 });
+    expect(calculateFamilyScore(v).badges).not.toContain('Great For Toddlers');
+  });
+});
+
+describe('Badge: "Needs More Info" has been removed (P3)', () => {
+  test('is never present, even for a venue with zero trust signals', () => {
+    const v = venue({
+      id: 'no-trust-signals',
+      name: 'Brand New Venue',
+      is_verified: false,
+      description: null,
+      photos: [],
+      cover_photo_url: undefined,
+    });
+    expect(calculateFamilyScore(v).badges).not.toContain('Needs More Info');
+  });
+
+  test('is never present even for a fully-documented, highly-trusted venue', () => {
+    const v = venue({
+      id: 'high-trust',
+      name: 'Verified Soft Play',
+      category: cat('soft-play'),
+      is_verified: true,
+      description: 'A wonderful, spacious soft play centre with full facilities for under-5s and their families.',
+    });
+    expect(calculateFamilyScore(v).badges).not.toContain('Needs More Info');
+  });
+});
