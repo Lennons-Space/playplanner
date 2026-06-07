@@ -45,10 +45,15 @@ verification), and EAS build config all already exist. 1321 tests pass.
 
 ## 🔴 Blockers (resolve before public launch)
 
-1. **Migration 051 not applied to production DB.** Right-to-erasure is still broken
-   in prod (FK violations block deletion for any user who submitted a venue /
-   reported a review / uploaded a photo) until it runs. _Owner: apply via Supabase
-   MCP when ready (user is gating this)._
+1. ✅ **DONE (2026-06-07).** Migration 051 applied to production via Supabase MCP, and
+   verification surfaced + fixed a column 051 had MISSED: `venues.claimed_by` was still
+   `NO ACTION` (would block deletion for business owners who claimed a venue) → migration
+   **052** applied (ON DELETE SET NULL). Post-fix sweep: **zero** FKs referencing
+   `profiles`/`auth.users` remain on NO ACTION/RESTRICT. End-to-end rolled-back test of
+   `delete_own_account()` passed (pending photo deleted; approved photo + venue kept and
+   anonymised; profile + auth.users gone; audit row written + anonymised). ⚠️ The `052`
+   migration file (`supabase/migrations/052_account_deletion_claimed_by_cleanup.sql`)
+   exists locally and is applied to prod — **commit it** so the repo doesn't drift from prod.
 
 2. **No DPIA document exists.** CLAUDE.md and ICO require a Data Protection Impact
    Assessment for high-risk processing — this app has BOTH triggers (children's
@@ -93,6 +98,16 @@ verification), and EAS build config all already exist. 1321 tests pass.
    publicly reachable deletion instruction page. Verify the support site documents it.
 
 ---
+
+## Security advisor backlog (pre-existing, from `get_advisors` 2026-06-07)
+_None caused by the deletion work; logged here so they aren't lost._
+- ⚠️ Auth: **leaked-password protection disabled** (HaveIBeenPwned check) — easy win, enable in Auth settings.
+- ⚠️ `public.otp_attempts` has RLS enabled but **no policies** (INFO) — confirm intended (deny-all) or add policy.
+- ⚠️ `public.pass_interest` INSERT policy is `WITH CHECK (true)` — tighten if it should be constrained.
+- ⚠️ SECURITY DEFINER funcs callable by `anon`: `is_admin()`, `mirror_facility_stats_to_venue_facilities()`,
+  `recompute_facility_stats()` — review whether `anon` EXECUTE should be revoked.
+- ℹ️ `delete_own_account()` is SECURITY DEFINER callable by `authenticated` — **intentional/correct**
+  (must run as definer to delete `auth.users`; internally scoped to `auth.uid()`). No action.
 
 ## Suggested order of attack
 Quick, high-value, low-risk first: **3 → 4 → 5** (permission minimisation — also the
