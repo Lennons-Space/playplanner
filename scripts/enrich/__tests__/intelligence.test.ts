@@ -566,18 +566,103 @@ describe('computeRecommendedFor', () => {
     expect(result).not.toContain('full_day');
   });
 
-  // Without this: venues accepting babies and toddlers (min_age=0) could lose
-  // the 'toddler_friendly' tag, hiding them from parents of very young children.
-  it('min_age=0 → includes "toddler_friendly"', () => {
-    const result = computeRecommendedFor(zeroScores(), nullFacts(), venue({ min_age: 0 }));
+  // ─────────────────────────────────────────────────────────────────────────
+  // toddler_friendly — audited 2026-06: venues.min_age defaults to 0 in the
+  // DB, so ~19,261 approved venues (41% of the catalogue) carry min_age=0
+  // paired with generic OSM-import max_age buckets (12/16/18) that are import
+  // defaults, not confirmed evidence the venue welcomes babies. Tagging on
+  // age alone would have mislabeled attractions, nurseries, and museums as
+  // toddler_friendly. The tag now requires BOTH a category confirmed safe
+  // for toddlers by venue type AND an age range that doesn't exclude them.
+  // See lib/toddlerSafeCategories.ts.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Without this: generic OSM 'attraction' venues (9,682 of them carry
+  // min_age=0/max_age=18 — the single largest source of import-default ages)
+  // would all earn 'toddler_friendly' purely from the unset age default.
+  it('min_age=0 + category=attraction → does NOT include "toddler_friendly"', () => {
+    const result = computeRecommendedFor(
+      zeroScores(), nullFacts(),
+      venue({ min_age: 0, max_age: 18, category: { slug: 'attraction' } }),
+    );
+    expect(result).not.toContain('toddler_friendly');
+  });
+
+  // Without this: soft-play centres — the textbook toddler venue — could lose
+  // the tag if the new gate is too strict, hiding them from parents of very
+  // young children searching specifically for toddler-safe spots.
+  it('min_age=0 + category=soft-play → includes "toddler_friendly"', () => {
+    const result = computeRecommendedFor(
+      zeroScores(), nullFacts(),
+      venue({ min_age: 0, max_age: 12, category: { slug: 'soft-play' } }),
+    );
     expect(result).toContain('toddler_friendly');
   });
 
-  // Without this: a venue for ages 3+ could be tagged 'toddler_friendly',
-  // misleading parents of 1-2 year olds into visiting an unsuitable venue.
-  // The toddler threshold is min_age <= 2, so min_age=3 must NOT qualify.
-  it('min_age=3 → does NOT include "toddler_friendly"', () => {
-    const result = computeRecommendedFor(zeroScores(), nullFacts(), venue({ min_age: 3 }));
+  // Without this: playgrounds (4,920 carry min_age=0/max_age=16) — a category
+  // inherently built for young children — could be excluded by an
+  // over-cautious allowlist, removing a genuinely useful filter result.
+  it('min_age=0 + category=playground → includes "toddler_friendly"', () => {
+    const result = computeRecommendedFor(
+      zeroScores(), nullFacts(),
+      venue({ min_age: 0, max_age: 16, category: { slug: 'playground' } }),
+    );
+    expect(result).toContain('toddler_friendly');
+  });
+
+  // Without this: nurseries / childcare settings (3,382 carry min_age=0/
+  // max_age=12) would be recommended to parents as family days out — they
+  // are not venues parents "visit" with their child for a fun outing.
+  it('min_age=0 + category=childcare → does NOT include "toddler_friendly"', () => {
+    const result = computeRecommendedFor(
+      zeroScores(), nullFacts(),
+      venue({ min_age: 0, max_age: 12, category: { slug: 'childcare' } }),
+    );
+    expect(result).not.toContain('toddler_friendly');
+  });
+
+  // Without this: museums — which range from hands-on children's museums to
+  // quiet "look don't touch" galleries — would be blanket-labelled
+  // toddler_friendly from age data alone, with no category-based judgement.
+  it('min_age=0 + category=museum → does NOT include "toddler_friendly"', () => {
+    const result = computeRecommendedFor(
+      zeroScores(), nullFacts(),
+      venue({ min_age: 0, max_age: 18, category: { slug: 'museum' } }),
+    );
+    expect(result).not.toContain('toddler_friendly');
+  });
+
+  // Without this: a venue with genuinely confirmed age data (a non-default,
+  // non-zero min_age) and a toddler-safe category could still be wrongly
+  // excluded by an overly strict gate, losing a clearly-correct positive case.
+  it('confirmed toddler-safe category + compatible age → includes "toddler_friendly"', () => {
+    const result = computeRecommendedFor(
+      zeroScores(), nullFacts(),
+      venue({ min_age: 1, max_age: 5, category: { slug: 'library' } }),
+    );
+    expect(result).toContain('toddler_friendly');
+  });
+
+  // Without this: the suspicious (0, 18) shape — the single largest source of
+  // import-default venues (9,682 of them) — could be read as positive
+  // evidence on its own, tagging any category that happens to carry it.
+  it('default 0/18 age bucket alone (non-toddler category) is ignored', () => {
+    const result = computeRecommendedFor(
+      zeroScores(), nullFacts(),
+      venue({ min_age: 0, max_age: 18, category: { slug: 'theme-park' } }),
+    );
+    expect(result).not.toContain('toddler_friendly');
+  });
+
+  // Without this: a confirmed toddler-safe category paired with an age range
+  // that explicitly starts above toddlerhood (e.g. a "Juniors" soft-play
+  // session for ages 4+) could still earn the tag from category alone,
+  // misleading parents of 1-2 year olds into visiting an unsuitable session.
+  it('toddler-safe category + min_age=3 → does NOT include "toddler_friendly"', () => {
+    const result = computeRecommendedFor(
+      zeroScores(), nullFacts(),
+      venue({ min_age: 3, max_age: 8, category: { slug: 'soft-play' } }),
+    );
     expect(result).not.toContain('toddler_friendly');
   });
 

@@ -21,6 +21,7 @@ import type {
   ScoreBreakdown,
   RecommendedForTag,
 } from '../../types/enrichment';
+import { TODDLER_SAFE_CATEGORY_SLUGS } from '../../lib/toddlerSafeCategories';
 
 // ── Minimal venue shape needed for scoring ────────────────────────────────────
 // We only select these columns from Supabase, so we define the shape here
@@ -305,8 +306,18 @@ export function computeRecommendedFor(
   if (duration !== null && duration >= 180) tags.push('full_day');
   if (duration !== null && duration >= 60 && duration < 180) tags.push('half_day');
 
-  // Age-based tags
-  if (venue.min_age <= 2) tags.push('toddler_friendly');
+  // 'toddler_friendly' requires BOTH a category confirmed safe for toddlers
+  // by venue type AND an age range that doesn't exclude them. min_age
+  // defaults to 0 in the DB (migration 001), so age alone cannot distinguish
+  // "confirmed: welcomes babies from birth" from "never assessed" — a 2026-06
+  // audit found ~19k OSM-imported venues (attractions, nurseries, museums)
+  // carry min_age=0 with generic max_age buckets (12/16/18) that are import
+  // defaults, not real data. Tagging on age alone would have mislabeled
+  // ~41% of the catalogue. See lib/toddlerSafeCategories.ts.
+  const categorySlug = venue.category?.slug ?? '';
+  if (TODDLER_SAFE_CATEGORY_SLUGS.has(categorySlug) && venue.min_age <= 2) {
+    tags.push('toddler_friendly');
+  }
 
   // Combination tags
   if (duration !== null && duration >= 120 && scores.active_play_score >= 40) {
