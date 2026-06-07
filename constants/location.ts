@@ -1,11 +1,16 @@
 import type { Coordinates } from '@/types';
 
-// Default location shown when the user denies permission or location is unavailable.
-// Central London — a well-known public landmark, not tied to any individual.
+// Neutral fallback location used ONLY before GPS resolves (e.g. the brief
+// moment between mounting and the first permission/position result).
+// Deliberately a non-landmark point in central England — roughly the GB
+// population centroid — so no user is ever shown a recognisable city (e.g.
+// London) as their location. Nearby-venue queries are already guarded not
+// to fire while coords still equal this fallback, so it never drives real
+// results; it only positions the map before a real fix is available.
 // Matches the fallback location described in the privacy policy (GDPR Art.13).
 export const FALLBACK_LOCATION: Coordinates = {
-  latitude: 51.5074,
-  longitude: -0.1278,
+  latitude: 52.8,
+  longitude: -1.5,
 };
 
 // Maximum radius we allow for venue searches (km). ~50 miles.

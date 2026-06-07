@@ -164,7 +164,7 @@ jest.mock('@/components/ui', () => {
 });
 
 jest.mock('@/constants/location', () => ({
-  FALLBACK_LOCATION: { latitude: 51.5074, longitude: -0.1278 },
+  FALLBACK_LOCATION: { latitude: 52.8, longitude: -1.5 },
   MAX_SEARCH_RADIUS_KM: 80,
   DEFAULT_SEARCH_RADIUS_KM: 32,
 }));
