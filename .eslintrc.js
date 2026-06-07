@@ -17,16 +17,23 @@ module.exports = {
       },
     },
     {
-      // Node.js import scripts — __dirname, setTimeout, Buffer, URL are built-in
-      // globals in Node that ESLint's default env does not know about.
-      files: ['scripts/**/*.js'],
+      // Node.js backend/import scripts (both .js and .ts) — __dirname, setTimeout,
+      // Buffer, URL, process are built-in Node globals ESLint's default env does
+      // not know about. These run on a trusted machine via tsx/node, NOT in the
+      // Expo app bundle, so app-only rules do not apply here.
+      files: ['scripts/**/*.{ts,js}'],
       env: {
         node: true,
         es2020: true,
       },
       rules: {
-        // console.log is the correct mechanism for CLI scripts
+        // console.log is the correct output mechanism for CLI scripts.
         'no-console': 'off',
+        // expo/no-dynamic-env-var guards against EXPO_PUBLIC_* inlining in the
+        // app bundle. Backend scripts read real secrets (service role, API keys)
+        // from process.env, and TS's noPropertyAccessFromIndexSignature forces
+        // bracket access — so this rule is both inapplicable and contradictory here.
+        'expo/no-dynamic-env-var': 'off',
       },
     },
     {
