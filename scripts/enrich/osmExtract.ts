@@ -28,7 +28,7 @@ const INDOOR_TOURISM = new Set([
 
 const INDOOR_LEISURE = new Set([
   'swimming_pool', 'indoor_swimming_pool', 'sports_centre',
-  'fitness_centre', 'bowling_alley', 'trampoline_park',
+  'fitness_centre', 'bowling_alley', 'trampoline_park', 'indoor_play',
 ]);
 
 const OUTDOOR_LEISURE = new Set([
@@ -46,7 +46,7 @@ const MIXED_TOURISM = new Set([
 
 const HIGH_ACTIVITY = new Set([
   'sports_centre', 'fitness_centre', 'swimming_pool',
-  'bowling_alley', 'pitch', 'playground', 'trampoline_park',
+  'bowling_alley', 'pitch', 'playground', 'trampoline_park', 'indoor_play',
 ]);
 
 // Sports played on outdoor pitches or courses. When a venue carries one of
@@ -82,6 +82,7 @@ const DURATION_HINTS: Record<string, number> = {
   bowling_alley:    90,
   fitness_centre:   60,
   trampoline_park:  90,
+  indoor_play:      60,
 };
 
 // ── Public API ─────────────────────────────────────────────────────────────────

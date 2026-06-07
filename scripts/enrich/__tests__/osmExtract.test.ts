@@ -434,6 +434,35 @@ describe('extractRawFacts — leisure=trampoline_park (all derived fields)', () 
 });
 
 // =============================================================================
+// describe: leisure=indoor_play — all derived fields
+// =============================================================================
+// Soft-play centres in OSM commonly use leisure=indoor_play. Without this fix
+// they were unclassified (all nulls), so they missed burn_energy and indoor tags
+// and appeared as unknown venues in filters designed for family soft-play.
+
+describe('extractRawFacts — leisure=indoor_play (all derived fields)', () => {
+  const facts = extractRawFacts(tags({ leisure: 'indoor_play', name: 'Pip-Squeeks Play Centre' }));
+
+  // Without this: soft-play centres appear in outdoor results or get no
+  // indoor_outdoor classification at all, so the rainy-day filter misses them.
+  it('indoor_outdoor is "indoor" (soft-play centres are enclosed buildings)', () => {
+    expect(facts.indoor_outdoor).toBe('indoor');
+  });
+
+  // Without this: soft-play centres score 0 for active_play and never earn the
+  // burn_energy tag — the primary reason parents search for soft-play.
+  it('activity_level is "high" (soft-play is high-energy children\'s activity)', () => {
+    expect(facts.activity_level).toBe('high');
+  });
+
+  // Without this: soft-play centres have null duration and miss the half_day tag.
+  // A 60-minute session is the standard drop-in slot at most UK soft-play centres.
+  it('visit_duration_mins is 60 (standard soft-play session length)', () => {
+    expect(facts.visit_duration_mins).toBe(60);
+  });
+});
+
+// =============================================================================
 // describe: outdoor sports clubs — sport= tag overrides sports_centre 'indoor'
 // =============================================================================
 // Cricket clubs, rugby grounds, and football clubs all use leisure=sports_centre
