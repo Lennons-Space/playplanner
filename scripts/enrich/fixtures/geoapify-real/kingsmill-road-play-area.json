@@ -1,0 +1,199 @@
+{
+  "venue": {
+    "id": "006a4f51-1541-45ff-ac97-3114876990e6",
+    "name": "Kingsmill Road Play Area",
+    "latitude": 51.253374,
+    "longitude": -1.095741,
+    "postcode": "",
+    "city": null,
+    "category_slug": "playground"
+  },
+  "geocode": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          "name": "Kingsmill Road Play Area",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "state": "England",
+          "county": "Hampshire",
+          "city": "Basingstoke and Deane",
+          "town": "Basingstoke",
+          "postcode": "RG21 3LD",
+          "district": "Cranbourne",
+          "suburb": "Viables",
+          "street": "Midlane Close",
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-HAM",
+          "lon": -1.0957356,
+          "lat": 51.2533888,
+          "state_code": "ENG",
+          "result_type": "amenity",
+          "distance": 1.6880520346998105,
+          "county_code": "HAM",
+          "NUTS_3": "UKJ33",
+          "formatted": "Kingsmill Road Play Area, Midlane Close, Basingstoke and Deane, RG21 3LD, United Kingdom",
+          "address_line1": "Kingsmill Road Play Area",
+          "address_line2": "Midlane Close, Basingstoke and Deane, RG21 3LD, United Kingdom",
+          "category": "leisure.playground",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "plus_code": "9C3W7W33+9P",
+          "rank": {
+            "importance": 0.0000578858625161672,
+            "popularity": 5.361147368071954,
+            "confidence": 1,
+            "match_type": "full_match"
+          },
+          "place_id": "51cb01710d2288f1bf591b96500b6fa04940f00102f901d3cbd50100000000c002019203184b696e67736d696c6c20526f616420506c61792041726561"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -1.0957356,
+            51.2533888
+          ]
+        },
+        "bbox": [
+          -1.0959732,
+          51.2532367,
+          -1.0955086,
+          51.2535122
+        ]
+      }
+    ],
+    "query": {
+      "text": "Kingsmill Road Play Area"
+    }
+  },
+  "place_details": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "feature_type": "details",
+          "name": "Kingsmill Road Play Area",
+          "categories": [
+            "leisure",
+            "leisure.playground"
+          ],
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright",
+            "raw": {
+              "name": "Kingsmill Road Play Area",
+              "osm_id": 30788563,
+              "leisure": "playground",
+              "osm_type": "w"
+            }
+          },
+          "street": "Midlane Close",
+          "city": "Basingstoke and Deane",
+          "county": "Hampshire",
+          "state": "England",
+          "state_code": "ENG",
+          "postcode": "RG21 3LD",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "district": "Cranbourne",
+          "suburb": "Viables",
+          "town": "Basingstoke",
+          "formatted": "Kingsmill Road Play Area, Midlane Close, Basingstoke and Deane, RG21 3LD, United Kingdom",
+          "address_line1": "Kingsmill Road Play Area",
+          "address_line2": "Midlane Close, Basingstoke and Deane, RG21 3LD, United Kingdom",
+          "lat": 51.2533888,
+          "lon": -1.0957356,
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-HAM",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "place_id": "5160bdda032288f1bf59b0e24e0b6fa04940f00102f901d3cbd501000000009203184b696e67736d696c6c20526f616420506c61792041726561"
+        },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -1.0959732,
+                51.253426199
+              ],
+              [
+                -1.0959718,
+                51.253403999
+              ],
+              [
+                -1.0959413,
+                51.253373599
+              ],
+              [
+                -1.0959718,
+                51.253287399
+              ],
+              [
+                -1.0957991,
+                51.253260999
+              ],
+              [
+                -1.0956405,
+                51.253236699
+              ],
+              [
+                -1.0956168,
+                51.253287399
+              ],
+              [
+                -1.0955374,
+                51.253317799
+              ],
+              [
+                -1.0955086,
+                51.253407399
+              ],
+              [
+                -1.0955813,
+                51.253478399
+              ],
+              [
+                -1.0958112,
+                51.253512199
+              ],
+              [
+                -1.0959565,
+                51.253451399
+              ],
+              [
+                -1.0959732,
+                51.253426199
+              ]
+            ]
+          ]
+        }
+      }
+    ]
+  }
+}

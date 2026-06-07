@@ -1,0 +1,199 @@
+{
+  "venue": {
+    "id": "0060d2e5-42cc-4235-a243-f67304654d81",
+    "name": "Phoenix Swimming Pool",
+    "latitude": 52.58211,
+    "longitude": 1.705382,
+    "postcode": "",
+    "city": null,
+    "category_slug": "swimming"
+  },
+  "geocode": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          "name": "Phoenix Swimming Pool",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "state": "England",
+          "county": "Norfolk",
+          "city": "Great Yarmouth",
+          "village": "Bradwell",
+          "postcode": "NR31 8JU",
+          "suburb": "Bradwell",
+          "street": "Widgeon Close",
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-NFK",
+          "lon": 1.7053954,
+          "lat": 52.582148,
+          "state_code": "ENG",
+          "result_type": "amenity",
+          "distance": 4.32131995074304,
+          "county_code": "NFK",
+          "formatted": "Phoenix Swimming Pool, Widgeon Close, Bradwell, NR31 8JU, United Kingdom",
+          "address_line1": "Phoenix Swimming Pool",
+          "address_line2": "Widgeon Close, Bradwell, NR31 8JU, United Kingdom",
+          "category": "sport.swimming_pool",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "plus_code": "9F43HPJ4+V5",
+          "plus_code_short": "HPJ4+V5 Great Yarmouth, Norfolk, United Kingdom",
+          "rank": {
+            "importance": 0.00006086442359040234,
+            "popularity": 4.4755692067363935,
+            "confidence": 1,
+            "match_type": "full_match"
+          },
+          "place_id": "513efbdbaf4c49fb3f5945b75ed3834a4a40f00102f90163a65d0c00000000c0020192031550686f656e6978205377696d6d696e6720506f6f6c"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            1.7053954,
+            52.582148
+          ]
+        },
+        "bbox": [
+          1.7051061,
+          52.581988,
+          1.7056577,
+          52.582231
+        ]
+      }
+    ],
+    "query": {
+      "text": "Phoenix Swimming Pool"
+    }
+  },
+  "place_details": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "feature_type": "details",
+          "name": "Phoenix Swimming Pool",
+          "categories": [
+            "building",
+            "building.spa",
+            "building.sport",
+            "sport",
+            "sport.swimming_pool"
+          ],
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright",
+            "raw": {
+              "name": "Phoenix Swimming Pool",
+              "sport": "swimming",
+              "osm_id": 207464035,
+              "covered": "yes",
+              "leisure": "swimming_pool",
+              "building": "yes",
+              "osm_type": "w"
+            }
+          },
+          "street": "Widgeon Close",
+          "city": "Great Yarmouth",
+          "county": "Norfolk",
+          "state": "England",
+          "state_code": "ENG",
+          "postcode": "NR31 8JU",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "suburb": "Bradwell",
+          "village": "Bradwell",
+          "formatted": "Phoenix Swimming Pool, Widgeon Close, Great Yarmouth, NR31 8JU, United Kingdom",
+          "address_line1": "Phoenix Swimming Pool",
+          "address_line2": "Widgeon Close, Great Yarmouth, NR31 8JU, United Kingdom",
+          "lat": 52.582148,
+          "lon": 1.7053954,
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-NFK",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "place_id": "51134de8ac4c49fb3f59cbc05cd3834a4a40f00102f90163a65d0c0000000092031550686f656e6978205377696d6d696e6720506f6f6c"
+        },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                1.7051061,
+                52.582041499
+              ],
+              [
+                1.7051089,
+                52.582013799
+              ],
+              [
+                1.7051383,
+                52.582014899
+              ],
+              [
+                1.705141,
+                52.581987999
+              ],
+              [
+                1.7056577,
+                52.582006899
+              ],
+              [
+                1.7056501,
+                52.582082999
+              ],
+              [
+                1.7056355,
+                52.582230999
+              ],
+              [
+                1.7051407,
+                52.582212999
+              ],
+              [
+                1.7051535,
+                52.582082799
+              ],
+              [
+                1.7051239,
+                52.582081699
+              ],
+              [
+                1.7051278,
+                52.582042299
+              ],
+              [
+                1.7051061,
+                52.582041499
+              ]
+            ]
+          ]
+        }
+      }
+    ]
+  }
+}

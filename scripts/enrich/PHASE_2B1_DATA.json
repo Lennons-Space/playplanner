@@ -1,0 +1,312 @@
+{
+  "generated_at": "2026-06-07T15:52:21.178Z",
+  "total_osm_venues": 46906,
+  "credits_spent": 10,
+  "results": [
+    {
+      "venue": {
+        "id": "006a4f51-1541-45ff-ac97-3114876990e6",
+        "name": "Kingsmill Road Play Area",
+        "latitude": 51.253374,
+        "longitude": -1.095741,
+        "postcode": "",
+        "city": null,
+        "category_slug": "playground"
+      },
+      "expected_category": "playground",
+      "osm_facts": {
+        "indoor_outdoor": "outdoor",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": 60,
+        "activity_level": "high"
+      },
+      "osm_confidence": "low",
+      "match": {
+        "decision": "accept",
+        "score": 0.8,
+        "distance_m": 2,
+        "name_sim": 1,
+        "postcode_match": false,
+        "confidence": 1,
+        "place_id": "51cb01710d2288f1bf591b96500b6fa04940f00102f901d3cbd50100000000c002019203184b696e67736d696c6c20526f616420506c61792041726561",
+        "candidate_name": "Kingsmill Road Play Area",
+        "candidate_category": "leisure.playground",
+        "category_mismatch": false,
+        "reasons": [
+          "score 0.80 >= 0.7, name_sim 1.00 >= 0.5"
+        ]
+      },
+      "geoapify_facts": {
+        "indoor_outdoor": "outdoor",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": "high"
+      },
+      "geoapify_extras": {
+        "opening_hours": null,
+        "website": null,
+        "phone": null,
+        "email": null,
+        "categories": [
+          "leisure",
+          "leisure.playground"
+        ]
+      },
+      "merged_applied_fields": [],
+      "merged_conflicts": 0,
+      "geocode_candidate_count": 1
+    },
+    {
+      "venue": {
+        "id": "01144e3c-15d6-444f-8b6a-e15f0ba76c42",
+        "name": "Tots & Dots Play Cafe",
+        "latitude": 52.057081,
+        "longitude": -0.853016,
+        "postcode": "MK11 1AQ",
+        "city": "Milton Keynes",
+        "category_slug": "soft-play"
+      },
+      "expected_category": "soft-play",
+      "osm_facts": {
+        "indoor_outdoor": "indoor",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": 60,
+        "activity_level": "high"
+      },
+      "osm_confidence": "low",
+      "match": {
+        "decision": "accept",
+        "score": 1,
+        "distance_m": 0,
+        "name_sim": 1,
+        "postcode_match": true,
+        "confidence": 1,
+        "place_id": "5189a93ea1e84bebbf59495ba6704e074a40f00103f90110d70b6e01000000c00201920315546f7473202620446f747320506c61792043616665",
+        "candidate_name": "Tots & Dots Play Cafe",
+        "candidate_category": null,
+        "category_mismatch": false,
+        "reasons": [
+          "score 1.00 >= 0.7, name_sim 1.00 >= 0.5"
+        ]
+      },
+      "geoapify_facts": {
+        "indoor_outdoor": null,
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": null
+      },
+      "geoapify_extras": {
+        "opening_hours": null,
+        "website": null,
+        "phone": null,
+        "email": null,
+        "categories": []
+      },
+      "merged_applied_fields": [],
+      "merged_conflicts": 0,
+      "geocode_candidate_count": 1
+    },
+    {
+      "venue": {
+        "id": "0060d2e5-42cc-4235-a243-f67304654d81",
+        "name": "Phoenix Swimming Pool",
+        "latitude": 52.58211,
+        "longitude": 1.705382,
+        "postcode": "",
+        "city": null,
+        "category_slug": "swimming"
+      },
+      "expected_category": "swimming",
+      "osm_facts": {
+        "indoor_outdoor": "indoor",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": 90,
+        "activity_level": "high"
+      },
+      "osm_confidence": "low",
+      "match": {
+        "decision": "accept",
+        "score": 0.8,
+        "distance_m": 4,
+        "name_sim": 1,
+        "postcode_match": false,
+        "confidence": 1,
+        "place_id": "513efbdbaf4c49fb3f5945b75ed3834a4a40f00102f90163a65d0c00000000c0020192031550686f656e6978205377696d6d696e6720506f6f6c",
+        "candidate_name": "Phoenix Swimming Pool",
+        "candidate_category": "sport.swimming_pool",
+        "category_mismatch": false,
+        "reasons": [
+          "score 0.80 >= 0.7, name_sim 1.00 >= 0.5"
+        ]
+      },
+      "geoapify_facts": {
+        "indoor_outdoor": "indoor",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": "high"
+      },
+      "geoapify_extras": {
+        "opening_hours": null,
+        "website": null,
+        "phone": null,
+        "email": null,
+        "categories": [
+          "building",
+          "building.spa",
+          "building.sport",
+          "sport",
+          "sport.swimming_pool"
+        ]
+      },
+      "merged_applied_fields": [],
+      "merged_conflicts": 0,
+      "geocode_candidate_count": 1
+    },
+    {
+      "venue": {
+        "id": "02c755b7-8e65-4fb2-bef8-e7cc15f8ed76",
+        "name": "Foyle Valley Railway Museum",
+        "latitude": 54.990805,
+        "longitude": -7.320916,
+        "postcode": "BT48 6SQ",
+        "city": "BT48",
+        "category_slug": "museum"
+      },
+      "expected_category": "museum",
+      "osm_facts": {
+        "indoor_outdoor": "indoor",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": 90,
+        "activity_level": "low"
+      },
+      "osm_confidence": "low",
+      "match": {
+        "decision": "accept",
+        "score": 0.8447,
+        "distance_m": 0,
+        "name_sim": 1,
+        "postcode_match": true,
+        "confidence": 0.5564102564102564,
+        "place_id": "51740d33349e481dc059765a6db4d27e4b40f00103f901c9f0ef3003000000c0020192031b466f796c652056616c6c6579205261696c776179204d757365756de203246f70656e7374726565746d61703a76656e75653a6e6f64652f3133373035393333303031",
+        "candidate_name": "Foyle Valley Railway Museum",
+        "candidate_category": "entertainment.museum",
+        "category_mismatch": false,
+        "reasons": [
+          "score 0.84 >= 0.7, name_sim 1.00 >= 0.5"
+        ]
+      },
+      "geoapify_facts": {
+        "indoor_outdoor": "indoor",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": "low"
+      },
+      "geoapify_extras": {
+        "opening_hours": null,
+        "website": null,
+        "phone": null,
+        "email": null,
+        "categories": [
+          "entertainment",
+          "entertainment.museum"
+        ]
+      },
+      "merged_applied_fields": [],
+      "merged_conflicts": 0,
+      "geocode_candidate_count": 4
+    },
+    {
+      "venue": {
+        "id": "00796cc5-79c6-4c87-9cc3-42c5e52ee986",
+        "name": "Porfell Wildlife Park & Sanctuary",
+        "latitude": 50.405341,
+        "longitude": -4.572426,
+        "postcode": "",
+        "city": null,
+        "category_slug": "animal-attraction"
+      },
+      "expected_category": "animal-attraction",
+      "osm_facts": {
+        "indoor_outdoor": "mixed",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": 240,
+        "activity_level": "medium"
+      },
+      "osm_confidence": "low",
+      "match": {
+        "decision": "accept",
+        "score": 0.8,
+        "distance_m": 8,
+        "name_sim": 1,
+        "postcode_match": false,
+        "confidence": 1,
+        "place_id": "5131e24c5d434a12c059fe0c6fd6e0334940f00102f9016f64d00900000000c00201920321506f7266656c6c2057696c646c696665205061726b20262053616e637475617279",
+        "candidate_name": "Porfell Wildlife Park & Sanctuary",
+        "candidate_category": "entertainment.zoo",
+        "category_mismatch": false,
+        "reasons": [
+          "score 0.80 >= 0.7, name_sim 1.00 >= 0.5"
+        ]
+      },
+      "geoapify_facts": {
+        "indoor_outdoor": "mixed",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": null
+      },
+      "geoapify_extras": {
+        "opening_hours": null,
+        "website": "https://www.porfell.co.uk/",
+        "phone": null,
+        "email": null,
+        "categories": [
+          "entertainment",
+          "entertainment.zoo"
+        ]
+      },
+      "merged_applied_fields": [],
+      "merged_conflicts": 0,
+      "geocode_candidate_count": 1
+    }
+  ]
+}

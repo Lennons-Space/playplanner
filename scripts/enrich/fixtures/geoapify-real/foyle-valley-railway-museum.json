@@ -1,0 +1,345 @@
+{
+  "venue": {
+    "id": "02c755b7-8e65-4fb2-bef8-e7cc15f8ed76",
+    "name": "Foyle Valley Railway Museum",
+    "latitude": 54.990805,
+    "longitude": -7.320916,
+    "postcode": "BT48 6SQ",
+    "city": "BT48",
+    "category_slug": "museum"
+  },
+  "geocode": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          "name": "Foyle Valley Railway Museum",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "state": "Northern Ireland",
+          "county": "County Londonderry",
+          "city": "Derry/Londonderry",
+          "municipality": "Derry and Strabane District",
+          "postcode": "BT48 6SQ",
+          "suburb": "Waterside",
+          "street": "Foyle Road",
+          "housenumber": "1",
+          "iso3166_2": "GB-NIR",
+          "iso3166_2_sublevel": "GB-DRS",
+          "lon": -7.320916,
+          "lat": 54.9908052,
+          "state_code": "NIR",
+          "result_type": "amenity",
+          "distance": 0.022239015516505322,
+          "formatted": "Foyle Valley Railway Museum, 1 Foyle Road, Derry/Londonderry, BT48 6SQ, United Kingdom",
+          "address_line1": "Foyle Valley Railway Museum",
+          "address_line2": "1 Foyle Road, Derry/Londonderry, BT48 6SQ, United Kingdom",
+          "category": "entertainment.museum",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "plus_code": "9C6JXMRH+8J",
+          "rank": {
+            "importance": 0.00006541771572437656,
+            "popularity": 3.8758640079083215,
+            "confidence": 0.5564102564102564,
+            "confidence_city_level": 1,
+            "confidence_street_level": 1,
+            "confidence_building_level": 0.7,
+            "match_type": "full_match"
+          },
+          "place_id": "51740d33349e481dc059765a6db4d27e4b40f00103f901c9f0ef3003000000c0020192031b466f796c652056616c6c6579205261696c776179204d757365756de203246f70656e7374726565746d61703a76656e75653a6e6f64652f3133373035393333303031"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -7.320916,
+            54.9908052
+          ]
+        },
+        "bbox": [
+          -7.320966,
+          54.9907552,
+          -7.320866,
+          54.9908552
+        ]
+      },
+      {
+        "type": "Feature",
+        "properties": {
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          "name": "Conwy Valley Railway Museum",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "state": "Wales",
+          "county": "Conwy",
+          "city": "Betws-y-coed",
+          "postcode": "LL24 0AL",
+          "suburb": "Betws-y-coed",
+          "street": "Old Church Road",
+          "iso3166_2": "GB-WLS",
+          "iso3166_2_sublevel": "GB-CWY",
+          "lon": -3.8001743,
+          "lat": 53.09302,
+          "state_code": "WLS",
+          "county_code": "CWY",
+          "district": "Betws-y-Coed Community",
+          "result_type": "amenity",
+          "distance": 311981.9469064064,
+          "formatted": "Conwy Valley Railway Museum, Old Church Road, Betws-y-coed, LL24 0AL, United Kingdom",
+          "address_line1": "Conwy Valley Railway Museum",
+          "address_line2": "Old Church Road, Betws-y-coed, LL24 0AL, United Kingdom",
+          "category": "entertainment.museum",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "plus_code": "9C5R35VX+6W",
+          "plus_code_short": "VX+6W Betws-y-coed, Conwy, United Kingdom",
+          "rank": {
+            "importance": 0.36107739355702545,
+            "popularity": 4.229272825466244,
+            "confidence": 0.4112307692307693,
+            "confidence_city_level": 0.23142857142857143,
+            "match_type": "full_match"
+          },
+          "place_id": "512ccc8cc8c1660ec059ddef5014e88b4a40f00103f9011af73c5000000000c0020192031b436f6e77792056616c6c6579205261696c776179204d757365756de203236f70656e7374726565746d61703a76656e75653a6e6f64652f31333436313732363938"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -3.8001743,
+            53.09302
+          ]
+        },
+        "bbox": [
+          -3.8002243,
+          53.09297,
+          -3.8001243,
+          53.09307
+        ]
+      },
+      {
+        "type": "Feature",
+        "properties": {
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          "name": "Teifi Valley Railway Museum",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "state": "Wales",
+          "county": "Ceredigion",
+          "city": "Penrhiw-llan",
+          "hamlet": "Henllan",
+          "postcode": "SA44 5TH",
+          "suburb": "Llandyfriog",
+          "street": "Heol Y Bedw",
+          "iso3166_2": "GB-WLS",
+          "iso3166_2_sublevel": "GB-CGN",
+          "lon": -4.3952726,
+          "lat": 52.0400943,
+          "state_code": "WLS",
+          "county_code": "CGN",
+          "district": "Llandyfriog Community",
+          "result_type": "amenity",
+          "distance": 380803.076190536,
+          "formatted": "Teifi Valley Railway Museum, Heol Y Bedw, Penrhiw-llan, SA44 5TH, United Kingdom",
+          "address_line1": "Teifi Valley Railway Museum",
+          "address_line2": "Heol Y Bedw, Penrhiw-llan, SA44 5TH, United Kingdom",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "plus_code": "9C4Q2JR3+2V",
+          "rank": {
+            "importance": 0.00004812771801322984,
+            "popularity": 3.108459751733027,
+            "confidence": 0.4112307692307693,
+            "confidence_city_level": 0.23142857142857143,
+            "match_type": "full_match"
+          },
+          "place_id": "5102052857c29411c059c5a05dcf21054a40f00103f9016d69c3f001000000c0020192031b54656966692056616c6c6579205261696c776179204d757365756de203236f70656e7374726565746d61703a76656e75653a6e6f64652f38333334333035363435"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -4.3952726,
+            52.0400943
+          ]
+        },
+        "bbox": [
+          -4.3953226,
+          52.0400443,
+          -4.3952226,
+          52.0401443
+        ]
+      },
+      {
+        "type": "Feature",
+        "properties": {
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          "name": "Tanat Valley Light Railway Museum",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "state": "England",
+          "county": "Shropshire",
+          "city": "Nantmawr",
+          "hamlet": "Porth-Y-Waen",
+          "postcode": "SY10 9HW",
+          "street": "Cefn Lane",
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-SHR",
+          "lon": -3.1080665,
+          "lat": 52.8106787,
+          "state_code": "ENG",
+          "county_code": "SHR",
+          "district": "Llanyblodwel",
+          "result_type": "amenity",
+          "distance": 367234.73383161344,
+          "formatted": "Tanat Valley Light Railway Museum, Cefn Lane, Nantmawr, SY10 9HW, United Kingdom",
+          "address_line1": "Tanat Valley Light Railway Museum",
+          "address_line2": "Cefn Lane, Nantmawr, SY10 9HW, United Kingdom",
+          "category": "entertainment.museum",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "plus_code": "9C4RRV6R+7Q",
+          "rank": {
+            "importance": 0.000055899137865217324,
+            "popularity": 3.564903037251875,
+            "confidence": 0.3330969230769231,
+            "confidence_city_level": 0.7290000000000001,
+            "match_type": "full_match"
+          },
+          "place_id": "5171581af851dd08c0592a08d451c4674a40f00103f901dd61dcb802000000c0020192032154616e61742056616c6c6579204c69676874205261696c776179204d757365756de203246f70656e7374726565746d61703a76656e75653a6e6f64652f3131363931333835333039"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -3.1080665,
+            52.8106787
+          ]
+        },
+        "bbox": [
+          -3.1081165,
+          52.8106287,
+          -3.1080165,
+          52.8107287
+        ]
+      }
+    ],
+    "query": {
+      "text": "Foyle Valley Railway Museum, BT48 6SQ, BT48"
+    }
+  },
+  "place_details": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "feature_type": "details",
+          "name": "Foyle Valley Railway Museum",
+          "categories": [
+            "entertainment",
+            "entertainment.museum"
+          ],
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright",
+            "raw": {
+              "name": "Foyle Valley Railway Museum",
+              "osm_id": 13705933001,
+              "tourism": "museum",
+              "osm_type": "n",
+              "check_date": "2026-04-04",
+              "addr:street": "Foyle Road",
+              "addr:postcode": "BT48 6SQ",
+              "addr:housenumber": 1
+            }
+          },
+          "housenumber": "1",
+          "street": "Foyle Road",
+          "city": "Derry/Londonderry",
+          "county": "County Londonderry",
+          "state": "Northern Ireland",
+          "state_code": "NIR",
+          "postcode": "BT48 6SQ",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "municipality": "Derry and Strabane District",
+          "suburb": "Waterside",
+          "formatted": "Foyle Valley Railway Museum, 1 Foyle Road, Derry/Londonderry, BT48 6SQ, United Kingdom",
+          "address_line1": "Foyle Valley Railway Museum",
+          "address_line2": "1 Foyle Road, Derry/Londonderry, BT48 6SQ, United Kingdom",
+          "lat": 54.9908052,
+          "lon": -7.320916,
+          "iso3166_2": "GB-NIR",
+          "iso3166_2_sublevel": "GB-DRS",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "place_id": "51740d33349e481dc059611a6cb4d27e4b40f00103f901c9f0ef300300000092031b466f796c652056616c6c6579205261696c776179204d757365756d"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -7.320916,
+            54.990805199
+          ]
+        }
+      }
+    ]
+  }
+}

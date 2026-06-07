@@ -1,0 +1,316 @@
+{
+  "venue": {
+    "id": "fb9ad746-37ab-4e8a-9d8b-2f45a75fb0a4",
+    "name": "Twycross Zoo",
+    "latitude": 52.652418,
+    "longitude": -1.52823,
+    "postcode": "CV9 3PX",
+    "city": "Atherstone",
+    "category_slug": "animal-attraction"
+  },
+  "geocode": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          "name": "Twycross Zoo",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "state": "England",
+          "county": "Warwickshire",
+          "city": "Hinckley and Bosworth",
+          "village": "Twycross",
+          "hamlet": "Little Twycross",
+          "postcode": "CV9 3PX",
+          "suburb": "Twycross",
+          "street": "Burton Road",
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-WAR",
+          "lon": -1.5283363,
+          "lat": 52.6524591,
+          "state_code": "ENG",
+          "result_type": "amenity",
+          "county_code": "WAR",
+          "formatted": "Twycross Zoo, Burton Road, Twycross, CV9 3PX, United Kingdom",
+          "address_line1": "Twycross Zoo",
+          "address_line2": "Burton Road, Twycross, CV9 3PX, United Kingdom",
+          "category": "entertainment.zoo",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "plus_code": "9C4WMF2C+XM",
+          "rank": {
+            "importance": 0.3363461829037416,
+            "popularity": 4.134933397741084,
+            "confidence": 1,
+            "confidence_city_level": 1,
+            "match_type": "full_match"
+          },
+          "place_id": "5163a29cc31074f8bf59223da0c783534a40f00102f90190a6440b00000000c0020192030c54777963726f7373205a6f6f"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -1.5283363,
+            52.6524591
+          ]
+        },
+        "bbox": [
+          -1.535967,
+          52.6497116,
+          -1.5204935,
+          52.6551252
+        ]
+      }
+    ],
+    "query": {
+      "text": "Twycross Zoo, CV9 3PX, Atherstone",
+      "parsed": {
+        "house": "twycross zoo",
+        "postcode": "cv9 3px",
+        "city": "atherstone",
+        "expected_type": "amenity"
+      }
+    }
+  },
+  "place_details": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "feature_type": "details",
+          "website": "https://twycrosszoo.org/",
+          "name": "Twycross Zoo",
+          "wiki_and_media": {
+            "wikidata": "Q2398233",
+            "wikipedia": "en:Twycross Zoo"
+          },
+          "categories": [
+            "entertainment",
+            "entertainment.zoo"
+          ],
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright",
+            "raw": {
+              "name": "Twycross Zoo",
+              "osm_id": 189048464,
+              "tourism": "zoo",
+              "website": "https://twycrosszoo.org/",
+              "osm_type": "w",
+              "wikidata": "Q2398233",
+              "addr:city": "Atherstone",
+              "wikipedia": "en:Twycross Zoo",
+              "addr:county": "Warwickshire",
+              "addr:street": "Burton Road",
+              "addr:postcode": "CV9 3PX"
+            }
+          },
+          "street": "Burton Road",
+          "city": "Hinckley and Bosworth",
+          "county": "Warwickshire",
+          "state": "England",
+          "state_code": "ENG",
+          "postcode": "CV9 3PX",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "suburb": "Twycross",
+          "village": "Twycross",
+          "hamlet": "Little Twycross",
+          "formatted": "Twycross Zoo, Burton Road, Hinckley and Bosworth, CV9 3PX, United Kingdom",
+          "address_line1": "Twycross Zoo",
+          "address_line2": "Burton Road, Hinckley and Bosworth, CV9 3PX, United Kingdom",
+          "lat": 52.6524591,
+          "lon": -1.5283363,
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-WAR",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "place_id": "519eb3c8b91074f8bf5934e632c783534a40f00102f90190a6440b0000000092030c54777963726f7373205a6f6f"
+        },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -1.535967,
+                52.653227699
+              ],
+              [
+                -1.5358818,
+                52.651190899
+              ],
+              [
+                -1.5347142,
+                52.651360299
+              ],
+              [
+                -1.5334281,
+                52.651653499
+              ],
+              [
+                -1.533141,
+                52.651666999
+              ],
+              [
+                -1.5327584,
+                52.651610099
+              ],
+              [
+                -1.5323219,
+                52.651503999
+              ],
+              [
+                -1.5299594,
+                52.650975599
+              ],
+              [
+                -1.5281275,
+                52.650564399
+              ],
+              [
+                -1.5271215,
+                52.651746999
+              ],
+              [
+                -1.5263785,
+                52.651503299
+              ],
+              [
+                -1.5262719,
+                52.651605199
+              ],
+              [
+                -1.5261386,
+                52.651605199
+              ],
+              [
+                -1.5256665,
+                52.651563899
+              ],
+              [
+                -1.5252997,
+                52.651414099
+              ],
+              [
+                -1.5247462,
+                52.651777599
+              ],
+              [
+                -1.5242461,
+                52.652039999
+              ],
+              [
+                -1.5236638,
+                52.651763899
+              ],
+              [
+                -1.5228617,
+                52.651366199
+              ],
+              [
+                -1.5226765,
+                52.651183599
+              ],
+              [
+                -1.5227922,
+                52.651029099
+              ],
+              [
+                -1.5233803,
+                52.650520699
+              ],
+              [
+                -1.5231349,
+                52.650368999
+              ],
+              [
+                -1.5220051,
+                52.649711599
+              ],
+              [
+                -1.5215946,
+                52.650995199
+              ],
+              [
+                -1.521128,
+                52.651789199
+              ],
+              [
+                -1.5204935,
+                52.652878099
+              ],
+              [
+                -1.5234907,
+                52.653432399
+              ],
+              [
+                -1.5244536,
+                52.653492999
+              ],
+              [
+                -1.525272,
+                52.653411499
+              ],
+              [
+                -1.5277124,
+                52.653115999
+              ],
+              [
+                -1.5280995,
+                52.653137599
+              ],
+              [
+                -1.5302566,
+                52.653862499
+              ],
+              [
+                -1.5338394,
+                52.655125199
+              ],
+              [
+                -1.5339473,
+                52.655023999
+              ],
+              [
+                -1.5341033,
+                52.655072099
+              ],
+              [
+                -1.5357851,
+                52.653436299
+              ],
+              [
+                -1.535967,
+                52.653227699
+              ]
+            ]
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,209 @@
+{
+  "venue": {
+    "id": "00796cc5-79c6-4c87-9cc3-42c5e52ee986",
+    "name": "Porfell Wildlife Park & Sanctuary",
+    "latitude": 50.405341,
+    "longitude": -4.572426,
+    "postcode": "",
+    "city": null,
+    "category_slug": "animal-attraction"
+  },
+  "geocode": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          "name": "Porfell Wildlife Park & Sanctuary",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "state": "England",
+          "county": "Cornwall",
+          "city": "Lanreath",
+          "postcode": "PL13 2RW",
+          "suburb": "Lanreath",
+          "street": "Stonerush Lakes",
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-CON",
+          "lon": -4.5725226,
+          "lat": 50.405299,
+          "state_code": "ENG",
+          "result_type": "amenity",
+          "distance": 8.287315636465019,
+          "county_code": "CON",
+          "formatted": "Porfell Wildlife Park & Sanctuary, Stonerush Lakes, Lanreath, PL13 2RW, United Kingdom",
+          "address_line1": "Porfell Wildlife Park & Sanctuary",
+          "address_line2": "Stonerush Lakes, Lanreath, PL13 2RW, United Kingdom",
+          "category": "entertainment.zoo",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "plus_code": "9C2QCC4G+4X",
+          "rank": {
+            "importance": 0.00004343556877999569,
+            "popularity": 3.744697498021858,
+            "confidence": 1,
+            "match_type": "full_match"
+          },
+          "place_id": "5131e24c5d434a12c059fe0c6fd6e0334940f00102f9016f64d00900000000c00201920321506f7266656c6c2057696c646c696665205061726b20262053616e637475617279"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -4.5725226,
+            50.405299
+          ]
+        },
+        "bbox": [
+          -4.5747534,
+          50.4031234,
+          -4.5700984,
+          50.4075593
+        ]
+      }
+    ],
+    "query": {
+      "text": "Porfell Wildlife Park & Sanctuary"
+    }
+  },
+  "place_details": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "feature_type": "details",
+          "website": "https://www.porfell.co.uk/",
+          "name": "Porfell Wildlife Park & Sanctuary",
+          "categories": [
+            "entertainment",
+            "entertainment.zoo"
+          ],
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright",
+            "raw": {
+              "zoo": "wildlife_park",
+              "name": "Porfell Wildlife Park & Sanctuary",
+              "osm_id": 164652143,
+              "tourism": "zoo",
+              "website": "https://www.porfell.co.uk/",
+              "osm_type": "w"
+            }
+          },
+          "street": "Stonerush Lakes",
+          "city": "Lanreath",
+          "county": "Cornwall",
+          "state": "England",
+          "state_code": "ENG",
+          "postcode": "PL13 2RW",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "suburb": "Lanreath",
+          "formatted": "Porfell Wildlife Park & Sanctuary, Stonerush Lakes, Lanreath, PL13 2RW, United Kingdom",
+          "address_line1": "Porfell Wildlife Park & Sanctuary",
+          "address_line2": "Stonerush Lakes, Lanreath, PL13 2RW, United Kingdom",
+          "lat": 50.405299,
+          "lon": -4.5725226,
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-CON",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "place_id": "51d825065e434a12c0592faf6dd6e0334940f00102f9016f64d00900000000920321506f7266656c6c2057696c646c696665205061726b20262053616e637475617279"
+        },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -4.5747534,
+                50.406349399
+              ],
+              [
+                -4.5741342,
+                50.405213199
+              ],
+              [
+                -4.5741942,
+                50.404883599
+              ],
+              [
+                -4.5730571,
+                50.403845799
+              ],
+              [
+                -4.5724126,
+                50.403123399
+              ],
+              [
+                -4.5707164,
+                50.404256299
+              ],
+              [
+                -4.5700984,
+                50.404938899
+              ],
+              [
+                -4.5708033,
+                50.405195499
+              ],
+              [
+                -4.5709148,
+                50.405384799
+              ],
+              [
+                -4.5711069,
+                50.405604299
+              ],
+              [
+                -4.5716873,
+                50.405617299
+              ],
+              [
+                -4.5722656,
+                50.407354799
+              ],
+              [
+                -4.5730606,
+                50.407559299
+              ],
+              [
+                -4.5739822,
+                50.407122299
+              ],
+              [
+                -4.5742658,
+                50.406994199
+              ],
+              [
+                -4.5747534,
+                50.406349399
+              ]
+            ]
+          ]
+        }
+      }
+    ]
+  }
+}

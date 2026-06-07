@@ -1,0 +1,267 @@
+{
+  "venue": {
+    "id": "25adf478-89bc-4316-919b-efd6538f788a",
+    "name": "National Sea Life Centre",
+    "latitude": 52.478797,
+    "longitude": -1.913527,
+    "postcode": "B1 2JB",
+    "city": "Birmingham",
+    "category_slug": "animal-attraction"
+  },
+  "geocode": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          "name": "National Sea Life Centre",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "state": "England",
+          "county": "West Midlands",
+          "city": "Birmingham",
+          "village": "Park Central",
+          "postcode": "B1 2JB",
+          "suburb": "Ladywood",
+          "street": "Brindley Place",
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-BIR",
+          "lon": -1.913546,
+          "lat": 52.4787372,
+          "state_code": "ENG",
+          "result_type": "amenity",
+          "formatted": "National Sea Life Centre, Brindley Place, Park Central, B1 2JB, United Kingdom",
+          "address_line1": "National Sea Life Centre",
+          "address_line2": "Brindley Place, Park Central, B1 2JB, United Kingdom",
+          "category": "entertainment.aquarium",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "plus_code": "9C4WF3HP+FH",
+          "plus_code_short": "HP+FH Birmingham, West Midlands, United Kingdom",
+          "rank": {
+            "importance": 0.29322317952748045,
+            "popularity": 8.531064701069774,
+            "confidence": 1,
+            "confidence_city_level": 1,
+            "match_type": "full_match"
+          },
+          "place_id": "510f441669e29dfebf5976b0b442473d4a40f00102f901e8385c0100000000c002019203184e6174696f6e616c20536561204c6966652043656e747265"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -1.913546,
+            52.4787372
+          ]
+        },
+        "bbox": [
+          -1.9139443,
+          52.4786253,
+          -1.913109,
+          52.4789682
+        ]
+      }
+    ],
+    "query": {
+      "text": "National Sea Life Centre, B1 2JB, Birmingham",
+      "parsed": {
+        "house": "national sea life centre",
+        "postcode": "b1 2jb",
+        "city": "birmingham",
+        "expected_type": "amenity"
+      }
+    }
+  },
+  "place_details": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "feature_type": "details",
+          "website": "https://visitsealife.com/birmingham/",
+          "operator": "Sea Life",
+          "operator_details": {
+            "wikidata": "Q664334",
+            "wikipedia": "en:Sea Life"
+          },
+          "name": "National Sea Life Centre",
+          "facilities": {
+            "wheelchair": true,
+            "toilets": true
+          },
+          "wiki_and_media": {
+            "wikidata": "Q6978303",
+            "wikipedia": "en:National Sea Life Centre, Birmingham"
+          },
+          "building": {
+            "levels": 3
+          },
+          "categories": [
+            "building",
+            "building.tourism",
+            "entertainment",
+            "entertainment.aquarium",
+            "fee",
+            "wheelchair",
+            "wheelchair.yes"
+          ],
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright",
+            "raw": {
+              "fee": "yes",
+              "name": "National Sea Life Centre",
+              "osm_id": 22821096,
+              "fhrs:id": 600631,
+              "tourism": "aquarium",
+              "building": "yes",
+              "operator": "Sea Life",
+              "osm_type": "w",
+              "wikidata": "Q6978303",
+              "addr:city": "Birmingham",
+              "architect": "Norman Foster & Partners",
+              "wikipedia": "en:National Sea Life Centre, Birmingham",
+              "wheelchair": "yes",
+              "addr:street": "Brindley Place",
+              "addr:country": "GB",
+              "addr:postcode": "B1 2JB",
+              "addr:housename": "National Sea Life Centre",
+              "building:levels": 3,
+              "contact:twitter": "sealifebham",
+              "contact:website": "https://visitsealife.com/birmingham/",
+              "contact:youtube": "visitSEALIFE",
+              "contact:facebook": "sealifebirmingham",
+              "contact:instagram": "sealifebirmingham",
+              "opening_hours:url": "https://www.visitsealife.com/birmingham/plan-your-visit/before-you-visit/opening-hours/",
+              "operator:wikidata": "Q664334",
+              "operator:wikipedia": "en:Sea Life",
+              "toilets:wheelchair": "yes"
+            }
+          },
+          "street": "Brindley Place",
+          "city": "Birmingham",
+          "county": "West Midlands",
+          "state": "England",
+          "state_code": "ENG",
+          "postcode": "B1 2JB",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "suburb": "Ladywood",
+          "village": "Park Central",
+          "formatted": "National Sea Life Centre, Brindley Place, Birmingham, B1 2JB, United Kingdom",
+          "address_line1": "National Sea Life Centre",
+          "address_line2": "Brindley Place, Birmingham, B1 2JB, United Kingdom",
+          "lat": 52.4787372,
+          "lon": -1.913546,
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-BIR",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "place_id": "51fcff1c60e29dfebf59bc5b4742473d4a40f00102f901e8385c01000000009203184e6174696f6e616c20536561204c6966652043656e747265"
+        },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -1.9139443,
+                52.478813899
+              ],
+              [
+                -1.9135771,
+                52.478625299
+              ],
+              [
+                -1.9135317,
+                52.478648799
+              ],
+              [
+                -1.9134841,
+                52.478660399
+              ],
+              [
+                -1.9134415,
+                52.478649999
+              ],
+              [
+                -1.913418,
+                52.478635299
+              ],
+              [
+                -1.9132032,
+                52.478816199
+              ],
+              [
+                -1.9131473,
+                52.478858699
+              ],
+              [
+                -1.913109,
+                52.478887999
+              ],
+              [
+                -1.9131342,
+                52.478899499
+              ],
+              [
+                -1.9132436,
+                52.478940499
+              ],
+              [
+                -1.9133967,
+                52.478968199
+              ],
+              [
+                -1.9135315,
+                52.478967899
+              ],
+              [
+                -1.9136805,
+                52.478957399
+              ],
+              [
+                -1.9137699,
+                52.478922899
+              ],
+              [
+                -1.9138717,
+                52.478867799
+              ],
+              [
+                -1.9139131,
+                52.478836999
+              ],
+              [
+                -1.9139443,
+                52.478813899
+              ]
+            ]
+          ]
+        }
+      }
+    ]
+  }
+}

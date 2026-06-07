@@ -1,0 +1,152 @@
+{
+  "venue": {
+    "id": "01144e3c-15d6-444f-8b6a-e15f0ba76c42",
+    "name": "Tots & Dots Play Cafe",
+    "latitude": 52.057081,
+    "longitude": -0.853016,
+    "postcode": "MK11 1AQ",
+    "city": "Milton Keynes",
+    "category_slug": "soft-play"
+  },
+  "geocode": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright"
+          },
+          "name": "Tots & Dots Play Cafe",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "state": "England",
+          "county": "City of Milton Keynes",
+          "city": "Milton Keynes",
+          "postcode": "MK11 1AQ",
+          "suburb": "Calverton End",
+          "street": "High Street",
+          "housenumber": "56",
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-MIK",
+          "lon": -0.8530162,
+          "lat": 52.0570813,
+          "state_code": "ENG",
+          "result_type": "amenity",
+          "formatted": "Tots & Dots Play Cafe, 56 High Street, Milton Keynes, MK11 1AQ, United Kingdom",
+          "address_line1": "Tots & Dots Play Cafe",
+          "address_line2": "56 High Street, Milton Keynes, MK11 1AQ, United Kingdom",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "plus_code": "9C4X344W+RQ",
+          "plus_code_short": "344W+RQ Milton Keynes, City of Milton Keynes, United Kingdom",
+          "rank": {
+            "importance": 0.00006352254520480686,
+            "popularity": 6.0456168424337084,
+            "confidence": 1,
+            "confidence_city_level": 1,
+            "match_type": "full_match"
+          },
+          "place_id": "5189a93ea1e84bebbf59495ba6704e074a40f00103f90110d70b6e01000000c00201920315546f7473202620446f747320506c61792043616665"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -0.8530162,
+            52.0570813
+          ]
+        },
+        "bbox": [
+          -0.8530662,
+          52.0570313,
+          -0.8529662,
+          52.0571313
+        ]
+      }
+    ],
+    "query": {
+      "text": "Tots & Dots Play Cafe, MK11 1AQ, Milton Keynes",
+      "parsed": {
+        "house": "tots & dots play cafe",
+        "postcode": "mk11 1aq",
+        "city": "milton keynes",
+        "expected_type": "amenity"
+      }
+    }
+  },
+  "place_details": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "feature_type": "details",
+          "name": "Tots & Dots Play Cafe",
+          "categories": [],
+          "datasource": {
+            "sourcename": "openstreetmap",
+            "attribution": "© OpenStreetMap contributors",
+            "license": "Open Database License",
+            "url": "https://www.openstreetmap.org/copyright",
+            "raw": {
+              "name": "Tots & Dots Play Cafe",
+              "osm_id": 6141237008,
+              "fhrs:id": 1841132,
+              "leisure": "indoor_play",
+              "osm_type": "n",
+              "addr:city": "Milton Keynes",
+              "addr:street": "High Street",
+              "addr:suburb": "Stony Stratford",
+              "addr:postcode": "MK11 1AQ",
+              "addr:housenumber": 56
+            }
+          },
+          "housenumber": "56",
+          "street": "High Street",
+          "city": "Milton Keynes",
+          "county": "City of Milton Keynes",
+          "state": "England",
+          "state_code": "ENG",
+          "postcode": "MK11 1AQ",
+          "country": "United Kingdom",
+          "country_code": "gb",
+          "suburb": "Calverton End",
+          "formatted": "Tots & Dots Play Cafe, 56 High Street, Milton Keynes, MK11 1AQ, United Kingdom",
+          "address_line1": "Tots & Dots Play Cafe",
+          "address_line2": "56 High Street, Milton Keynes, MK11 1AQ, United Kingdom",
+          "lat": 52.0570813,
+          "lon": -0.8530162,
+          "iso3166_2": "GB-ENG",
+          "iso3166_2_sublevel": "GB-MIK",
+          "timezone": {
+            "name": "Europe/London",
+            "offset_STD": "+00:00",
+            "offset_STD_seconds": 0,
+            "offset_DST": "+01:00",
+            "offset_DST_seconds": 3600,
+            "abbreviation_STD": "GMT",
+            "abbreviation_DST": "BST"
+          },
+          "place_id": "5189a93ea1e84bebbf598373a4704e074a40f00103f90110d70b6e01000000920315546f7473202620446f747320506c61792043616665"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -0.8530162,
+            52.057081299
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,229 @@
+{
+  "generated_at": "2026-06-07T16:19:00.396Z",
+  "phase": "2B-1B (popular-venue confirmatory test)",
+  "credit_budget": 8,
+  "credits_spent": 6,
+  "results": [
+    {
+      "venue": {
+        "id": "287abc1b-e36f-4308-9afe-29ff9a2f4ae8",
+        "name": "Wacky Warehouse",
+        "latitude": 52.829308,
+        "longitude": -1.619165,
+        "postcode": "DE13 0LA",
+        "city": "Burton-on-Trent",
+        "category_slug": "soft-play"
+      },
+      "expected_category": "soft-play",
+      "selection_reason": "Wacky Warehouse — national soft-play chain (Burton-on-Trent)",
+      "osm_facts": {
+        "indoor_outdoor": null,
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": null
+      },
+      "osm_confidence": null,
+      "match": {
+        "decision": "accept",
+        "score": 1,
+        "distance_m": 0,
+        "name_sim": 1,
+        "postcode_match": true,
+        "confidence": 1,
+        "place_id": "517031f5a919e8f9bf594068e2c2266a4a40f00103f90163e9e88702000000c0020192030f5761636b792057617265686f757365",
+        "candidate_name": "Wacky Warehouse",
+        "candidate_category": null,
+        "category_mismatch": false,
+        "reasons": [
+          "score 1.00 >= 0.7, name_sim 1.00 >= 0.5"
+        ]
+      },
+      "geoapify_facts": {
+        "indoor_outdoor": null,
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": null
+      },
+      "geoapify_extras": {
+        "opening_hours": null,
+        "website": "https://www.wackywarehouse.co.uk/mill-house-stretton/",
+        "phone": null,
+        "email": null,
+        "categories": []
+      },
+      "merged_applied_fields": [],
+      "merged_conflicts": 0,
+      "geocode_candidate_count": 1,
+      "circularity": {
+        "circular": false,
+        "note": "place_id/datasource do not reference our osm_id=node/10870122851 — appears to be an independent Geoapify record"
+      }
+    },
+    {
+      "venue": {
+        "id": "fb9ad746-37ab-4e8a-9d8b-2f45a75fb0a4",
+        "name": "Twycross Zoo",
+        "latitude": 52.652418,
+        "longitude": -1.52823,
+        "postcode": "CV9 3PX",
+        "city": "Atherstone",
+        "category_slug": "animal-attraction"
+      },
+      "expected_category": "animal-attraction",
+      "selection_reason": "Twycross Zoo — major UK zoo (famous, large visitor attraction)",
+      "osm_facts": {
+        "indoor_outdoor": null,
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": null
+      },
+      "osm_confidence": null,
+      "match": {
+        "decision": "accept",
+        "score": 1,
+        "distance_m": 9,
+        "name_sim": 1,
+        "postcode_match": true,
+        "confidence": 1,
+        "place_id": "5163a29cc31074f8bf59223da0c783534a40f00102f90190a6440b00000000c0020192030c54777963726f7373205a6f6f",
+        "candidate_name": "Twycross Zoo",
+        "candidate_category": "entertainment.zoo",
+        "category_mismatch": false,
+        "reasons": [
+          "score 1.00 >= 0.7, name_sim 1.00 >= 0.5"
+        ]
+      },
+      "geoapify_facts": {
+        "indoor_outdoor": "mixed",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": null
+      },
+      "geoapify_extras": {
+        "opening_hours": null,
+        "website": "https://twycrosszoo.org/",
+        "phone": null,
+        "email": null,
+        "categories": [
+          "entertainment",
+          "entertainment.zoo"
+        ]
+      },
+      "merged_applied_fields": [
+        "indoor_outdoor"
+      ],
+      "merged_conflicts": 0,
+      "geocode_candidate_count": 1,
+      "circularity": {
+        "circular": false,
+        "note": "place_id/datasource do not reference our osm_id=way/189048464 — appears to be an independent Geoapify record"
+      }
+    },
+    {
+      "venue": {
+        "id": "25adf478-89bc-4316-919b-efd6538f788a",
+        "name": "National Sea Life Centre",
+        "latitude": 52.478797,
+        "longitude": -1.913527,
+        "postcode": "B1 2JB",
+        "city": "Birmingham",
+        "category_slug": "animal-attraction"
+      },
+      "expected_category": "animal-attraction",
+      "selection_reason": "National Sea Life Centre Birmingham — major commercial attraction chain (museum/leisure-equivalent: strong web presence expected)",
+      "osm_facts": {
+        "indoor_outdoor": null,
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": null,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": null
+      },
+      "osm_confidence": null,
+      "match": {
+        "decision": "accept",
+        "score": 1,
+        "distance_m": 7,
+        "name_sim": 1,
+        "postcode_match": true,
+        "confidence": 1,
+        "place_id": "510f441669e29dfebf5976b0b442473d4a40f00102f901e8385c0100000000c002019203184e6174696f6e616c20536561204c6966652043656e747265",
+        "candidate_name": "National Sea Life Centre",
+        "candidate_category": "entertainment.aquarium",
+        "category_mismatch": false,
+        "reasons": [
+          "score 1.00 >= 0.7, name_sim 1.00 >= 0.5"
+        ]
+      },
+      "geoapify_facts": {
+        "indoor_outdoor": "indoor",
+        "parking_available": null,
+        "cafe_available": null,
+        "toilets_available": true,
+        "baby_change_available": null,
+        "wheelchair_accessible": null,
+        "visit_duration_mins": null,
+        "activity_level": null
+      },
+      "geoapify_extras": {
+        "opening_hours": null,
+        "website": "https://visitsealife.com/birmingham/",
+        "phone": null,
+        "email": null,
+        "categories": [
+          "building",
+          "building.tourism",
+          "entertainment",
+          "entertainment.aquarium",
+          "fee",
+          "wheelchair",
+          "wheelchair.yes"
+        ]
+      },
+      "merged_applied_fields": [
+        "indoor_outdoor",
+        "toilets_available"
+      ],
+      "merged_conflicts": 0,
+      "geocode_candidate_count": 1,
+      "circularity": {
+        "circular": false,
+        "note": "place_id/datasource do not reference our osm_id=way/22821096 — appears to be an independent Geoapify record"
+      }
+    }
+  ],
+  "summary": {
+    "accepted": 3,
+    "review": 0,
+    "reject": 0,
+    "circular_matches": 0,
+    "independent_records": 3,
+    "total_gap_fills": 3,
+    "with_opening_hours": 0,
+    "with_website": 3,
+    "with_phone": 0,
+    "gained_parking": false,
+    "gained_toilets": true,
+    "gained_cafe": false,
+    "gained_baby_change": false,
+    "gained_wheelchair": false
+  }
+}
