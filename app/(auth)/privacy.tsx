@@ -59,7 +59,7 @@ export default function PrivacyScreen() {
           coordinates.{'\n\n'}
           <Bold>Content you create</Bold>
           {'\n'}• Venue reviews — including rating, visit date, and any age ranges you add.{'\n'}
-          • Venue photos — images you upload of venues (not people). Photos are stripped of EXIF metadata (including any GPS tags) before being stored.{'\n'}
+          • Venue photos — images you upload of venues (not people). Photos are stripped of EXIF metadata (including any GPS tags) before being stored. See section 8 for what happens to your photos if you delete your account.{'\n'}
           • Venue submissions — information about venues you add to the app. Submissions are held for moderation before publication and are not visible to other users while under review.{'\n\n'}
           <Bold>Technical data</Bold>
           {'\n'}• Session tokens — stored securely on your device to keep you logged in.{'\n'}
@@ -142,8 +142,18 @@ export default function PrivacyScreen() {
         <Section title="8. How long we keep your data">
           • <Bold>Account data</Bold> — kept for as long as your account is active. Deleted within
           30 days of account deletion, except where legal retention obligations apply.{'\n'}
-          • <Bold>Reviews and photos</Bold> — kept until you delete them, or until your account is
-          deleted, whichever comes first.{'\n'}
+          • <Bold>Reviews, facility votes, favourites and notification settings</Bold> — kept
+          until you delete them, or until your account is deleted, whichever comes first. Deleting
+          your account removes all of these immediately.{'\n'}
+          • <Bold>Photos awaiting or refused moderation</Bold> — if your account is deleted before
+          a photo you uploaded has been approved (i.e. it is still pending review, or was
+          rejected), that photo and its image file are permanently deleted along with your
+          account.{'\n'}
+          • <Bold>Approved venue photos</Bold> — once a photo you uploaded has been approved and
+          published, it shows a place, not a person (we strip EXIF/GPS data before storing it).
+          If you delete your account, we keep the published image as anonymous venue content for
+          other parents to see, but we permanently remove the link to you — the photo is no
+          longer associated with your account or identity in any way.{'\n'}
           • <Bold>Location consent log entries</Bold> — kept for 3 years for ICO accountability
           purposes, then deleted automatically.{'\n'}
           • <Bold>GDPR audit log entries</Bold> — kept for 3 years then deleted automatically.{'\n'}
@@ -160,8 +170,14 @@ export default function PrivacyScreen() {
           you. Use the "Download my data" feature in the app for an instant export.{'\n\n'}
           • <Bold>Right to rectification (Article 16)</Bold> — correct inaccurate data in Profile
           &gt; Edit Profile, or contact us.{'\n\n'}
-          • <Bold>Right to erasure (Article 17)</Bold> — delete your account and all associated
-          data in Profile &gt; Delete account. We will action this within 30 days.{'\n\n'}
+          • <Bold>Right to erasure (Article 17)</Bold> — delete your account in Profile &gt;
+          Delete account. This is actioned <Bold>immediately</Bold>: your account, profile,
+          reviews, facility votes, favourites, notification settings, and any unapproved photo
+          submissions (and their files) are deleted straight away. Approved public venue photos
+          are kept but permanently anonymised — the link to you is removed, leaving only an
+          anonymous image of the venue. If you would prefer we action erasure by email instead,
+          contact privacy@playplanner.app and we will complete it within 30 days (one calendar
+          month).{'\n\n'}
           • <Bold>Right to withdraw consent (Article 7(3)</Bold> — withdraw location consent or
           marketing consent at any time in Profile &gt; Privacy Settings. Withdrawal does not
           affect the lawfulness of processing before withdrawal.{'\n\n'}

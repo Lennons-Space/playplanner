@@ -125,9 +125,25 @@ export default function ProfileScreen() {
 
   /**
    * GDPR Art.17 — right to erasure.
-   * The delete_own_account() RPC:
-   *   1. Writes a GDPR audit log entry (Art.5(2) accountability).
-   *   2. Deletes the auth.users row, cascading to all related data.
+   *
+   * Order matters here and is privacy-load-bearing:
+   *   1. Remove this user's UNAPPROVED (pending/rejected) photo files from
+   *      Storage first. Supabase Storage objects live outside Postgres, so
+   *      a SQL-only deletion can't reach them — the RPC below deletes the
+   *      DB rows, but the blobs would be orphaned without this step.
+   *      Best-effort: a storage error must NEVER block account deletion —
+   *      the DB rows (the source of truth for "is this still personal
+   *      data?") are removed by the RPC regardless.
+   *   2. Call delete_own_account(), which:
+   *        a. Writes a GDPR audit log entry (Art.5(2) accountability).
+   *        b. Deletes this user's unapproved photo ROWS (status <> 'approved').
+   *        c. Deletes the auth.users row, cascading to profiles and all
+   *           ON DELETE CASCADE tables, and ANONYMISING (uploaded_by/
+   *           moderated_by → NULL) any APPROVED photos this user uploaded
+   *           or moderated — they are kept as anonymous venue content.
+   *
+   * Approved photos' files are intentionally left in Storage — their DB
+   * rows survive (now anonymised), so the files are still in active use.
    */
   function confirmDeleteAccount() {
     Alert.alert(
@@ -140,6 +156,46 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             setDeleting(true);
+
+            // Step 1 — best-effort cleanup of this user's own unapproved
+            // photo files. Scoped to `uploaded_by = user.id` so we can never
+            // touch another user's or an admin's storage objects. We never
+            // log the storage paths or any photo/user identifiers — only
+            // generic error metadata (code/message), per the "no sensitive
+            // logs" rule, since paths are a (weak) link back to the user.
+            if (user) {
+              try {
+                const { data: ownPhotos, error: fetchError } = await supabase
+                  .from('venue_photos')
+                  .select('storage_path')
+                  .eq('uploaded_by', user.id)
+                  .neq('status', 'approved');
+
+                if (fetchError) {
+                  console.error('[deleteAccount] Could not list unapproved photos for storage cleanup:', fetchError.code ?? fetchError.message);
+                } else {
+                  const paths = (ownPhotos ?? [])
+                    .map((p) => p.storage_path)
+                    .filter((p): p is string => typeof p === 'string' && p.length > 0);
+
+                  if (paths.length > 0) {
+                    const { error: removeError } = await supabase.storage
+                      .from('venue-photos')
+                      .remove(paths);
+                    if (removeError) {
+                      console.error('[deleteAccount] Storage cleanup failed (non-blocking):', removeError.message);
+                    }
+                  }
+                }
+              } catch (e) {
+                // Never let a storage hiccup prevent account deletion — the
+                // RPC is the authoritative deletion path for the DB rows.
+                console.error('[deleteAccount] Unexpected error during storage cleanup (non-blocking):', e instanceof Error ? e.message : 'unknown');
+              }
+            }
+
+            // Step 2 — the authoritative deletion. Removes unapproved photo
+            // rows, deletes the account, and anonymises any approved photos.
             const { error } = await supabase.rpc('delete_own_account');
             if (error) {
               // Only re-enable the button on failure. On success we leave
