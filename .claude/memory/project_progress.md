@@ -313,6 +313,79 @@ Only import change needed: `app/(tabs)/index.tsx` line 9 — update `useLocation
 - Rate limiting on reviews (MEDIUM) — 10/day server-side via migration 010
 - DPIA note: if `children_ages` ever added to reviews (currently stubbed []), triggers ICO Children's Code DPIA — must run before activating
 
+## Session: 2026-06-07 — Phase 2B Geoapify Enrichment (DESIGN ONLY, no build)
+
+### What happened
+- Phase 2A (OSM enrichment) is complete + validated. OSM-only coverage is weak:
+  parent_convenience avg ~0.8, accessibility avg ~4.5, rainy_day avg ~21, 89% low
+  confidence, **47% OSM archive-miss**, 0 parent_friendly/accessible/rainy_day/budget tags.
+- Designed (NOT built) how Geoapify fills the gaps. Design doc:
+  `scripts/enrich/PHASE_2B_GEOAPIFY_DESIGN.md`.
+
+### Key design decisions
+- **Critical insight:** Geoapify Places/Place Details is OSM-derived. It is NOT a quality
+  multiplier on well-tagged venues. Real value = (1) the 47% archive-miss (Geoapify's live
+  DB sees venues our static `osm_archive_20260425` extract doesn't), (2) opening_hours +
+  website + phone (OSM archive gives almost none), (3) fresher snapshot.
+- **Endpoints:** Geocoding API (matching, gives `rank.confidence`) → Place Details
+  (facts). 2 credits/venue. Free tier = 3,000 credits/day shared, 5 rps.
+- **Matching:** hard distance gate ≤150m + name_sim ≥0.50 + composite score ≥0.70 = ACCEPT.
+  REVIEW band logged not written. Pure, fixture-testable matcher.
+- **Merge precedence:** manually_curated > OSM explicit > Geoapify explicit > OSM inference
+  > Geoapify inference > null. OSM explicit always wins; Geoapify only fills nulls.
+  Accessibility NEVER upgraded over an OSM negative (safety).
+- **Safety/limits:** backend-only, key in `scripts/.env` (GEOAPIFY_API_KEY) never client,
+  cache raw in `venue_enrichment.raw_geoapify` (already exists) + on-disk fixtures,
+  ≤500 credits/day budget, 1.2s spacing, dry-run default, Phase-2A-style --write gates.
+- New fields (opening_hours/website/phone) captured in raw_geoapify first; columns added
+  only in a LATER migration after the 20-venue dry-run proves value.
+- **Recommendation:** qualified YES — build 2B-0→2B-2 (logic + fixtures + 20-venue
+  dry-run, ~40 credits) then STOP and review footer stats before scaling.
+
+### Explicitly NOT done (per sprint instruction)
+- No implementation, no live Geoapify calls, no scaled OSM write, no app wiring.
+
+## Session: 2026-06-07 (cont.) — Phase 2B-0 BUILT (no-network foundation)
+
+Built the pure, no-network Geoapify foundation. **No live calls, no credits, no
+DB writes, no app wiring** — all logic exercised against saved fixtures.
+
+### Files added
+- `types/enrichment.ts` — appended Geoapify types (GeoapifyResponse, VenueMatchInput,
+  GeoapifyRawBundle [fixture/cache format], MatchResult, AnnotatedFacts + provenance,
+  FieldConflict, MergeResult, GeoapifyExtras).
+- `scripts/enrich/osmProvenance.ts` — `annotateOsmFacts(tags)`: reuses Phase 2A
+  `extractRawFacts`, adds per-field explicit/inferred provenance (no logic duplication).
+- `scripts/enrich/geoapifyExtract.ts` — raw GeoJSON feature → annotated facts + extras
+  (opening_hours/website/phone/email captured, not yet a column).
+- `scripts/enrich/geoapifyMatch.ts` — pure matcher: haversine, name normalise + Dice/
+  Levenshtein similarity, composite score, ACCEPT/REVIEW/REJECT gates
+  (DISTANCE_GATE_M=150, ACCEPT_SCORE=0.70, REVIEW_SCORE=0.55, NAME_FLOOR=0.50),
+  non-family category demotion.
+- `scripts/enrich/mergeFacts.ts` — `mergeAnnotatedFacts(osm,geo)`: precedence
+  (OSM explicit > Geoapify explicit > OSM inferred > Geoapify inferred > null),
+  conflict logging, accessibility guard (Geoapify NEVER overrides a non-null OSM
+  wheelchair/baby-change value; fills nulls only), `emptyAnnotatedFacts()`.
+- Fixtures: `scripts/enrich/__tests__/fixtures/geoapify/*.json` (+ README documenting the
+  raw-response fixture format): willows (accept), wrong-name-same-coords (reject/name),
+  far-away-same-name (reject/distance), borderline-review, category-collision (demote),
+  no-candidates.
+- Tests: geoapifyMatch / geoapifyExtract / mergeFacts test files (56 new tests).
+
+### Checks (all green)
+- enrich suite: 189 pass (133 prior + 56 new). Full project: **64 suites, 1251 tests pass.**
+- Lint: clean on all new files.
+- tsc: **0 new errors** — baseline 31 == after 31 (the 31 are pre-existing app-code
+  errors in useVenues/useReviews/authStore/SkeletonLoader/useLocation/profile routes,
+  NOT mine). Fixed one self-introduced cast in mergeFacts.ts (RawFacts→Record via unknown).
+
+### NOT done (by instruction) + next
+- No geoapifyClient.ts (the HTTP layer) yet — deliberately out of 2B-0 scope.
+- NOT committed (user asked not to auto-commit).
+- Next = 2B-1: one-time manual Geoapify call for ~5 venues to save REAL fixtures and
+  eyeball the matcher, then 2B-2 the 20-venue dry-run. Needs GEOAPIFY_API_KEY in
+  scripts/.env (backend only). Suggest delegating the build steps to Main-coder/elite-engineer.
+
 ## What Needs to Be Done Next
 
 **Start of next session — pick up here:**

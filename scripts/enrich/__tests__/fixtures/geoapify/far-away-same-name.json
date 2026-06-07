@@ -1,0 +1,31 @@
+{
+  "venue": {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "name": "Willows Activity Farm",
+    "latitude": 51.7259,
+    "longitude": -0.3361,
+    "postcode": "AL2 1BB",
+    "city": "St Albans",
+    "category_slug": "farm"
+  },
+  "geocode": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "place_id": "ffff000099998888",
+          "name": "Willows Activity Farm",
+          "lat": 51.7259,
+          "lon": -0.3300,
+          "postcode": "AL2 9ZZ",
+          "city": "St Albans",
+          "country_code": "gb",
+          "category": "leisure.park",
+          "rank": { "confidence": 0.9, "match_type": "full_match" }
+        },
+        "geometry": { "type": "Point", "coordinates": [-0.3300, 51.7259] }
+      }
+    ]
+  }
+}
