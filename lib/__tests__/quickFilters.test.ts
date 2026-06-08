@@ -566,9 +566,12 @@ describe('applyQuickFilters', () => {
 
   it('AND-combines multiple filters (outdoors AND free)', () => {
     const result = applyQuickFilters([parkVenue, softPlayVenue, freeVenue], ['outdoors', 'free']);
-    // Only freeVenue is both outdoor (park category) and free.
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe('free');
+    // parkVenue passes 'free' via KNOWN_FREE_SLUGS (park) and 'outdoors' via category.
+    // freeVenue passes 'free' via confirmed price_range and 'outdoors' via category.
+    // softPlayVenue is excluded: soft-play is indoor and not a KNOWN_FREE_SLUG.
+    expect(result).toHaveLength(2);
+    expect(result.map((v) => v.id)).toContain('park');
+    expect(result.map((v) => v.id)).toContain('free');
   });
 
   it('hard filter returns empty array when no venues confirm the feature', () => {

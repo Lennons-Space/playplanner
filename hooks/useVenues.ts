@@ -219,7 +219,13 @@ export function useVenueSearch(query: string, coords: Coordinates) {
         // Same discovery gate as useVenue / get_nearby_venues — keep search
         // results consistent with what appears on the map and venue detail.
         .eq('discovery_approved', true)
-        .ilike('name', `%${escapeLikePattern(query)}%`)
+        .or(
+          [
+            `name.ilike.%${escapeLikePattern(query)}%`,
+            `postcode.ilike.%${escapeLikePattern(query)}%`,
+            `city.ilike.%${escapeLikePattern(query)}%`,
+          ].join(','),
+        )
         .limit(30);
 
       if (error) throw error;

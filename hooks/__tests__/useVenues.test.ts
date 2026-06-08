@@ -308,7 +308,7 @@ const mockFrom = supabase.from as jest.MockedFunction<typeof supabase.from>;
 
 /**
  * Build a chainable Supabase query-builder mock.
- *  - select / eq / ilike / order return the builder so the chain continues
+ *  - select / eq / or / ilike / order return the builder so the chain continues
  *  - single() and limit() are terminal and resolve to `result`
  *  - every .eq(col, val) is recorded in `eqCalls` for assertions
  */
@@ -318,6 +318,7 @@ function makeQueryBuilder(result: { data: unknown; error: unknown }) {
   const chain = () => builder;
   builder.select = jest.fn(chain);
   builder.eq     = jest.fn((col: string, val: unknown) => { eqCalls.push([col, val]); return builder; });
+  builder.or     = jest.fn(chain);
   builder.ilike  = jest.fn(chain);
   builder.order  = jest.fn(chain);
   builder.limit  = jest.fn(() => Promise.resolve(result));

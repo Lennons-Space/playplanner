@@ -346,7 +346,7 @@ export default function SearchScreen() {
 
   const handleExploreOnMap = useCallback(() => {
     setPendingPostcode(query.trim().toUpperCase());
-    router.push('/');
+    router.push('/explore/map');
   }, [query, setPendingPostcode]);
 
   const isSearchActive = debouncedQuery.length >= 2;

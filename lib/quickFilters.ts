@@ -184,11 +184,19 @@ function testRainyDay(venue: Venue): FilterMatchResult {
   return { passes: false, confidence: 'none' };
 }
 
+const KNOWN_FREE_SLUGS = new Set(['park', 'playground', 'library', 'nature-trail', 'beach']);
+
 function testFree(venue: Venue): FilterMatchResult {
-  // Hard filter: only show if we KNOW it's free. Missing data = not shown.
   const attrs = getVenueAttributes(venue);
   if (attrs.isFree === true) {
     return { passes: true, confidence: 'certain' };
+  }
+  // Parks, playgrounds, libraries, and beaches are universally free to enter in
+  // the UK — include them at 'likely' confidence when price_range is unset so
+  // the Free filter returns results in areas where most venues are OSM-imported
+  // and lack a confirmed price_range value.
+  if (KNOWN_FREE_SLUGS.has(norm(venue.category?.slug ?? ''))) {
+    return { passes: true, confidence: 'likely' };
   }
   return { passes: false, confidence: 'none' };
 }
