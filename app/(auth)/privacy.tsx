@@ -27,7 +27,7 @@ export default function PrivacyScreen() {
       </View>
 
       <ScrollView className="px-6 py-4" showsVerticalScrollIndicator={false}>
-        <Text className="text-xs text-grey mb-6">Last updated: April 2026</Text>
+        <Text className="text-xs text-grey mb-6">Last updated: June 2026</Text>
 
         <Section title="1. Who we are">
           PlayPlanner is a family venue discovery app. The data controller is Liam Evanson trading as
@@ -61,6 +61,16 @@ export default function PrivacyScreen() {
           {'\n'}• Venue reviews — including rating, visit date, and any age ranges you add.{'\n'}
           • Venue photos — images you upload of venues (not people). Photos are stripped of EXIF metadata (including any GPS tags) before being stored. See section 8 for what happens to your photos if you delete your account.{'\n'}
           • Venue submissions — information about venues you add to the app. Submissions are held for moderation before publication and are not visible to other users while under review.{'\n\n'}
+          <Bold>Venue facility votes</Bold>
+          {'\n'}• When you vote on parent-reported venue facilities (e.g. "has baby change", "has
+          parking"), your individual vote is stored privately and linked to your account. Only
+          the aggregate count is visible publicly — your individual response is never shown to
+          other users. Votes are deleted when you delete your account.{'\n\n'}
+          <Bold>Push notification tokens</Bold>
+          {'\n'}• If you enable push notifications, we store a push notification token provided by
+          your device to send you relevant alerts. This token is not shared with third parties.
+          You can disable notifications at any time in your device settings. Tokens are deleted
+          when you delete your account.{'\n\n'}
           <Bold>Technical data</Bold>
           {'\n'}• Session tokens — stored securely on your device to keep you logged in.{'\n'}
           • GDPR audit log entries — records of consent events (e.g. terms accepted, location
@@ -108,9 +118,12 @@ export default function PrivacyScreen() {
           PlayPlanner is designed for parents and carers aged 18 and over. We comply with the ICO
           Age-Appropriate Design Code (Children's Code).{'\n\n'}
           • We do not knowingly collect data from children under 13.{'\n'}
-          • If you provide children's age ranges, we store them only as broad bands (e.g. "2–4").
-          We never collect children's names, exact dates of birth, or images of children.{'\n'}
-          • Children's age data is never shared with third parties or used for advertising.{'\n'}
+          • You can optionally provide the age ranges of children in your family (e.g. "0–2 years",
+          "3–5 years"). These are used only to personalise venue recommendations for your family.
+          We store them only as broad bands — never exact dates of birth, never children's names
+          or images.{'\n'}
+          • Children's age data is never shared publicly, never used for advertising, and is
+          deleted when you delete your account.{'\n'}
           • You can delete children's age ranges at any time in Profile &gt; Edit Profile.{'\n\n'}
           If you believe a child under 13 has created an account, please contact us at
           privacy@playplanner.app and we will delete the account promptly.
@@ -171,13 +184,18 @@ export default function PrivacyScreen() {
           • <Bold>Right to rectification (Article 16)</Bold> — correct inaccurate data in Profile
           &gt; Edit Profile, or contact us.{'\n\n'}
           • <Bold>Right to erasure (Article 17)</Bold> — delete your account in Profile &gt;
-          Delete account. This is actioned <Bold>immediately</Bold>: your account, profile,
-          reviews, facility votes, favourites, notification settings, and any unapproved photo
-          submissions (and their files) are deleted straight away. Approved public venue photos
-          are kept but permanently anonymised — the link to you is removed, leaving only an
-          anonymous image of the venue. If you would prefer we action erasure by email instead,
-          contact privacy@playplanner.app and we will complete it within 30 days (one calendar
-          month).{'\n\n'}
+          Delete account. This is actioned <Bold>immediately</Bold> and irreversibly. Here is
+          exactly what happens:{'\n'}
+          — Your profile, location consent records, facility votes, push notification token,
+          children's age data, and all reviews you have written are permanently deleted.{'\n'}
+          — Venue submissions you have made are anonymised — your name and account link are
+          removed, but the venue listing remains for community benefit.{'\n'}
+          — Photos you uploaded that are pending moderation are deleted in full (image file and
+          record).{'\n'}
+          — Photos already approved and visible in the app are anonymised: the link to you is
+          permanently removed, leaving only an anonymous image of the venue.{'\n'}
+          You can also request erasure by emailing privacy@playplanner.app — we will complete
+          it within 30 days (one calendar month).{'\n\n'}
           • <Bold>Right to withdraw consent (Article 7(3)</Bold> — withdraw location consent or
           marketing consent at any time in Profile &gt; Privacy Settings. Withdrawal does not
           affect the lawfulness of processing before withdrawal.{'\n\n'}
@@ -225,6 +243,16 @@ export default function PrivacyScreen() {
           line "Data Rights Request" and we will respond within 30 days.{'\n\n'}
           This Privacy Policy is also available at:{'\n'}
           lennons-space.github.io/playplanner/privacy.html
+        </Section>
+
+        <Section title="14. How to delete your account">
+          You can delete your account at any time from{' '}
+          <Bold>Settings → Account → Delete Account</Bold> in the app. Deletion is immediate
+          and irreversible — see section 9 above for a full breakdown of what is deleted and
+          what is anonymised.{'\n\n'}
+          If you are unable to access the app, you can request account deletion by emailing
+          privacy@playplanner.app with the subject line "Account Deletion Request". We will
+          complete the deletion within 30 days.
         </Section>
 
         <View className="h-8" />

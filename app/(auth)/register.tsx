@@ -7,6 +7,12 @@
  *  - Marketing consent is opt-in, not pre-ticked (UK GDPR Art.7; ICO Standard 7).
  *  - Terms checkbox must be actively ticked before the button works —
  *    valid, unambiguous consent (UK GDPR Art.7).
+ *  - Age affirmation checkbox must be actively ticked before the button works —
+ *    ICO Children's Code Standard 4 (age assurance). Low-friction approach: a
+ *    checkbox declaration that the user is 18+ or a parent/guardian. The timestamp
+ *    of acceptance is recorded in profiles.terms_accepted_at (same timestamp as
+ *    terms acceptance — both declarations are made simultaneously at signup).
+ *    The act of submitting after checking the box is the consent record.
  *  - Terms and Privacy Policy links are visible and tappable before submit —
  *    ICO Children's Code Standard 4 (transparency).
  *  - No urgency language, no dark patterns (ICO Children's Code Standard 7).
@@ -83,6 +89,9 @@ export default function RegisterScreen() {
   const [password, setPassword]           = useState('');
   const [marketing, setMarketing]         = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  // ICO Children's Code Standard 4: explicit age affirmation — must be ticked
+  // before the account can be created. Not pre-ticked per UK GDPR Art.7.
+  const [ageAffirmed, setAgeAffirmed]     = useState(false);
   const [loading, setLoading]             = useState(false);
 
   // Rate-limit guard: prevents rapid double-taps firing multiple signUp calls.
@@ -355,6 +364,38 @@ export default function RegisterScreen() {
 
               <View className="border-t border-greyLighter" />
 
+              {/* ICO Children's Code Standard 4: age affirmation — must be a positive opt-in */}
+              <TouchableOpacity
+                className="flex-row items-start"
+                style={{ gap: 12 }}
+                onPress={() => setAgeAffirmed(!ageAffirmed)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: ageAffirmed }}
+                accessibilityLabel={
+                  ageAffirmed
+                    ? 'Age confirmed — tap to uncheck'
+                    : 'Tap to confirm you are 18 or over, or a parent or guardian'
+                }
+              >
+                <View
+                  className={`rounded border-2 items-center justify-center flex-shrink-0 ${
+                    ageAffirmed ? 'bg-sky border-sky' : 'bg-white border-greyLighter'
+                  }`}
+                  style={{ width: 24, height: 24, marginTop: 1 }}
+                >
+                  {ageAffirmed && (
+                    <Text className="text-white" style={{ fontSize: 13, fontFamily: 'Nunito-Bold', lineHeight: 16 }}>
+                      ✓
+                    </Text>
+                  )}
+                </View>
+                <Text className="text-grey text-sm flex-1" style={{ fontFamily: 'Nunito-Regular' }}>
+                  I confirm I am 18 or over, or I am a parent/guardian using PlayPlanner for my family.
+                </Text>
+              </TouchableOpacity>
+
+              <View className="border-t border-greyLighter" />
+
               {/* UK GDPR Art.7: explicit, unambiguous consent — must be a positive opt-in */}
               <TouchableOpacity
                 className="flex-row items-start"
@@ -408,6 +449,13 @@ export default function RegisterScreen() {
           </View>
 
           {/* ── Primary CTA ───────────────────────────────────────────── */}
+          {/*
+            Disabled until BOTH consent checkboxes are ticked:
+            - termsAccepted: UK GDPR Art.7 terms & privacy policy consent
+            - ageAffirmed: ICO Children's Code Standard 4 age affirmation
+            This enforces the ICO requirement at the UI level — the user cannot
+            submit without actively affirming both. Opacity communicates state.
+          */}
           <TouchableOpacity
             className="w-full bg-sky rounded-2xl items-center justify-center mt-6"
             style={{
@@ -417,12 +465,13 @@ export default function RegisterScreen() {
               shadowOpacity: 0.30,
               shadowRadius: 8,
               elevation: 4,
+              opacity: (termsAccepted && ageAffirmed && !loading) ? 1 : 0.45,
             }}
             onPress={handleRegister}
-            disabled={loading}
+            disabled={!termsAccepted || !ageAffirmed || loading}
             accessibilityRole="button"
             accessibilityLabel="Create your Play Planner account"
-            accessibilityState={{ disabled: loading }}
+            accessibilityState={{ disabled: !termsAccepted || !ageAffirmed || loading }}
           >
             {loading
               ? <ActivityIndicator color="#fff" />
