@@ -844,3 +844,40 @@ describe('ExploreScreen — GDPR consent audit log is non-blocking', () => {
     });
   });
 });
+
+// =============================================================================
+// 8. ODbL ATTRIBUTION (compliance — ODbL 1.0 §4.3)
+// =============================================================================
+describe('ExploreScreen — ODbL map attribution', () => {
+
+  // ODbL 1.0 §4.3 requires that derivative products display attribution to
+  // OpenStreetMap contributors. The attribution must be present whenever the
+  // map tiles are shown to the user (map mode) and excluded when they are not.
+  it('renders © OpenStreetMap contributors attribution in map mode', async () => {
+    const { getByLabelText } = await renderAndWaitForConsent({
+      consentStored: true,
+    });
+
+    await waitFor(() => {
+      expect(getByLabelText('Map data © OpenStreetMap contributors')).toBeTruthy();
+    });
+  });
+
+  // The mini-map (and all its overlays including attribution) is fully unmounted
+  // in list mode — the comment in MapScreen confirms this is intentional.
+  // If attribution appeared in list mode it would be floating without a map,
+  // which is confusing and wrong.
+  it('does not render the ODbL attribution in list mode', async () => {
+    const { getByLabelText, queryByLabelText } = await renderAndWaitForConsent({
+      consentStored: true,
+    });
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('List view'));
+    });
+
+    await waitFor(() => {
+      expect(queryByLabelText('Map data © OpenStreetMap contributors')).toBeNull();
+    });
+  });
+});

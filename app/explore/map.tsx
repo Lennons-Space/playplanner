@@ -1127,12 +1127,25 @@ function MapScreen({
               </Text>
             </View>
 
-            {/* ODbL attribution — required by OpenStreetMap licence (ODbL 1.0 §4.3) */}
+            {/* ODbL attribution — required by OpenStreetMap licence (ODbL 1.0 §4.3).
+                Positioned bottom-centre above the in-map controls, non-interactive. */}
             <View
               style={{ position: 'absolute', bottom: 44, left: 0, right: 0, alignItems: 'center' }}
               pointerEvents="none"
             >
-              <Text style={{ fontSize: 9, color: T.ink, opacity: 0.4 }}>
+              <Text
+                style={{
+                  fontFamily: 'Nunito-Regular',
+                  fontSize: 9,
+                  color: 'rgba(29,38,48,0.80)',
+                  backgroundColor: 'rgba(248,243,234,0.88)',
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                }}
+                accessibilityLabel="Map data © OpenStreetMap contributors"
+              >
                 © OpenStreetMap contributors
               </Text>
             </View>
