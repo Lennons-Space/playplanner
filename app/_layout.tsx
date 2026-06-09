@@ -7,6 +7,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import { useFonts } from 'expo-font';
+import {
+  BricolageGrotesque_600SemiBold,
+  BricolageGrotesque_700Bold,
+} from '@expo-google-fonts/bricolage-grotesque';
+import {
+  HankenGrotesk_400Regular,
+  HankenGrotesk_500Medium,
+  HankenGrotesk_600SemiBold,
+  HankenGrotesk_700Bold,
+} from '@expo-google-fonts/hanken-grotesk';
 import { PAYMENTS_ENABLED } from '@/constants/features';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
@@ -80,6 +90,14 @@ export default function RootLayout() {
     'Nunito-Medium':    require('../assets/fonts/Nunito-Medium.ttf'),
     'Nunito-Bold':      require('../assets/fonts/Nunito-Bold.ttf'),
     'Nunito-ExtraBold': require('../assets/fonts/Nunito-ExtraBold.ttf'),
+    // Bricolage Grotesque — display / headings (Phase 1 reskin)
+    BricolageGrotesque_600SemiBold,
+    BricolageGrotesque_700Bold,
+    // Hanken Grotesk — body / UI (Phase 1 reskin)
+    HankenGrotesk_400Regular,
+    HankenGrotesk_500Medium,
+    HankenGrotesk_600SemiBold,
+    HankenGrotesk_700Bold,
   });
 
   if (!fontsLoaded) return null;

@@ -16,6 +16,8 @@
     "enrich:dry-run:single": "tsx scripts/enrich/enrichVenues.ts --dry-run --limit=1"
   },
   "dependencies": {
+    "@expo-google-fonts/bricolage-grotesque": "^0.4.1",
+    "@expo-google-fonts/hanken-grotesk": "^0.4.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@stripe/stripe-react-native": "0.50.3",
     "@supabase/supabase-js": "^2.44.4",
