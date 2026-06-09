@@ -27,6 +27,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useProfile } from '@/hooks/useAuth';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
+import { Colors, FontFamily } from '@/constants/theme';
 import { Icon } from '@/components/ui';
 import { HeroCard } from '@/components/home/HeroCard';
 import { QuickPicks } from '@/components/home/QuickPicks';
@@ -35,16 +36,6 @@ import { QuickFilterChips } from '@/components/home/QuickFilterChips';
 import type { Mood } from '@/lib/curation';
 import type { QuickFilterId } from '@/lib/quickFilters';
 import type { Venue } from '@/types';
-
-const C = {
-  sand: '#FBF6EC',
-  paper: '#FFFFFF',
-  ink: '#1D2630',
-  mute: '#7B8794',
-  line: '#E6E2DB',
-  skyDeep: '#1B8A85',
-  skySoft: '#D4F0EE',
-} as const;
 
 function greetingWord(): string {
   const h = new Date().getHours();
@@ -84,7 +75,7 @@ export default function HomeScreen() {
   const openVenue = (venue: Venue) => router.push(`/venue/${venue.id}`);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.sand }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ paddingTop: 8, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
@@ -101,15 +92,15 @@ export default function HomeScreen() {
           }}
         >
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: C.mute }}>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3 }}>
               {greetingWord()}{firstName ? `, ${firstName}` : ''} 👋
             </Text>
             <Text
               style={{
-                fontFamily: 'Nunito-ExtraBold',
+                fontFamily: FontFamily.display,
                 fontSize: 28,
-                color: C.ink,
-                letterSpacing: -0.6,
+                color: Colors.label,
+                letterSpacing: -0.8,
                 lineHeight: 33,
                 marginTop: 2,
               }}
@@ -126,12 +117,12 @@ export default function HomeScreen() {
               flexDirection: 'row',
               alignItems: 'center',
               gap: 6,
-              backgroundColor: C.paper,
+              backgroundColor: Colors.surface,
               borderRadius: 999,
               paddingHorizontal: 14,
               paddingVertical: 9,
               borderWidth: 1,
-              borderColor: C.line,
+              borderColor: Colors.separator,
               // Subtle shadow makes the Map pill feel like a floating control.
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 1 },
@@ -140,8 +131,8 @@ export default function HomeScreen() {
               elevation: 2,
             }}
           >
-            <Icon name="map" size={15} color={C.skyDeep} />
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: C.ink }}>Map</Text>
+            <Icon name="map" size={15} color={Colors.accent} />
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label }}>Map</Text>
           </TouchableOpacity>
         </View>
 
@@ -186,10 +177,10 @@ function LocationNudge({ onEnable }: { onEnable: () => void }) {
         accessibilityRole="button"
         accessibilityLabel="See what's near you"
         style={({ pressed }) => ({
-          backgroundColor: C.paper,
+          backgroundColor: Colors.surface,
           borderRadius: 20,
           borderWidth: 1,
-          borderColor: C.line,
+          borderColor: Colors.separator,
           padding: 18,
           flexDirection: 'row',
           alignItems: 'center',
@@ -202,22 +193,22 @@ function LocationNudge({ onEnable }: { onEnable: () => void }) {
             width: 44,
             height: 44,
             borderRadius: 14,
-            backgroundColor: C.skySoft,
+            backgroundColor: Colors.accentLight,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Icon name="locate" size={20} color={C.skyDeep} />
+          <Icon name="locate" size={20} color={Colors.accent} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 15, color: C.ink }}>
+          <Text style={{ fontFamily: FontFamily.heading, fontSize: 15, color: Colors.label }}>
             See what's near you
           </Text>
-          <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 13, color: C.mute, marginTop: 2 }}>
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 2 }}>
             Turn on location to get suggestions tailored to where you are.
           </Text>
         </View>
-        <Icon name="chevR" size={18} color={C.mute} />
+        <Icon name="chevR" size={18} color={Colors.label3} />
       </Pressable>
     </View>
   );

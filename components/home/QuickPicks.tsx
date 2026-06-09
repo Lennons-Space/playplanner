@@ -9,14 +9,8 @@
 // ─────────────────────────────────────────────────────────────────
 
 import { Pressable, Text, View } from 'react-native';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 import type { Mood } from '@/lib/curation';
-
-const C = {
-  ink: '#1D2630',
-  mute: '#7B8794',
-  paper: '#FFFFFF',
-  line: '#E6E2DB',
-} as const;
 
 interface Pick {
   mood: Mood;
@@ -40,7 +34,7 @@ export interface QuickPicksProps {
 export function QuickPicks({ onPick }: QuickPicksProps) {
   return (
     <View style={{ paddingHorizontal: 20 }}>
-      <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 15, color: C.ink, marginBottom: 10 }}>
+      <Text style={{ fontFamily: FontFamily.heading, fontSize: 15, color: Colors.label, marginBottom: 10 }}>
         Quick picks
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
@@ -54,10 +48,10 @@ export function QuickPicks({ onPick }: QuickPicksProps) {
               // Two per row: (100% - one gap) / 2
               flexBasis: '47.5%',
               flexGrow: 1,
-              backgroundColor: C.paper,
-              borderRadius: 18,
+              backgroundColor: Colors.surface,
+              borderRadius: BorderRadius.card,
               borderWidth: 1,
-              borderColor: C.line,
+              borderColor: Colors.separator,
               paddingVertical: 14,
               paddingHorizontal: 14,
               flexDirection: 'row',
@@ -78,7 +72,7 @@ export function QuickPicks({ onPick }: QuickPicksProps) {
             >
               <Text style={{ fontSize: 18 }}>{p.emoji}</Text>
             </View>
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: C.ink, flexShrink: 1 }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: Colors.label, flexShrink: 1 }}>
               {p.label}
             </Text>
           </Pressable>
