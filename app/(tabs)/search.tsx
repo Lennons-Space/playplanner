@@ -63,22 +63,10 @@ import { useFilterStore } from '@/store/filterStore';
 import { useMapStore } from '@/store/mapStore';
 import FilterSheet from '@/components/filters/FilterSheet';
 import { VenueCard, Icon, Chip, ScreenTitle, IconBtn } from '@/components/ui';
+import { Colors, FontFamily } from '@/constants/theme';
 import { MAX_SEARCH_RADIUS_KM } from '@/constants/location';
 import { getVenueAttributes } from '@/lib/venueAttributes';
 import type { Venue, VenueFilters, PriceRange, Coordinates } from '@/types';
-
-// ── Design tokens (pp- palette) ────────────────────────────────────────────────
-const pp = {
-  ink:      '#1D2630',
-  mute:     '#7B8794',
-  line:     '#E6E2DB',
-  sand:     '#FBF6EC',
-  paper:    '#FFFFFF',
-  sky:      '#2FB8B0',
-  skyWash:  '#EEF9F8',
-  skySoft:  '#D4F0EE',
-  skyDeep:  '#1B8A85',
-};
 
 // Matches full UK postcodes (SW1A 1AA) and outward-only districts (SW1A, M1, B1).
 const UK_POSTCODE_RE = /^[A-Z]{1,2}[0-9][A-Z0-9]?(\s*[0-9][A-Z]{2})?$/i;
@@ -264,33 +252,33 @@ function SearchNearbyResults({
       {/* Nearby venues list (idle state, location granted) */}
       {(locLoading || recentLoading) ? (
         <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-          <ActivityIndicator color={pp.sky} size="large" />
+          <ActivityIndicator color={Colors.accent} size="large" />
         </View>
       ) : displayedVenues.length === 0 ? (
         <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
           {hasActiveFilters ? (
             <>
-              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 6 }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: Colors.label, textAlign: 'center', marginBottom: 6 }}>
                 {emptyStateContent.title}
               </Text>
-              <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center', marginBottom: 16 }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3, textAlign: 'center', marginBottom: 16 }}>
                 {emptyStateContent.subtitle}
               </Text>
               <TouchableOpacity
                 onPress={onResetFilters}
-                style={{ backgroundColor: pp.sky, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
+                style={{ backgroundColor: Colors.accent, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
                 accessibilityRole="button"
                 accessibilityLabel="Clear all filters"
               >
-                <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.paper }}>Clear filters</Text>
+                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>Clear filters</Text>
               </TouchableOpacity>
             </>
           ) : (
             <>
-              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 8 }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: Colors.label, textAlign: 'center', marginBottom: 8 }}>
                 No venues nearby
               </Text>
-              <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center' }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3, textAlign: 'center' }}>
                 Check back soon — new venues are added regularly.
               </Text>
             </>
@@ -504,7 +492,7 @@ export default function SearchScreen() {
   }, []);
 
   // ── Search input border ────────────────────────────────────────────────────
-  const searchBorderColor = inputFocused || query.length > 0 ? pp.ink : pp.line;
+  const searchBorderColor = inputFocused || query.length > 0 ? Colors.label : Colors.separator;
 
   // ── Filter feedback ────────────────────────────────────────────────────────
   const filterLabel = hasActiveFilters
@@ -519,7 +507,7 @@ export default function SearchScreen() {
   const showHint = !hintDismissed && !hasActiveFilters && !isSearchActive;
 
   return (
-    <SafeAreaView className="flex-1 bg-pp-sand" edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }} edges={['top']}>
 
       {/* ── Header ──────────────────────────────────────────────── */}
       <ScreenTitle
@@ -529,7 +517,7 @@ export default function SearchScreen() {
             onPress={handleFiltersPress}
             accessibilityLabel={`Filters${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
           >
-            <Icon name="sliders" size={18} color={pp.ink} />
+            <Icon name="sliders" size={18} color={Colors.label} />
           </IconBtn>
         }
       />
@@ -540,7 +528,7 @@ export default function SearchScreen() {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            backgroundColor: pp.paper,
+            backgroundColor: Colors.surface,
             borderRadius: 9999,
             borderWidth: 1.5,
             borderColor: searchBorderColor,
@@ -549,17 +537,17 @@ export default function SearchScreen() {
             gap: 10,
           }}
         >
-          <Icon name="search" size={18} color={pp.mute} />
+          <Icon name="search" size={18} color={Colors.label3} />
           <TextInput
             style={{
               flex: 1,
-              fontFamily: 'Nunito-SemiBold',
+              fontFamily: FontFamily.bodyStrong,
               fontSize: 14,
-              color: pp.ink,
+              color: Colors.label,
               padding: 0,
             }}
             placeholder="Search venues, postcodes, tags…"
-            placeholderTextColor={pp.mute}
+            placeholderTextColor={Colors.label3}
             value={query}
             onChangeText={setQuery}
             onFocus={() => setInputFocused(true)}
@@ -576,7 +564,7 @@ export default function SearchScreen() {
               accessibilityLabel="Clear search"
               accessibilityRole="button"
             >
-              <Icon name="close" size={16} color={pp.mute} />
+              <Icon name="close" size={16} color={Colors.label3} />
             </Pressable>
           )}
         </View>
@@ -589,10 +577,10 @@ export default function SearchScreen() {
               flexDirection: 'row',
               alignItems: 'center',
               gap: 10,
-              backgroundColor: pp.skyWash,
+              backgroundColor: Colors.accentLight,
               borderRadius: 14,
               borderWidth: 1,
-              borderColor: pp.skySoft,
+              borderColor: Colors.separator,
               paddingHorizontal: 14,
               paddingVertical: 11,
               marginTop: 10,
@@ -600,16 +588,16 @@ export default function SearchScreen() {
             accessibilityRole="button"
             accessibilityLabel={`Explore venues near postcode ${query}`}
           >
-            <Icon name="map" size={18} color={pp.sky} />
+            <Icon name="map" size={18} color={Colors.accent} />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.ink }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: Colors.label }}>
                 Explore venues near {query.trim().toUpperCase()}
               </Text>
-              <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 12, color: pp.mute }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
                 Open map and zoom to this area
               </Text>
             </View>
-            <Icon name="chevR" size={16} color={pp.sky} />
+            <Icon name="chevR" size={16} color={Colors.accent} />
           </TouchableOpacity>
         )}
       </View>
@@ -625,7 +613,7 @@ export default function SearchScreen() {
             <Chip
               key={f.id}
               active={isChipActive(f.id)}
-              color={pp.sky}
+              color={Colors.accent}
               onPress={() => handleChipPress(f.id)}
             >
               {f.label}
@@ -650,8 +638,8 @@ export default function SearchScreen() {
               accessibilityRole="button"
               accessibilityLabel="Remove active filters"
             >
-              <Icon name="close" size={12} color="#FF6B6B" />
-              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: '#FF6B6B' }}>
+              <Icon name="close" size={12} color={Colors.coral} />
+              <Text style={{ fontFamily: FontFamily.caption, fontSize: 13, color: Colors.coral }}>
                 Clear
               </Text>
             </Pressable>
@@ -662,7 +650,7 @@ export default function SearchScreen() {
       {/* ── Filter feedback label ─────────────────────────────────── */}
       {filterLabel != null && (
         <View style={{ paddingHorizontal: 20, paddingBottom: 8 }}>
-          <Text style={{ fontFamily: 'Nunito-SemiBold', fontSize: 12, color: pp.skyDeep }}>
+          <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: Colors.accent }}>
             {filterLabel}
           </Text>
         </View>
@@ -684,10 +672,10 @@ export default function SearchScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 10,
-                backgroundColor: pp.skyWash,
+                backgroundColor: Colors.accentLight,
                 borderRadius: 12,
                 borderWidth: 1,
-                borderColor: pp.skySoft,
+                borderColor: Colors.separator,
                 paddingHorizontal: 14,
                 paddingVertical: 11,
               }}
@@ -695,10 +683,10 @@ export default function SearchScreen() {
               accessibilityLabel="Dismiss tip"
             >
               <Text style={{ fontSize: 18 }}>💡</Text>
-              <Text style={{ flex: 1, fontFamily: 'Nunito-SemiBold', fontSize: 13, color: pp.skyDeep, lineHeight: 18 }}>
+              <Text style={{ flex: 1, fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.accent, lineHeight: 18 }}>
                 Use filters to find free places, indoor activities, and more.
               </Text>
-              <Icon name="close" size={14} color={pp.mute} />
+              <Icon name="close" size={14} color={Colors.label3} />
             </Pressable>
           )}
 
@@ -706,9 +694,9 @@ export default function SearchScreen() {
           <View style={{ paddingHorizontal: 20 }}>
             <Text
               style={{
-                fontFamily: 'Nunito-ExtraBold',
+                fontFamily: FontFamily.heading,
                 fontSize: 14,
-                color: pp.ink,
+                color: Colors.label,
                 marginBottom: 8,
               }}
             >
@@ -720,9 +708,9 @@ export default function SearchScreen() {
                   key={s.label}
                   onPress={s.action}
                   style={{
-                    backgroundColor: pp.skyWash,
+                    backgroundColor: Colors.accentLight,
                     borderWidth: 1,
-                    borderColor: pp.skySoft,
+                    borderColor: Colors.separator,
                     borderRadius: 9999,
                     paddingHorizontal: 14,
                     paddingVertical: 9,
@@ -732,9 +720,9 @@ export default function SearchScreen() {
                 >
                   <Text
                     style={{
-                      fontFamily: 'Nunito-Bold',
+                      fontFamily: FontFamily.bodyStrong,
                       fontSize: 13,
-                      color: pp.skyDeep,
+                      color: Colors.accent,
                     }}
                   >
                     {s.label}
@@ -761,11 +749,11 @@ export default function SearchScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 14, color: pp.ink }}>
+                <Text style={{ fontFamily: FontFamily.heading, fontSize: 14, color: Colors.label }}>
                   Nearby venues
                 </Text>
                 {consentGranted && (
-                  <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 12, color: pp.mute }}>
+                  <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
                     Sort: Nearest
                   </Text>
                 )}
@@ -786,10 +774,10 @@ export default function SearchScreen() {
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 14,
-                    backgroundColor: pp.skyWash,
+                    backgroundColor: Colors.accentLight,
                     borderRadius: 16,
                     borderWidth: 1,
-                    borderColor: pp.skySoft,
+                    borderColor: Colors.separator,
                     padding: 16,
                   }}
                   accessibilityRole="button"
@@ -800,22 +788,22 @@ export default function SearchScreen() {
                       width: 44,
                       height: 44,
                       borderRadius: 14,
-                      backgroundColor: pp.skySoft,
+                      backgroundColor: Colors.accentLight,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Icon name="locate" size={20} color={pp.skyDeep} />
+                    <Icon name="locate" size={20} color={Colors.accent} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 14, color: pp.ink }}>
+                    <Text style={{ fontFamily: FontFamily.heading, fontSize: 14, color: Colors.label }}>
                       See venues near you
                     </Text>
-                    <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 12, color: pp.mute, marginTop: 2 }}>
+                    <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3, marginTop: 2 }}>
                       Turn on location for local results.
                     </Text>
                   </View>
-                  <Icon name="chevR" size={16} color={pp.mute} />
+                  <Icon name="chevR" size={16} color={Colors.label3} />
                 </Pressable>
               )}
 
@@ -851,17 +839,17 @@ export default function SearchScreen() {
               alignItems: 'center',
             }}
           >
-            <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 14, color: pp.ink }}>
+            <Text style={{ fontFamily: FontFamily.heading, fontSize: 14, color: Colors.label }}>
               {displayedSearchCount} result{displayedSearchCount !== 1 ? 's' : ''}
             </Text>
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 12, color: pp.mute }}>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
               Sort: Nearest
             </Text>
           </View>
 
           {searchLoading ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator color={pp.sky} size="large" />
+              <ActivityIndicator color={Colors.accent} size="large" />
             </View>
           ) : (
             <FlatList
@@ -874,27 +862,27 @@ export default function SearchScreen() {
                 <View style={{ alignItems: 'center', paddingTop: 80, paddingHorizontal: 20 }}>
                   {hasActiveFilters ? (
                     <>
-                      <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 6 }}>
+                      <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: Colors.label, textAlign: 'center', marginBottom: 6 }}>
                         {emptyStateContent.title}
                       </Text>
-                      <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center', marginBottom: 16 }}>
+                      <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3, textAlign: 'center', marginBottom: 16 }}>
                         {emptyStateContent.subtitle}
                       </Text>
                       <TouchableOpacity
                         onPress={() => { resetFilters(); setIsRainyDay(false); }}
-                        style={{ backgroundColor: pp.sky, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
+                        style={{ backgroundColor: Colors.accent, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
                         accessibilityRole="button"
                         accessibilityLabel="Clear all filters"
                       >
-                        <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.paper }}>Clear filters</Text>
+                        <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>Clear filters</Text>
                       </TouchableOpacity>
                     </>
                   ) : (
                     <>
-                      <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 16, color: pp.ink, textAlign: 'center', marginBottom: 8 }}>
+                      <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: Colors.label, textAlign: 'center', marginBottom: 8 }}>
                         No venues found for "{debouncedQuery}"
                       </Text>
-                      <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: pp.mute, textAlign: 'center' }}>
+                      <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3, textAlign: 'center' }}>
                         Try different words, a postcode, or check the spelling.
                       </Text>
                     </>

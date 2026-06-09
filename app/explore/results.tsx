@@ -38,21 +38,12 @@ import type { Category } from '@/types';
 import { LocationConsentPrompt } from '@/components/consent';
 import { VenueCard, Icon } from '@/components/ui';
 import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
+import { Colors, FontFamily } from '@/constants/theme';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { DEFAULT_FILTERS } from '@/types';
 import type { Coordinates } from '@/types';
 
-const C = {
-  sand: '#FBF6EC',
-  paper: '#FFFFFF',
-  ink: '#1D2630',
-  inkSoft: '#4A5560',
-  mute: '#7B8794',
-  line: '#E6E2DB',
-  sky: '#2FB8B0',
-  skyDeep: '#1B8A85',
-  skySoft: '#D4F0EE',
-} as const;
+
 
 const VALID_MOODS: Mood[] = ['auto', 'indoor', 'outdoor', 'active', 'calm', 'free', 'surprise'];
 
@@ -104,7 +95,7 @@ export default function ResultsScreen() {
   const { status, grant, decline } = useLocationConsent();
 
   if (status === 'checking') {
-    return <View style={{ flex: 1, backgroundColor: C.sand }} />;
+    return <View style={{ flex: 1, backgroundColor: Colors.bg }} />;
   }
 
   if (status === 'undecided') {
@@ -256,7 +247,7 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
   const toggleMood = (m: Mood) => setMood((cur) => (cur === m ? paramMood : m));
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.sand }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }} edges={['top']}>
       {/* ── Header ───────────────────────────────────────────────── */}
       <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -267,25 +258,25 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
             accessibilityLabel="Go back"
             style={{
               width: 38, height: 38, borderRadius: 12,
-              backgroundColor: C.paper, borderWidth: 1, borderColor: C.line,
+              backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.separator,
               alignItems: 'center', justifyContent: 'center',
             }}
           >
-            <Icon name="chevL" size={18} color={C.ink} />
+            <Icon name="chevL" size={18} color={Colors.label} />
           </TouchableOpacity>
-          <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 20, color: C.ink, letterSpacing: -0.4, flex: 1 }}>
+          <Text style={{ fontFamily: FontFamily.display, fontSize: 20, color: Colors.label, letterSpacing: -0.6, flex: 1 }}>
             {headerTitle(mood)}
           </Text>
         </View>
 
         {/* Context line: weather + radius */}
-        <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: C.mute, marginTop: 6, marginLeft: 48 }}>
+        <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, marginLeft: 48 }}>
           {weather ? `${weather.emoji} ${weather.label} · ` : ''}within {radiusMiles} miles
           {isFetching && !isLoading ? ' · updating…' : ''}
         </Text>
 
         {isFallback && (
-          <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 12, color: C.inkSoft, marginTop: 4, marginLeft: 48 }}>
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label2, marginTop: 4, marginLeft: 48 }}>
             Showing a default area — turn on location for picks near you.
           </Text>
         )}
@@ -349,13 +340,13 @@ function CuratedResult({ item, onPress }: { item: CuratedVenue; onPress: () => v
             <View
               key={r}
               style={{
-                backgroundColor: C.skySoft,
+                backgroundColor: Colors.accentLight,
                 borderRadius: 999,
                 paddingHorizontal: 9,
                 paddingVertical: 3,
               }}
             >
-              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 11, color: C.skyDeep }}>{r}</Text>
+              <Text style={{ fontFamily: FontFamily.caption, fontSize: 11, color: Colors.accentTagText }}>{r}</Text>
             </View>
           ))}
         </View>
@@ -376,12 +367,12 @@ function RefineChip({ label, active, onPress }: { label: string; active: boolean
         paddingHorizontal: 14,
         paddingVertical: 8,
         borderRadius: 999,
-        backgroundColor: active ? C.skyDeep : C.paper,
+        backgroundColor: active ? Colors.accent : Colors.surface,
         borderWidth: 1,
-        borderColor: active ? C.skyDeep : C.line,
+        borderColor: active ? Colors.accent : Colors.separator,
       }}
     >
-      <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: active ? '#FFFFFF' : C.ink }}>
+      <Text style={{ fontFamily: FontFamily.caption, fontSize: 13, color: active ? '#FFFFFF' : Colors.label }}>
         {label}
       </Text>
     </Pressable>
@@ -396,19 +387,19 @@ function HardFilterEmptyState({ onOpenMap }: { onOpenMap: () => void }) {
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
       <Text style={{ fontSize: 40 }}>🔍</Text>
-      <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 16, color: C.ink, marginTop: 12, textAlign: 'center' }}>
+      <Text style={{ fontFamily: FontFamily.heading, fontSize: 16, color: Colors.label, marginTop: 12, textAlign: 'center' }}>
         We don't have enough data for this filter yet
       </Text>
-      <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 13, color: C.mute, marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
+      <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
         Try another idea — we can't confirm this feature for venues near you right now.
       </Text>
       <TouchableOpacity
         onPress={onOpenMap}
         accessibilityRole="button"
         accessibilityLabel="Open the map"
-        style={{ marginTop: 16, backgroundColor: C.skyDeep, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
+        style={{ marginTop: 16, backgroundColor: Colors.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
       >
-        <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: '#FFFFFF' }}>Explore the map</Text>
+        <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>Explore the map</Text>
       </TouchableOpacity>
     </View>
   );
@@ -419,19 +410,19 @@ function EmptyState({ onOpenMap }: { onOpenMap: () => void }) {
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
       <Text style={{ fontSize: 40 }}>🧭</Text>
-      <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 16, color: C.ink, marginTop: 12, textAlign: 'center' }}>
+      <Text style={{ fontFamily: FontFamily.heading, fontSize: 16, color: Colors.label, marginTop: 12, textAlign: 'center' }}>
         Nothing matched just now
       </Text>
-      <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 13, color: C.mute, marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
+      <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
         Try turning off a refine above, or explore the map to widen your search.
       </Text>
       <TouchableOpacity
         onPress={onOpenMap}
         accessibilityRole="button"
         accessibilityLabel="Open the map"
-        style={{ marginTop: 16, backgroundColor: C.skyDeep, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
+        style={{ marginTop: 16, backgroundColor: Colors.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
       >
-        <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: '#FFFFFF' }}>Open the map</Text>
+        <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>Open the map</Text>
       </TouchableOpacity>
     </View>
   );
@@ -442,19 +433,19 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
       <Text style={{ fontSize: 40 }}>⚠️</Text>
-      <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 16, color: C.ink, marginTop: 12, textAlign: 'center' }}>
+      <Text style={{ fontFamily: FontFamily.heading, fontSize: 16, color: Colors.label, marginTop: 12, textAlign: 'center' }}>
         Couldn’t load suggestions
       </Text>
-      <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 13, color: C.mute, marginTop: 6, textAlign: 'center' }}>
+      <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center' }}>
         Check your connection and try again.
       </Text>
       <TouchableOpacity
         onPress={onRetry}
         accessibilityRole="button"
         accessibilityLabel="Try again"
-        style={{ marginTop: 16, backgroundColor: C.skyDeep, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
+        style={{ marginTop: 16, backgroundColor: Colors.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
       >
-        <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: '#FFFFFF' }}>Try again</Text>
+        <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>Try again</Text>
       </TouchableOpacity>
     </View>
   );
