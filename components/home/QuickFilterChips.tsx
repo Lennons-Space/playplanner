@@ -8,38 +8,21 @@
 // the Results screen, which applies it after fetching venues.
 //
 // DESIGN:
-// • Chips scroll horizontally — never wrap (wrapping creates decision
-//   fatigue and is harder to scan).
-// • Selected chips are tinted with the app's sky/teal colour.
+// • Chips scroll horizontally — never wrap.
 // • Multiple chips can be active simultaneously (additive AND logic).
-// • Tapping an active chip deselects it — no separate "clear" button
-//   needed because the visual state makes it obvious.
+// • Tapping an active chip deselects it — no separate "clear" needed.
 // • "All" chip is implicit: zero selection = no filtering.
 //
 // SAFETY:
-// • Hard filters (Free Entry, Has Cafe, Easy Parking, Accessible) only
-//   show venues where the data is confirmed — never guesses.
-// • Soft filters (Rainy Day, Toddlers, etc.) use confident inference
-//   from category and age data — see lib/quickFilters.ts for the rules.
+// • Hard filters only show venues where the data is confirmed.
+// • Soft filters use confident inference from category/age data.
 // ─────────────────────────────────────────────────────────────────
 
 import { useCallback } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Colors, FontFamily } from '@/constants/theme';
 import { QUICK_FILTERS, type QuickFilterId } from '@/lib/quickFilters';
 
-// Colour palette (matches the rest of the app; no new colours added).
-const C = {
-  ink: '#1D2630',
-  mute: '#7B8794',
-  paper: '#FFFFFF',
-  line: '#E6E2DB',
-  sky: '#4ECDC4',
-  skyDeep: '#1B8A85',
-  skySoft: '#D4F0EE',
-} as const;
-
-// Short emoji per filter — helps parents scan at a glance.
-// Chosen to be recognisable and not childish.
 const FILTER_EMOJI: Record<QuickFilterId, string> = {
   'rainy-day':       '☔',
   'free':            '🆓',
@@ -69,12 +52,11 @@ export function QuickFilterChips({ selected, onToggle }: QuickFilterChipsProps) 
 
   return (
     <View>
-      {/* Section title */}
       <Text
         style={{
-          fontFamily: 'Nunito-ExtraBold',
+          fontFamily: FontFamily.heading,
           fontSize: 15,
-          color: C.ink,
+          color: Colors.label,
           marginBottom: 10,
           paddingHorizontal: 20,
         }}
@@ -82,10 +64,7 @@ export function QuickFilterChips({ selected, onToggle }: QuickFilterChipsProps) 
         What are you looking for today?
       </Text>
 
-      {/* Horizontal chip scroll. The outer View with a fixed height is
-          required to prevent the horizontal ScrollView from being
-          vertically clipped by its flex parent. Without it, chip text
-          can be cut off at top and bottom (same pattern as results.tsx). */}
+      {/* Horizontal chip scroll. Fixed height prevents vertical clipping. */}
       <View style={{ height: 44 }}>
         <ScrollView
           horizontal
@@ -97,7 +76,6 @@ export function QuickFilterChips({ selected, onToggle }: QuickFilterChipsProps) 
             height: 44,
           }}
           style={{ flexGrow: 0 }}
-          // Accessible: announce selection state via accessibilityState on each chip.
           accessibilityRole="toolbar"
           accessibilityLabel="Quick filters"
         >
@@ -120,12 +98,11 @@ export function QuickFilterChips({ selected, onToggle }: QuickFilterChipsProps) 
                   paddingHorizontal: 13,
                   paddingVertical: 9,
                   borderRadius: 999,
-                  backgroundColor: active ? C.skyDeep : C.paper,
+                  backgroundColor: active ? Colors.accent : Colors.surface,
                   borderWidth: 1,
-                  borderColor: active ? C.skyDeep : C.line,
+                  borderColor: active ? Colors.accent : Colors.separator,
                   opacity: pressed ? 0.75 : 1,
-                  // Subtle shadow so chips feel slightly elevated.
-                  shadowColor: '#1D2630',
+                  shadowColor: Colors.label,
                   shadowOffset: { width: 0, height: 1 },
                   shadowOpacity: active ? 0 : 0.05,
                   shadowRadius: 2,
@@ -135,9 +112,9 @@ export function QuickFilterChips({ selected, onToggle }: QuickFilterChipsProps) 
                 <Text style={{ fontSize: 13 }}>{emoji}</Text>
                 <Text
                   style={{
-                    fontFamily: 'Nunito-Bold',
+                    fontFamily: FontFamily.caption,
                     fontSize: 13,
-                    color: active ? '#FFFFFF' : C.ink,
+                    color: active ? '#FFFFFF' : Colors.label,
                   }}
                 >
                   {filter.label}
@@ -148,16 +125,13 @@ export function QuickFilterChips({ selected, onToggle }: QuickFilterChipsProps) 
         </ScrollView>
       </View>
 
-      {/* Active filter hint — shown only when something is selected.
-          Keeps the UI honest: parents know these are additional signals,
-          not a guarantee (especially for soft filters). */}
       {selected.length > 0 && (
         <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
           <Text
             style={{
-              fontFamily: 'Nunito-Regular',
+              fontFamily: FontFamily.body,
               fontSize: 12,
-              color: C.mute,
+              color: Colors.label3,
             }}
           >
             {selected.length === 1

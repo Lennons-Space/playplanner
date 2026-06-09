@@ -13,6 +13,7 @@
 
 import { useMemo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
+import { Colors, FontFamily } from '@/constants/theme';
 import { useLocation } from '@/hooks/location';
 import { useWeather } from '@/hooks/useWeather';
 import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
@@ -25,12 +26,6 @@ import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { DEFAULT_FILTERS } from '@/types';
 import type { Venue, Category } from '@/types';
-
-const C = {
-  ink: '#1D2630',
-  mute: '#7B8794',
-  skyDeep: '#1B8A85',
-} as const;
 
 export interface NearbyPreviewProps {
   onSeeAll: () => void;
@@ -48,9 +43,6 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
   const { data: venues = [], isLoading, error } = useNearbyVenues(
     center,
     DEFAULT_FILTERS,
-    // Only enable when location is resolved AND we have valid coordinates.
-    // This prevents the query from firing with the FALLBACK_LOCATION (London)
-    // during the brief moment before GPS resolves.
     !locLoading && ready,
   );
 
@@ -63,9 +55,7 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
   // from generateRecommendationReasons() all silently no-op.
   //
   // This mirrors the proven pattern in app/explore/results.tsx (~line 172-191)
-  // so Home and the full Results screen rank/curate venues consistently —
-  // a parent should not see two different "best nearby" lists depending on
-  // which screen they're on.
+  // so Home and the full Results screen rank/curate venues consistently.
   const { data: categories = [] } = useCategories();
   const categoryMap = useMemo<Record<string, Category>>(
     () => Object.fromEntries(categories.map((c) => [c.id, c])),
@@ -75,22 +65,13 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
     () =>
       venues.map((v) => ({
         ...v,
-        // Only set category if the RPC didn't already include it (it never
-        // does today, but the ?? guard means we never clobber richer data
-        // from another source, e.g. the venue detail page).
         category: v.category ?? (v.category_id ? categoryMap[v.category_id] : undefined),
       })),
     [venues, categoryMap],
   );
 
-  // Pre-sort by recommendation score so that when curateVenues encounters
-  // tied curation scores, the tiebreak favours the more family-appropriate
-  // venue rather than raw RPC insertion order.
-  //
-  // WHY this is safe: curateVenues re-sorts entirely by its own scoring, so
-  // this pre-sort only affects ties. It does NOT change Supabase calls,
-  // discovery_approved filters, or the Venue type. Map markers are unaffected
-  // because they use a separate useNearbyVenues call in the map screen.
+  // Pre-sort by recommendation score so that curation tiebreaks favour
+  // the more family-appropriate venue rather than raw RPC insertion order.
   const ranked = useMemo(
     () =>
       [...enrichedVenues].sort(
@@ -101,7 +82,6 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
     [enrichedVenues],
   );
 
-  // Curate to the top 3 using context. 'auto' lets weather decide the lean.
   const curated = useMemo(
     () => curateVenues(ranked, { weather, mood: 'auto' }, { limit: 3 }),
     [ranked, weather],
@@ -117,20 +97,16 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
         marginBottom: 10,
       }}
     >
-      <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 18, color: C.ink, letterSpacing: -0.3 }}>
+      <Text style={{ fontFamily: FontFamily.heading, fontSize: 18, color: Colors.label, letterSpacing: -0.3 }}>
         Good right now
       </Text>
       <TouchableOpacity onPress={onSeeAll} accessibilityRole="button" accessibilityLabel="See all suggestions">
-        <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 13, color: C.skyDeep }}>See all</Text>
+        <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.accent }}>See all</Text>
       </TouchableOpacity>
     </View>
   );
 
   let body: React.ReactNode;
-  // Show skeletons only while location OR venue data is actively loading.
-  // If location is not ready (no GPS fix yet) AND we're still loading, show
-  // skeletons. But if location is done and venue query is disabled (no coords),
-  // fall through to the empty state rather than spinning indefinitely.
   const isActuallyLoading = (locLoading && !ready) || (ready && isLoading);
   if (isActuallyLoading) {
     body = (
@@ -141,14 +117,14 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
     );
   } else if (error) {
     body = (
-      <Text style={{ paddingHorizontal: 20, fontFamily: 'Nunito-Regular', fontSize: 13, color: C.mute }}>
-        Couldn’t load nearby places. Pull to refresh, or tap “Find something for us”.
+      <Text style={{ paddingHorizontal: 20, fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3 }}>
+        Couldn't load nearby places. Pull to refresh, or tap "Find something for us".
       </Text>
     );
   } else if (curated.length === 0) {
     body = (
-      <Text style={{ paddingHorizontal: 20, fontFamily: 'Nunito-Regular', fontSize: 13, color: C.mute }}>
-        Nothing close by right now — try “Find something for us” to widen the search.
+      <Text style={{ paddingHorizontal: 20, fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3 }}>
+        Nothing close by right now — try "Find something for us" to widen the search.
       </Text>
     );
   } else {
