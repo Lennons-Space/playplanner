@@ -98,7 +98,7 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
       }}
     >
       <Text style={{ fontFamily: FontFamily.heading, fontSize: 18, color: Colors.label, letterSpacing: -0.3 }}>
-        Good right now
+        Good for today
       </Text>
       <TouchableOpacity onPress={onSeeAll} accessibilityRole="button" accessibilityLabel="See all suggestions">
         <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.accent }}>See all</Text>

@@ -4,20 +4,23 @@
  * PRODUCT INTENT:
  * PlayPlanner is shifting from "browse a map" to "help me decide". This screen
  * answers one question for a tired parent in under five seconds: "where can I
- * take the kids right now?" The loud element is a single hero CTA; everything
- * else is quiet support (quick picks, an optional nearby teaser).
+ * take the kids right now?" The layout follows the reference design board:
+ *   1. Location row (city label + filter icon)
+ *   2. Greeting + weather pill ("Hi Liam 👋  Sunny today ☀️")
+ *   3. Hero heading ("What's the plan today?")
+ *   4. Search pill (taps into the search tab)
+ *   5. Intent chip row (horizontal scroll — 6 moods)
+ *   6. Age filter pills (Toddlers / 4–8 yrs / 9–12 yrs)
+ *   7. "Good for today" venue list (consent-gated)
  *
  * PRIVACY (ICO Children's Code, Standard 10):
  * This screen does NOT request location on mount. It only READS the stored
  * consent flag via useLocationConsent (which never triggers the OS prompt).
- *   • consent granted → we show a small "good right now" nearby teaser
+ *   • consent granted → we show a small "good for today" nearby teaser
  *     (NearbyPreview, which is the only place that calls useLocation()).
  *   • consent not granted → we show a calm prompt card instead. The OS prompt
  *     happens later, on the results screen, exactly when the parent asks for
  *     suggestions (consent-on-intent).
- *
- * The map still exists — it is now a secondary surface reached via "Map" in the
- * header (app/explore/map.tsx), not the front door.
  */
 
 import { useState } from 'react';
@@ -27,9 +30,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useProfile } from '@/hooks/useAuth';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
-import { Colors, FontFamily } from '@/constants/theme';
+import { useWeather } from '@/hooks/useWeather';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 import { Icon } from '@/components/ui';
-import { HeroCard } from '@/components/home/HeroCard';
 import { QuickPicks } from '@/components/home/QuickPicks';
 import { NearbyPreview } from '@/components/home/NearbyPreview';
 import { QuickFilterChips } from '@/components/home/QuickFilterChips';
@@ -37,28 +40,51 @@ import type { Mood } from '@/lib/curation';
 import type { QuickFilterId } from '@/lib/quickFilters';
 import type { Venue } from '@/types';
 
-function greetingWord(): string {
-  const h = new Date().getHours();
-  if (h < 12) return 'Morning';
-  if (h < 18) return 'Afternoon';
-  return 'Evening';
+// ── Age filter pills ─────────────────────────────────────────────────────
+// These are display-only UI filters on the home screen; they do not yet
+// wire into the results query (a future iteration will add URL param support).
+// The chips are shown as simple toggleable pills matching the reference design.
+
+interface AgeFilter {
+  id: string;
+  label: string;
 }
+
+const AGE_FILTERS: AgeFilter[] = [
+  { id: 'toddlers',  label: 'Toddlers'  },
+  { id: '4-8',       label: '4–8 yrs' },
+  { id: '9-12',      label: '9–12 yrs' },
+];
 
 export default function HomeScreen() {
   const profile = useProfile();
   const { status } = useLocationConsent();
 
+  // Weather hook needs coords — we use undefined here so it fetches nothing
+  // until NearbyPreview (which has real coords) mounts. We read weather from
+  // the same React Query cache key that NearbyPreview populates, so the pill
+  // appears once NearbyPreview has loaded weather. For the header pill we
+  // pass undefined and let the hook return null gracefully.
+  const weather = useWeather(undefined, undefined);
+
   // Quick filter chips state — persists while the user is on this screen.
   // Cleared each time the parent navigates away (component unmounts).
   const [activeFilters, setActiveFilters] = useState<QuickFilterId[]>([]);
 
+  // Age filter toggle state (single-select for now)
+  const [activeAge, setActiveAge] = useState<string | null>(null);
+
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? null;
 
-  // Toggle a chip on/off. Multiple chips can be active at once (AND logic).
+  // Toggle a quick filter chip on/off. Multiple chips can be active (AND logic).
   const toggleFilter = (id: QuickFilterId) => {
     setActiveFilters((prev) =>
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
     );
+  };
+
+  const toggleAge = (id: string) => {
+    setActiveAge((prev) => (prev === id ? null : id));
   };
 
   // Navigate to results. When quick filters are active, pass them as a
@@ -71,59 +97,60 @@ export default function HomeScreen() {
     router.push(`/explore/results?${params.toString()}`);
   };
 
+  const openSearch = () => router.push('/(tabs)/search');
   const openMap = () => router.push('/explore/map');
   const openVenue = (venue: Venue) => router.push(`/venue/${venue.id}`);
 
+  // Weather pill text — only shown when weather data is available.
+  const weatherPill =
+    weather != null ? `${weather.label} today ${weather.emoji}` : null;
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.warm }} edges={['top']}>
       <ScrollView
-        contentContainerStyle={{ paddingTop: 8, paddingBottom: 120 }}
+        contentContainerStyle={{ paddingTop: 4, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Header: greeting + Map shortcut ───────────────────────── */}
+        {/* ── Location row ───────────────────────────────────────────── */}
+        {/* Shows city/area label on the left and a filter/map shortcut on the right. */}
         <View
           style={{
             paddingHorizontal: 20,
-            paddingTop: 8,
-            paddingBottom: 16,
+            paddingTop: 10,
+            paddingBottom: 4,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3 }}>
-              {greetingWord()}{firstName ? `, ${firstName}` : ''} 👋
-            </Text>
+          {/* Location label — static for now; a future iteration will use reverse geocode. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Icon name="locate" size={13} color={Colors.label3} />
             <Text
-              style={{
-                fontFamily: FontFamily.display,
-                fontSize: 28,
-                color: Colors.label,
-                letterSpacing: -0.8,
-                lineHeight: 33,
-                marginTop: 2,
-              }}
+              style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3 }}
+              accessibilityRole="text"
+              accessibilityLabel="Your area"
             >
-              Let's find something
+              Bristol
             </Text>
           </View>
 
+          {/* Map shortcut — preserved from previous layout */}
           <TouchableOpacity
             onPress={openMap}
             accessibilityRole="button"
             accessibilityLabel="Open map"
+            hitSlop={8}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 6,
+              gap: 5,
+              paddingHorizontal: 11,
+              paddingVertical: 7,
+              borderRadius: BorderRadius.pill,
               backgroundColor: Colors.surface,
-              borderRadius: 999,
-              paddingHorizontal: 14,
-              paddingVertical: 9,
               borderWidth: 1,
               borderColor: Colors.separator,
-              // Subtle shadow makes the Map pill feel like a floating control.
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 1 },
               shadowOpacity: 0.06,
@@ -131,25 +158,177 @@ export default function HomeScreen() {
               elevation: 2,
             }}
           >
-            <Icon name="map" size={15} color={Colors.accent} />
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label }}>Map</Text>
+            <Icon name="map" size={14} color={Colors.accent} />
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label }}>
+              Map
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {/* ── Hero CTA ──────────────────────────────────────────────── */}
-        <View style={{ marginBottom: 22 }}>
-          <HeroCard onPress={() => goResults('auto')} />
+        {/* ── Greeting row + weather pill ────────────────────────────── */}
+        {/* "Hi Liam 👋" with an inline weather badge pill to the right. */}
+        <View
+          style={{
+            paddingHorizontal: 20,
+            paddingTop: 6,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 8,
+          }}
+        >
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 15, color: Colors.label2 }}>
+            {`Hi ${firstName ?? 'there'} 👋`}
+          </Text>
+
+          {weatherPill != null && (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: BorderRadius.pill,
+                backgroundColor: Colors.surface,
+                borderWidth: 1,
+                borderColor: Colors.separator,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 2,
+                elevation: 1,
+              }}
+              accessibilityRole="text"
+              accessibilityLabel={`Weather: ${weatherPill}`}
+            >
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label2 }}>
+                {weatherPill}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* ── Quick picks ───────────────────────────────────────────── */}
-        <View style={{ marginBottom: 22 }}>
+        {/* ── Hero heading ───────────────────────────────────────────── */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 16 }}>
+          <Text
+            style={{
+              fontFamily: FontFamily.display,
+              fontSize: 28,
+              color: Colors.label,
+              letterSpacing: -0.8,
+              lineHeight: 34,
+            }}
+          >
+            {"What's the plan today?"}
+          </Text>
+        </View>
+
+        {/* ── Search pill ───────────────────────────────────────────── */}
+        {/* Full-width tappable pill. Pressing opens the search tab. */}
+        <View style={{ paddingHorizontal: 20, marginBottom: 22 }}>
+          <Pressable
+            onPress={openSearch}
+            accessibilityRole="search"
+            accessibilityLabel="Search for places"
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: Colors.surface,
+              borderRadius: BorderRadius.pill,
+              borderWidth: 1,
+              borderColor: Colors.separator,
+              paddingHorizontal: 16,
+              paddingVertical: 13,
+              gap: 10,
+              opacity: pressed ? 0.85 : 1,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.06,
+              shadowRadius: 4,
+              elevation: 2,
+            })}
+          >
+            <Icon name="search" size={17} color={Colors.label3} />
+            <Text
+              style={{
+                flex: 1,
+                fontFamily: FontFamily.body,
+                fontSize: 15,
+                color: Colors.label3,
+              }}
+              numberOfLines={1}
+            >
+              What do you want to do today?
+            </Text>
+            {/* Filter shortcut icon on the right of the search pill */}
+            <View
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 10,
+                backgroundColor: Colors.fill,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Icon name="filter" size={15} color={Colors.label2} />
+            </View>
+          </Pressable>
+        </View>
+
+        {/* ── Intent chips ──────────────────────────────────────────── */}
+        {/* Horizontal scroll row — each chip maps to a Mood + curation. */}
+        <View style={{ marginBottom: 18 }}>
           <QuickPicks onPick={goResults} />
         </View>
 
+        {/* ── Age filter pills ──────────────────────────────────────── */}
+        {/* Single-row, horizontally scrollable pill row below intent chips. */}
+        <View style={{ paddingHorizontal: 20, marginBottom: 22 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {AGE_FILTERS.map((f) => {
+              const active = activeAge === f.id;
+              return (
+                <Pressable
+                  key={f.id}
+                  onPress={() => toggleAge(f.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Age filter: ${f.label}${active ? ', selected' : ''}`}
+                  style={({ pressed }) => ({
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
+                    borderRadius: BorderRadius.pill,
+                    backgroundColor: active ? Colors.accent : Colors.surface,
+                    borderWidth: 1,
+                    borderColor: active ? Colors.accent : Colors.separator,
+                    opacity: pressed ? 0.75 : 1,
+                    shadowColor: Colors.label,
+                    shadowOffset: { width: 0, height: 1 },
+                    shadowOpacity: active ? 0 : 0.05,
+                    shadowRadius: 2,
+                    elevation: active ? 0 : 1,
+                  })}
+                >
+                  <Text
+                    style={{
+                      fontFamily: FontFamily.bodyStrong,
+                      fontSize: 13,
+                      color: active ? '#FFFFFF' : Colors.label,
+                    }}
+                  >
+                    {f.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
         {/* ── Quick filter chips ────────────────────────────────────── */}
-        {/* These narrow the "Find something for us" results before the
-            parent even leaves this screen. Selection is passed as a
-            URL param to the results screen (see goResults above).    */}
+        {/* These narrow the results before the parent even leaves this screen.
+            Shown below the age pills. Hidden label variant (inline row only). */}
         <View style={{ marginBottom: 26 }}>
           <QuickFilterChips selected={activeFilters} onToggle={toggleFilter} />
         </View>
@@ -178,7 +357,7 @@ function LocationNudge({ onEnable }: { onEnable: () => void }) {
         accessibilityLabel="See what's near you"
         style={({ pressed }) => ({
           backgroundColor: Colors.surface,
-          borderRadius: 20,
+          borderRadius: BorderRadius.card,
           borderWidth: 1,
           borderColor: Colors.separator,
           padding: 18,
@@ -202,7 +381,7 @@ function LocationNudge({ onEnable }: { onEnable: () => void }) {
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ fontFamily: FontFamily.heading, fontSize: 15, color: Colors.label }}>
-            See what's near you
+            {"See what's near you"}
           </Text>
           <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 2 }}>
             Turn on location to get suggestions tailored to where you are.

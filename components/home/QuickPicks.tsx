@@ -1,14 +1,15 @@
 // ─────────────────────────────────────────────────────────────────
-// QuickPicks — four one-tap shortcuts into the decision flow.
+// QuickPicks — horizontal scrollable intent chip row.
 //
-// Each pick maps directly to a curation Mood. They exist to remove the
-// "where do I even start" moment: a parent who already knows the vibe
-// (rainy day / needs to run / wants calm / watching the budget) skips
-// straight to a shortlist. Capped at four — more would reintroduce the
-// decision fatigue we are trying to remove.
+// Each chip has a coloured emoji icon box on the left and a label to the
+// right. Six chips map to six parent intents / curation Moods. The row
+// scrolls horizontally so it never wraps or truncates.
+//
+// Design reference: Reference Board.png — "Home — Light" intent chips.
+// Chip colours match Colors.intent* tokens (constants/theme.ts).
 // ─────────────────────────────────────────────────────────────────
 
-import { Pressable, Text, View } from 'react-native';
+import { ScrollView, Pressable, Text, View } from 'react-native';
 import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 import type { Mood } from '@/lib/curation';
 
@@ -16,15 +17,20 @@ interface Pick {
   mood: Mood;
   emoji: string;
   label: string;
-  tint: string;
+  /** Background tint for the emoji icon box. */
+  iconBg: string;
 }
 
-// Order matters: most common parent intents first.
+// Order matches the reference design board left-to-right.
+// Animal Fix → 'outdoor' (farms, zoos, petting zoos are outdoor venues).
+// Toddler Time & Parent Friendly → 'calm' (relaxed pace, low-pressure venues).
 const PICKS: Pick[] = [
-  { mood: 'indoor', emoji: '🌧', label: 'Stay dry',     tint: '#E6EEF5' },
-  { mood: 'active', emoji: '🏃', label: 'Burn energy',  tint: '#FFE2DE' },
-  { mood: 'calm',   emoji: '☕', label: 'Something calm', tint: '#ECE1FF' },
-  { mood: 'free',   emoji: '🆓', label: 'Free today',   tint: '#DCF4E4' },
+  { mood: 'indoor',   emoji: '🌧', label: 'Rainy Day',       iconBg: Colors.intentRain    },
+  { mood: 'active',   emoji: '🏃', label: 'Burn Energy',     iconBg: Colors.intentEnergy  },
+  { mood: 'free',     emoji: '🆓', label: 'Free Day Out',    iconBg: Colors.intentFree    },
+  { mood: 'outdoor',  emoji: '🦁', label: 'Animal Fix',      iconBg: Colors.intentAnimals },
+  { mood: 'calm',     emoji: '🧸', label: 'Toddler Time',    iconBg: Colors.intentToddler },
+  { mood: 'calm',     emoji: '☕', label: 'Parent Friendly', iconBg: Colors.intentParent  },
 ];
 
 export interface QuickPicksProps {
@@ -33,51 +39,69 @@ export interface QuickPicksProps {
 
 export function QuickPicks({ onPick }: QuickPicksProps) {
   return (
-    <View style={{ paddingHorizontal: 20 }}>
-      <Text style={{ fontFamily: FontFamily.heading, fontSize: 15, color: Colors.label, marginBottom: 10 }}>
-        Quick picks
-      </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-        {PICKS.map((p) => (
-          <Pressable
-            key={p.mood}
-            onPress={() => onPick(p.mood)}
-            accessibilityRole="button"
-            accessibilityLabel={p.label}
-            style={({ pressed }) => ({
-              // Two per row: (100% - one gap) / 2
-              flexBasis: '47.5%',
-              flexGrow: 1,
-              backgroundColor: Colors.surface,
-              borderRadius: BorderRadius.card,
-              borderWidth: 1,
-              borderColor: Colors.separator,
-              paddingVertical: 14,
-              paddingHorizontal: 14,
-              flexDirection: 'row',
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{
+        paddingHorizontal: 20,
+        gap: 10,
+        alignItems: 'center',
+      }}
+      style={{ flexGrow: 0 }}
+      accessibilityRole="toolbar"
+      accessibilityLabel="Intent chips"
+    >
+      {PICKS.map((p) => (
+        <Pressable
+          key={p.label}
+          onPress={() => onPick(p.mood)}
+          accessibilityRole="button"
+          accessibilityLabel={`${p.label} intent`}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 9,
+            backgroundColor: Colors.surface,
+            borderRadius: BorderRadius.chip,
+            borderWidth: 1,
+            borderColor: Colors.separator,
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            opacity: pressed ? 0.7 : 1,
+            // Subtle shadow so chips lift off the bg
+            shadowColor: Colors.label,
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.06,
+            shadowRadius: 3,
+            elevation: 2,
+          })}
+        >
+          {/* Coloured emoji icon box */}
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: BorderRadius.intentChipIcon,
+              backgroundColor: p.iconBg,
               alignItems: 'center',
-              gap: 10,
-              opacity: pressed ? 0.7 : 1,
-            })}
+              justifyContent: 'center',
+            }}
           >
-            <View
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 12,
-                backgroundColor: p.tint,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text style={{ fontSize: 18 }}>{p.emoji}</Text>
-            </View>
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: Colors.label, flexShrink: 1 }}>
-              {p.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
+            <Text style={{ fontSize: 17 }}>{p.emoji}</Text>
+          </View>
+
+          {/* Label */}
+          <Text
+            style={{
+              fontFamily: FontFamily.bodyStrong,
+              fontSize: 14,
+              color: Colors.label,
+            }}
+          >
+            {p.label}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
   );
 }
