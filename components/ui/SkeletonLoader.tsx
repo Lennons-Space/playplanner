@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Animated, View, type ViewStyle } from 'react-native';
+import { Colors, BorderRadius } from '@/constants/theme';
 
 interface SkeletonProps {
   width?: number | string;
@@ -9,7 +10,7 @@ interface SkeletonProps {
   style?: ViewStyle;
 }
 
-export function Skeleton({ width = '100%', height = 14, borderRadius = 6, style }: SkeletonProps) {
+export function Skeleton({ width = '100%', height = 14, borderRadius = BorderRadius.sm, style }: SkeletonProps) {
   const opacity = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
@@ -25,7 +26,7 @@ export function Skeleton({ width = '100%', height = 14, borderRadius = 6, style 
 
   return (
     <Animated.View
-      style={[{ width, height, borderRadius, backgroundColor: '#DFE6E9', opacity }, style]}
+      style={[{ width, height, borderRadius, backgroundColor: Colors.surface2, opacity }, style]}
     />
   );
 }
@@ -33,7 +34,7 @@ export function Skeleton({ width = '100%', height = 14, borderRadius = 6, style 
 export function VenueRowSkeleton() {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 12 }}>
-      <Skeleton width={44} height={44} borderRadius={12} />
+      <Skeleton width={44} height={44} borderRadius={BorderRadius.section} />
       <View style={{ flex: 1, gap: 8 }}>
         <Skeleton width="65%" height={13} />
         <Skeleton width="40%" height={11} />

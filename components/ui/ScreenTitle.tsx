@@ -8,6 +8,7 @@
 
 import React from 'react';
 import { Text, View } from 'react-native';
+import { Colors, FontFamily } from '@/constants/theme';
 
 interface ScreenTitleProps {
   /** Small label above the main title (optional). */
@@ -34,9 +35,9 @@ export function ScreenTitle({ eyebrow, title, trailing }: ScreenTitleProps) {
         {eyebrow ? (
           <Text
             style={{
-              fontFamily: 'Nunito-Bold',
+              fontFamily: FontFamily.caption,
               fontSize: 13,
-              color: '#7B8794',
+              color: Colors.label3,
               letterSpacing: 0.1,
             }}
           >
@@ -45,10 +46,10 @@ export function ScreenTitle({ eyebrow, title, trailing }: ScreenTitleProps) {
         ) : null}
         <Text
           style={{
-            fontFamily: 'Nunito-ExtraBold',
+            fontFamily: FontFamily.display,
             fontSize: 30,
-            color: '#1D2630',
-            letterSpacing: -0.6,
+            color: Colors.label,
+            letterSpacing: -0.8,
             lineHeight: 32,
             marginTop: eyebrow ? 2 : 0,
           }}

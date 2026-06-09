@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { View } from 'react-native';
+import { Colors } from '@/constants/theme';
 import { Icon } from './Icon';
 
 interface StarsProps {
@@ -14,11 +15,11 @@ interface StarsProps {
   rating: number;
   /** Icon size in logical pixels. Default 12. */
   size?: number;
-  /** Fill colour for active stars. Default pp-star amber. */
+  /** Fill colour for active stars. Defaults to theme star colour. */
   color?: string;
 }
 
-export function Stars({ rating, size = 12, color = '#F5A524' }: StarsProps) {
+export function Stars({ rating, size = 12, color = Colors.star }: StarsProps) {
   const rounded = Math.round(Math.max(0, Math.min(5, rating)));
 
   return (

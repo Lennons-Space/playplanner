@@ -1,29 +1,42 @@
 // ─────────────────────────────────────────────────────────────────
 // Chip.tsx — pill-shaped filter/tag button
 //
-// Used in search filter rows and category selectors.
-// When active the chip fills with the category colour; when inactive
-// it shows a bordered ghost pill — matching the Chip in components.jsx.
+// Used in search filter rows, category selectors, and facility tags.
 // ─────────────────────────────────────────────────────────────────
 
 import React from 'react';
 import { Pressable, Text, type PressableProps } from 'react-native';
+import { Colors, FontFamily } from '@/constants/theme';
 
 interface ChipProps extends Omit<PressableProps, 'children' | 'style'> {
   /** Whether this chip is currently selected. */
   active?: boolean;
-  /** Category colour — used as the active background. */
+  /** Category/accent colour — used as the active background fill. */
   color?: string;
-  /** Inactive background tone. Defaults to white. */
+  /** Inactive background tone. Defaults to Colors.surface. */
   tone?: string;
+  /**
+   * 'default'  — standard filter/category chip (Hanken Bold, uppercase caption style).
+   * 'facility' — venue facility tag (Hanken Medium, sentence case, lighter weight).
+   */
+  variant?: 'default' | 'facility';
   children: React.ReactNode;
 }
 
-export function Chip({ active = false, color, tone, onPress, children, ...rest }: ChipProps) {
-  // Inline styles are used for dynamic colour values that can't be Tailwind classes.
-  const bg = active ? (color ?? '#1D2630') : (tone ?? '#FFFFFF');
-  const textColor = active ? '#FFFFFF' : '#1D2630';
-  const borderColor = active ? 'transparent' : '#E6E2DB';
+export function Chip({
+  active = false,
+  color,
+  tone,
+  variant = 'default',
+  onPress,
+  children,
+  ...rest
+}: ChipProps) {
+  const isFacility = variant === 'facility';
+
+  const bg          = active ? (color ?? Colors.accent) : (tone ?? Colors.surface);
+  const textColor   = active ? '#FFFFFF' : Colors.label;
+  const borderColor = active ? 'transparent' : Colors.separator;
 
   return (
     <Pressable
@@ -31,7 +44,7 @@ export function Chip({ active = false, color, tone, onPress, children, ...rest }
       style={{
         paddingHorizontal: 14,
         paddingVertical: 8,
-        borderRadius: 9999, // pill
+        borderRadius: 9999,
         backgroundColor: bg,
         borderWidth: active ? 0 : 1,
         borderColor,
@@ -41,11 +54,10 @@ export function Chip({ active = false, color, tone, onPress, children, ...rest }
       }}
       {...rest}
     >
-      {/* numberOfLines={1} prevents wrapping in horizontal filter rows. */}
       <Text
         numberOfLines={1}
         style={{
-          fontFamily: 'Nunito-Bold',
+          fontFamily: isFacility ? FontFamily.body : FontFamily.caption,
           fontSize: 13,
           color: textColor,
         }}
