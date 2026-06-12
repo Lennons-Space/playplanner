@@ -17,21 +17,12 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
 import type { Venue } from '@/types';
 import { generateRecommendationExplanation } from '@/lib/recommendations/recommendationExplanation';
+import { Colors, FontFamily, BorderRadius, Shadow } from '@/constants/theme';
 
-// ── Design tokens — matching app/venue/[id].tsx ───────────────────────────────
-const pp = {
-  ink:      '#1D2630',
-  inkSoft:  '#4A5560',
-  mute:     '#7B8794',
-  line:     '#E6E2DB',
-  sand:     '#FBF6EC',
-  paper:    '#FFFFFF',
-  skyDeep:  '#1B8A85',
-  skySoft:  '#D4F0EE',
-  star:     '#F5A524',
-  leaf:     '#5BC08A',
-  leafSoft: '#DCF4E4',
-};
+// Green tick that signals a positive, verified-fit reason. Retained as a local
+// exception (no design-system token) — mirrors the green open indicator kept on
+// app/venue/[id].tsx in Phase 6A.1.
+const POSITIVE_GREEN = '#5BC08A';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -63,7 +54,7 @@ export function RecommendationExplanation({ venue }: Props) {
     >
       {/* Title row: star icon + bold title */}
       <View style={styles.titleRow}>
-        <Icon name="star" size={16} color={pp.star} />
+        <Icon name="star" size={16} color={Colors.star} />
         <Text style={styles.title} accessibilityRole="header">
           {title}
         </Text>
@@ -82,7 +73,7 @@ export function RecommendationExplanation({ venue }: Props) {
             accessibilityLabel={reason}
           >
             {/* Check icon in leaf/green to signal a positive attribute */}
-            <Icon name="check" size={14} color={pp.leaf} strokeWidth={2.5} />
+            <Icon name="check" size={14} color={POSITIVE_GREEN} strokeWidth={2.5} />
             <Text style={styles.reasonText}>{reason}</Text>
           </View>
         ))}
@@ -95,18 +86,14 @@ export function RecommendationExplanation({ venue }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: pp.paper,
-    borderRadius: 24,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.card,
     borderWidth: 1,
-    borderColor: pp.line,
+    borderColor: Colors.separator,
     padding: 18,
     marginTop: 22,
-    // Consistent with the main info card's shadow in app/venue/[id].tsx
-    shadowColor: pp.ink,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 3,
+    // Elevated card shadow from the design-system token set.
+    ...Shadow.md,
   },
 
   titleRow: {
@@ -117,16 +104,16 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 17,
-    color: pp.ink,
+    color: Colors.label,
     letterSpacing: -0.2,
   },
 
   subheading: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: pp.mute,
+    color: Colors.label3,
     marginBottom: 14,
     marginLeft: 23, // aligns with text in titleRow (icon width 16 + gap 7)
   },
@@ -142,9 +129,9 @@ const styles = StyleSheet.create({
   },
 
   reasonText: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 14,
-    color: pp.inkSoft,
+    color: Colors.label2,
     flexShrink: 1,
   },
 });

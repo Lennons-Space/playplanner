@@ -16,6 +16,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Review } from '@/types';
 import { formatMonthYear, getInitials, AVATAR_COLOURS } from '@/lib/utils';
+import { Colors, FontFamily, BorderRadius, CardBorder, Shadow } from '@/constants/theme';
 
 interface ReviewCardProps {
   review: Review;
@@ -140,16 +141,13 @@ export const ReviewCard = React.memo(function ReviewCard({ review, onPressReview
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.card,
+    ...CardBorder.standard,
     padding: 16,
     marginBottom: 12,
-    // Subtle shadow so the card lifts off the sand background
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    // Subtle shadow so the card lifts off the sand background.
+    ...Shadow.sm,
   },
   topRow: {
     flexDirection: 'row',
@@ -167,38 +165,40 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   avatarInitials: {
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2D3436',   // charcoal
+    color: Colors.label,
   },
   nameBlock: {
     flex: 1,
   },
   displayName: {
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
-    fontWeight: '700',
-    color: '#2D3436',   // charcoal
+    color: Colors.label,
   },
   dateMeta: {
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#636E72',   // grey
+    color: Colors.label3,
     marginTop: 1,
   },
   stars: {
     fontSize: 16,
-    color: '#FF6B6B',   // coral
+    color: Colors.coral,
     letterSpacing: 1,
     marginBottom: 6,
   },
   reviewTitle: {
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    fontWeight: '700',
-    color: '#2D3436',
+    color: Colors.label,
     marginBottom: 4,
   },
   reviewBody: {
+    fontFamily: FontFamily.body,
     fontSize: 14,
-    color: '#2D3436',
+    color: Colors.label2,
     lineHeight: 20,
   },
   bottomRow: {
@@ -209,19 +209,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pendingBadge: {
-    backgroundColor: '#FFF9F0',   // sand — low-contrast, unobtrusive
+    backgroundColor: Colors.surface2,   // low-contrast, unobtrusive
     borderWidth: 1,
-    borderColor: '#DFE6E9',        // greyLighter
-    borderRadius: 999,
+    borderColor: Colors.separator,
+    borderRadius: BorderRadius.pill,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
   pendingBadgeText: {
+    fontFamily: FontFamily.body,
     fontSize: 11,
-    color: '#636E72',   // grey
+    color: Colors.label3,
   },
   helpfulText: {
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#636E72',
+    color: Colors.label3,
   },
 });

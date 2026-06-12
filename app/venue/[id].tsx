@@ -42,26 +42,14 @@ import { Stars } from '@/components/ui/Stars';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
 import { getCategoryMeta } from '@/constants/categories';
 import { RecommendationExplanation } from '@/components/venues/RecommendationExplanation';
+import { Colors, FontFamily, BorderRadius, Shadow, CardBorder } from '@/constants/theme';
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
-const pp = {
-  ink:      '#1D2630',
-  inkSoft:  '#4A5560',
-  mute:     '#7B8794',
-  line:     '#E6E2DB',
-  sand:     '#FBF6EC',
-  paper:    '#FFFFFF',
-  sky:      '#2FB8B0',
-  skyDeep:  '#1B8A85',
-  skySoft:  '#D4F0EE',
-  skyWash:  '#EEF9F8',
-  star:     '#F5A524',
-  coral:    '#FF6B6B',
-  sun:      '#FFD66B',
-  sunSoft:  '#FFF1C7',
-  leaf:     '#5BC08A',
-  leafSoft: '#DCF4E4',
-};
+// ─── Local exception colours ───────────────────────────────────────────────────
+// Phase 6A.1 migrated this screen to the design system (Colors/FontFamily/etc).
+// These two values have no design-system token and are retained per the brief:
+//   • FEATURED_BG — warm amber badge tint for the FEATURED pill.
+//   • the green open indicator (#3CAE6B) and featured text (#8B6A00) stay inline.
+const FEATURED_BG = '#FFF1C7';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -117,7 +105,7 @@ function getTodayClosingTime(hours: HoursRow[]): string | null {
 // ─── LoadingSkeleton ──────────────────────────────────────────────────────────
 function LoadingSkeleton() {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: pp.sand }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.warm }}>
       <Skeleton width="100%" height={320} borderRadius={0} />
       <View style={{ padding: 20, gap: 12 }}>
         <Skeleton width="70%" height={28} borderRadius={8} />
@@ -271,18 +259,18 @@ export default function VenueDetailScreen() {
       <SafeAreaView
         style={{
           flex: 1,
-          backgroundColor: pp.sand,
+          backgroundColor: Colors.warm,
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: 24,
         }}
       >
-        <Icon name="info" size={48} color={pp.mute} />
+        <Icon name="info" size={48} color={Colors.label3} />
         <Text
           style={{
-            fontFamily: 'Nunito-Bold',
+            fontFamily: FontFamily.heading,
             fontSize: 17,
-            color: pp.ink,
+            color: Colors.label,
             textAlign: 'center',
             marginTop: 14,
           }}
@@ -293,8 +281,8 @@ export default function VenueDetailScreen() {
           style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 4 }}
           onPress={() => router.back()}
         >
-          <Icon name="chevL" size={16} color={pp.sky} />
-          <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: pp.sky }}>Go back</Text>
+          <Icon name="chevL" size={16} color={Colors.accent} />
+          <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: Colors.accent }}>Go back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -366,7 +354,7 @@ export default function VenueDetailScreen() {
 
           {/* Sand-fade gradient — transparent at top, sand at bottom */}
           <LinearGradient
-            colors={['transparent', pp.sand]}
+            colors={['transparent', Colors.warm]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={StyleSheet.absoluteFillObject}
@@ -397,7 +385,7 @@ export default function VenueDetailScreen() {
                 </Text>
               </View>
               {isFeatured && (
-                <View style={[styles.pill, { backgroundColor: pp.sunSoft }]}>
+                <View style={[styles.pill, { backgroundColor: FEATURED_BG }]}>
                   <Text style={[styles.pillText, { color: '#8B6A00' }]}>FEATURED</Text>
                 </View>
               )}
@@ -410,7 +398,7 @@ export default function VenueDetailScreen() {
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 8 }}>
               {venue.review_count > 0 ? (
                 <>
-                  <Stars rating={venue.average_rating} size={14} color={pp.star} />
+                  <Stars rating={venue.average_rating} size={14} color={Colors.star} />
                   <Text style={styles.ratingValue}>{venue.average_rating.toFixed(1)}</Text>
                   <Text style={styles.ratingMeta}>
                     · {venue.review_count} review{venue.review_count !== 1 ? 's' : ''}
@@ -425,7 +413,7 @@ export default function VenueDetailScreen() {
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
               {/* Distance tile */}
               <View style={styles.statTile}>
-                <Icon name="walk" size={16} color={pp.skyDeep} />
+                <Icon name="walk" size={16} color={Colors.accent} />
                 <Text style={styles.statValue}>
                   {venue.distance_km != null
                     ? `${(venue.distance_km * 0.621371).toFixed(1)}mi`
@@ -436,7 +424,7 @@ export default function VenueDetailScreen() {
 
               {/* Age tile */}
               <View style={styles.statTile}>
-                <Icon name="user" size={16} color={pp.skyDeep} />
+                <Icon name="user" size={16} color={Colors.accent} />
                 <Text style={styles.statValue}>
                   {hasAges ? `Ages ${venue.min_age}–${venue.max_age}` : 'All ages'}
                 </Text>
@@ -448,7 +436,7 @@ export default function VenueDetailScreen() {
                 <Icon
                   name="clock"
                   size={16}
-                  color={openNowState ? '#3CAE6B' : pp.mute}
+                  color={openNowState ? '#3CAE6B' : Colors.label3}
                 />
                 <Text style={styles.statValue}>{openNowState ? 'Open' : 'Closed'}</Text>
                 <Text style={styles.statLabel}>
@@ -533,13 +521,13 @@ export default function VenueDetailScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Write a review for this venue"
               >
-                <Icon name="plus" size={12} color={pp.skyDeep} />
+                <Icon name="plus" size={12} color={Colors.accent} />
                 <Text style={styles.writeReviewText}>Write review</Text>
               </TouchableOpacity>
             </View>
 
             {reviewsLoading && (
-              <ActivityIndicator color={pp.sky} style={{ marginVertical: 20 }} />
+              <ActivityIndicator color={Colors.accent} style={{ marginVertical: 20 }} />
             )}
 
             {!reviewsLoading && (!reviews || reviews.length === 0) && (
@@ -598,13 +586,13 @@ export default function VenueDetailScreen() {
       >
         <IconBtn
           size={40}
-          tone={pp.paper}
+          tone={Colors.surface}
           border={false}
           shadow
           onPress={() => router.back()}
           accessibilityLabel="Go back"
         >
-          <Icon name="chevL" size={20} color={pp.ink} />
+          <Icon name="chevL" size={20} color={Colors.label} />
         </IconBtn>
       </View>
 
@@ -617,7 +605,7 @@ export default function VenueDetailScreen() {
       >
         <IconBtn
           size={40}
-          tone={pp.paper}
+          tone={Colors.surface}
           border={false}
           shadow
           onPress={async () => {
@@ -639,12 +627,12 @@ export default function VenueDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel={`Share ${venue.name}`}
         >
-          <Icon name="share" size={18} color={pp.ink} />
+          <Icon name="share" size={18} color={Colors.label} />
         </IconBtn>
 
         <IconBtn
           size={40}
-          tone={pp.paper}
+          tone={Colors.surface}
           border={false}
           shadow
           onPress={() => toggleFavourite.mutate()}
@@ -655,7 +643,7 @@ export default function VenueDetailScreen() {
           <Icon
             name={isFavourited ? 'heartFill' : 'heart'}
             size={18}
-            color={isFavourited ? pp.coral : pp.ink}
+            color={isFavourited ? Colors.coral : Colors.label}
           />
         </IconBtn>
       </View>
@@ -664,7 +652,7 @@ export default function VenueDetailScreen() {
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
         {/* Subtle gradient so bar lifts visually above content */}
         <LinearGradient
-          colors={['transparent', pp.sand]}
+          colors={['transparent', Colors.warm]}
           style={StyleSheet.absoluteFillObject}
           pointerEvents="none"
         />
@@ -677,7 +665,7 @@ export default function VenueDetailScreen() {
             accessibilityLabel="Get directions to this venue"
             accessibilityRole="button"
           >
-            <Icon name="pin" size={16} color={pp.ink} />
+            <Icon name="pin" size={16} color={Colors.label} />
             <Text style={styles.directionsBtnText}>Directions</Text>
           </TouchableOpacity>
 
@@ -694,7 +682,7 @@ export default function VenueDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Plan a visit to this venue"
           >
-            <Icon name="calendar" size={16} color={pp.paper} />
+            <Icon name="calendar" size={16} color={Colors.surface} />
             <Text style={styles.planBtnText}>Plan a visit</Text>
           </TouchableOpacity>
         </View>
@@ -708,14 +696,14 @@ export default function VenueDetailScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: pp.sand,
+    backgroundColor: Colors.warm,
   },
 
   // ── Hero ──
   hero: {
     height: 320,
     overflow: 'hidden',
-    backgroundColor: pp.sand,
+    backgroundColor: Colors.warm,
   },
 
   // ── Image attribution (CC licence requirement) ──
@@ -730,7 +718,7 @@ const styles = StyleSheet.create({
     maxWidth: '80%',
   },
   attributionText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 9,
     color: 'rgba(255,255,255,0.90)',
     letterSpacing: 0.1,
@@ -745,80 +733,77 @@ const styles = StyleSheet.create({
 
   // ── Main info card ──
   mainCard: {
-    backgroundColor: pp.paper,
-    borderRadius: 32,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.featured,
     borderWidth: 1,
-    borderColor: pp.line,
+    borderColor: Colors.separator,
     padding: 20,
-    // Shadow spec from design
-    shadowColor: pp.ink,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.10,
-    shadowRadius: 20,
-    elevation: 6,
+    // Elevated card shadow from the design-system token set.
+    ...Shadow.lg,
   },
 
   // Category pill / featured badge
   pill: {
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
     paddingHorizontal: 9,
     paddingVertical: 3,
     alignSelf: 'flex-start',
   },
   pillText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.caption,
     fontSize: 10,
     letterSpacing: 0.4,
   },
 
   // Venue name
   venueName: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 28,
-    color: pp.ink,
+    color: Colors.label,
     letterSpacing: -0.5,
-    lineHeight: 30,
+    // Bricolage runs taller than Nunito — give the line a little more room so
+    // tall ascenders/descenders on long venue names don't clip.
+    lineHeight: 34,
     marginTop: 4,
   },
 
   // Rating row
   ratingValue: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
-    color: pp.ink,
+    color: Colors.label,
   },
   ratingMeta: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: pp.mute,
+    color: Colors.label3,
   },
   noReviewsMeta: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: pp.mute,
+    color: Colors.label3,
   },
 
   // Stat strip tiles
   statTile: {
     flex: 1,
-    backgroundColor: pp.sand,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: pp.line,
+    backgroundColor: Colors.warm,
+    borderRadius: BorderRadius.chip,
+    ...CardBorder.standard,
     padding: 10,
     flexDirection: 'column',
     gap: 2,
     alignItems: 'flex-start',
   },
   statValue: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 12,
-    color: pp.ink,
+    color: Colors.label,
   },
   statLabel: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 10,
-    color: pp.mute,
+    color: Colors.label3,
   },
 
   // ── Sections ──
@@ -827,24 +812,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   sectionHeading: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 18,
-    color: pp.ink,
+    color: Colors.label,
     letterSpacing: -0.3,
     marginBottom: 10,
   },
 
   // About
   description: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 14,
-    color: pp.inkSoft,
+    color: Colors.label2,
     lineHeight: 22,
   },
   mutedText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 14,
-    color: pp.mute,
+    color: Colors.label3,
   },
 
   // Facilities grid
@@ -858,33 +843,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: pp.paper,
-    borderWidth: 1,
-    borderColor: pp.line,
-    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    ...CardBorder.standard,
+    borderRadius: BorderRadius.chip,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   facilityIconCircle: {
     width: 32,
     height: 32,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   facilityName: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
-    color: pp.ink,
+    color: Colors.label,
     flex: 1,
   },
 
   // Opening hours
   hoursCard: {
-    backgroundColor: pp.paper,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: pp.line,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.chip,
+    ...CardBorder.standard,
     overflow: 'hidden',
   },
   hoursRow: {
@@ -894,18 +877,18 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   hoursDay: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
-    color: pp.ink,
+    color: Colors.label,
   },
   hoursTime: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: pp.inkSoft,
+    color: Colors.label2,
   },
   hoursDivider: {
     height: 1,
-    backgroundColor: pp.line,
+    backgroundColor: Colors.separator,
     marginHorizontal: 16,
   },
 
@@ -920,17 +903,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: pp.skyWash,
+    backgroundColor: Colors.accentLight,
     borderWidth: 1,
-    borderColor: pp.skySoft,
-    borderRadius: 999,
+    borderColor: Colors.accentLight,
+    borderRadius: BorderRadius.pill,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   writeReviewText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 12,
-    color: pp.skyDeep,
+    color: Colors.accent,
   },
 
   // Report / Claim links
@@ -942,24 +925,24 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   reportLink: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: pp.mute,
+    color: Colors.label3,
     textDecorationLine: 'underline',
   },
   // claimLink style removed — claim flow disabled at launch.
 
   // Address
   addressText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: pp.mute,
+    color: Colors.label3,
     lineHeight: 18,
   },
   odblText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 11,
-    color: pp.mute,
+    color: Colors.label3,
     marginTop: 4,
     opacity: 0.7,
   },
@@ -995,16 +978,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: pp.paper,
+    backgroundColor: Colors.surface,
     borderWidth: 1.5,
-    borderColor: pp.line,
-    borderRadius: 24,
+    borderColor: Colors.separator,
+    borderRadius: BorderRadius.card,
     paddingVertical: 14,
   },
   directionsBtnText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
-    color: pp.ink,
+    color: Colors.label,
   },
   planBtn: {
     flex: 1.4,
@@ -1012,13 +995,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: pp.ink,
-    borderRadius: 24,
+    backgroundColor: Colors.label,
+    borderRadius: BorderRadius.card,
     paddingVertical: 14,
   },
   planBtnText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
-    color: pp.paper,
+    color: Colors.surface,
   },
 });

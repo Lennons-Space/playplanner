@@ -31,16 +31,7 @@ import {
   type FacilitySlug,
   type FacilityStat,
 } from '@/hooks/useFacilities';
-
-const pp = {
-  ink:     '#1D2630',
-  mute:    '#7B8794',
-  line:    '#E6E2DB',
-  paper:   '#FFFFFF',
-  sky:     '#2FB8B0',
-  skyDeep: '#1B8A85',
-  skyWash: '#EEF9F8',
-};
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
 interface ChipDef {
   slug: FacilitySlug;
@@ -194,15 +185,15 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   heading: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 17,
-    color: pp.ink,
+    color: Colors.label,
     marginBottom: 2,
   },
   subheading: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: pp.mute,
+    color: Colors.label3,
     marginBottom: 12,
   },
   row: {
@@ -215,16 +206,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 9999,
+    borderRadius: BorderRadius.pill,
     gap: 6,
   },
   chipOutline: {
-    backgroundColor: pp.paper,
+    backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: pp.line,
+    borderColor: Colors.separator,
   },
   chipFilled: {
-    backgroundColor: pp.skyDeep,
+    backgroundColor: Colors.accent,
     borderWidth: 0,
   },
   chipPressed: {
@@ -234,23 +225,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   chipText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
   },
   chipTextOutline: {
-    color: pp.ink,
+    color: Colors.label,
   },
   chipTextFilled: {
-    color: pp.paper,
+    color: '#FFFFFF',
   },
   checkMark: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
-    color: pp.paper,
+    color: '#FFFFFF',
   },
   countBadge: {
     backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 9999,
+    borderRadius: BorderRadius.pill,
     minWidth: 20,
     paddingHorizontal: 6,
     paddingVertical: 1,
@@ -258,8 +249,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   countBadgeText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 12,
-    color: pp.paper,
+    color: '#FFFFFF',
   },
 });
