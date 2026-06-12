@@ -63,6 +63,7 @@ import { getWeatherBadge, getWeatherBanner, scoreVenueForWeather } from '@/lib/w
 import { useFilterStore } from '@/store/filterStore';
 import { useShallow } from 'zustand/react/shallow';
 import { LocationConsentPrompt } from '@/components/consent';
+import { WeatherBackground } from '@/components/weather/WeatherBackground';
 import FilterSheet from '@/components/filters/FilterSheet';
 import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
 import { VenueCard, Icon, IconBtn, Chip } from '@/components/ui';
@@ -961,10 +962,11 @@ function MapScreen({
   const radiusMiles = Math.round(filters.maxDistanceKm * 0.621371);
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <WeatherBackground condition={weather?.condition} />
       {/* ── Sand-background scrollable feed ─────────────────────────────── */}
       <ScrollView
-        style={{ flex: 1, backgroundColor: Colors.bg }}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
         contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
       >

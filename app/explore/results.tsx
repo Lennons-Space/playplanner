@@ -36,6 +36,7 @@ import {
 } from '@/lib/quickFilters';
 import type { Category } from '@/types';
 import { LocationConsentPrompt } from '@/components/consent';
+import { WeatherBackground } from '@/components/weather/WeatherBackground';
 import { VenueCard, Icon } from '@/components/ui';
 import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
 import { Colors, FontFamily } from '@/constants/theme';
@@ -247,7 +248,9 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
   const toggleMood = (m: Mood) => setMood((cur) => (cur === m ? paramMood : m));
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }} edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <WeatherBackground condition={weather?.condition} />
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
       {/* ── Header ───────────────────────────────────────────────── */}
       <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -322,7 +325,8 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
           ))
         )}
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 

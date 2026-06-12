@@ -35,6 +35,7 @@ import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 import { Icon } from '@/components/ui';
 import { QuickPicks } from '@/components/home/QuickPicks';
 import { NearbyPreview } from '@/components/home/NearbyPreview';
+import { WeatherBackground } from '@/components/weather/WeatherBackground';
 import type { Mood } from '@/lib/curation';
 import type { Venue } from '@/types';
 
@@ -88,7 +89,9 @@ export default function HomeScreen() {
     weather != null ? `${weather.label} today ${weather.emoji}` : null;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.warm }} edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: Colors.warm }}>
+      <WeatherBackground />
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ paddingTop: 4, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
@@ -315,7 +318,8 @@ export default function HomeScreen() {
           <LocationNudge onEnable={() => goResults('auto')} />
         )}
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
