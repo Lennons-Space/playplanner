@@ -68,30 +68,11 @@ import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
 import { VenueCard, Icon, IconBtn, Chip } from '@/components/ui';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { FALLBACK_LOCATION } from '@/constants/location';
-import { Colors } from '@/constants/theme';
+import { Colors, FontFamily } from '@/constants/theme';
 import { useMapStore } from '@/store/mapStore';
 import { supabase } from '@/lib/supabase';
 import type { Venue, Coordinates } from '@/types';
 
-// ── Design tokens (from tokens.jsx, mirrored here for inline styles) ──────────
-// We use inline styles throughout this file because dynamic colour values
-// (e.g. category chip colours) cannot be expressed as static Tailwind classes.
-// Static values reference the pp- token hex values directly from tailwind.config.js.
-const T = {
-  sand:     '#FBF6EC',
-  paper:    '#FFFFFF',
-  ink:      '#1D2630',
-  inkSoft:  '#4A5560',
-  mute:     '#7B8794',
-  line:     '#E6E2DB',
-  lineSoft: '#F1ECE2',
-  sky:      '#2FB8B0',
-  skyDeep:  '#1B8A85',
-  skySoft:  '#D4F0EE',
-  star:     '#F5A524',
-  leaf:     '#5BC08A',
-  leafSoft: '#DCF4E4',
-} as const;
 
 // Height of the bottom sheet peek bar (handle + header row).
 const PEEK_HEIGHT = 84;
@@ -118,18 +99,18 @@ function renderCluster(cluster: {
     >
       <View style={{
         width: outer, height: outer, borderRadius: outer / 2,
-        backgroundColor: Colors.sky + '30',
+        backgroundColor: Colors.accent + '30',
         alignItems: 'center', justifyContent: 'center',
       }}>
         <View style={{
           width: inner, height: inner, borderRadius: inner / 2,
-          backgroundColor: Colors.sky,
+          backgroundColor: Colors.accent,
           alignItems: 'center', justifyContent: 'center',
-          shadowColor: Colors.sky, shadowOpacity: 0.45, shadowRadius: 6,
+          shadowColor: Colors.accent, shadowOpacity: 0.45, shadowRadius: 6,
           shadowOffset: { width: 0, height: 3 }, elevation: 6,
         }}>
           <Text style={{
-            color: '#fff', fontFamily: 'Nunito-Bold',
+            color: '#fff', fontFamily: FontFamily.caption,
             fontSize: count < 10 ? 15 : count < 100 ? 13 : 11,
           }}>
             {count > 99 ? '99+' : String(count)}
@@ -159,9 +140,9 @@ const VenueRow = memo(function VenueRow({
       style={{
         flexDirection: 'row', alignItems: 'center',
         paddingHorizontal: 16, paddingVertical: 11,
-        backgroundColor: selected ? Colors.sky + '0F' : 'transparent',
+        backgroundColor: selected ? Colors.accent + '0F' : 'transparent',
         borderLeftWidth: selected ? 3 : 0,
-        borderLeftColor: Colors.sky,
+        borderLeftColor: Colors.accent,
       }}
       onPress={() => onPress(venue)}
       activeOpacity={0.7}
@@ -178,7 +159,7 @@ const VenueRow = memo(function VenueRow({
       ) : (
         <View style={{
           width: 44, height: 44, borderRadius: 12,
-          backgroundColor: venue.is_premium ? Colors.sun + '55' : Colors.sky + '20',
+          backgroundColor: venue.is_premium ? Colors.star + '55' : Colors.accent + '20',
           alignItems: 'center', justifyContent: 'center', marginRight: 12,
         }}>
           <Text style={{ fontSize: 20 }}>{venue.category?.icon ?? '📍'}</Text>
@@ -187,35 +168,35 @@ const VenueRow = memo(function VenueRow({
 
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: Colors.charcoal, flexShrink: 1 }}
+          <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: Colors.label, flexShrink: 1 }}
             numberOfLines={1}>
             {venue.name}
           </Text>
           {venue.is_premium && (
-            <View style={{ backgroundColor: Colors.sun, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
-              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 9, color: '#7A5800' }}>FEATURED</Text>
+            <View style={{ backgroundColor: Colors.star, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
+              <Text style={{ fontFamily: FontFamily.caption, fontSize: 9, color: '#7A5800' }}>FEATURED</Text>
             </View>
           )}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
           <Ionicons name="star" size={11} color={Colors.coral} />
-          <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 12, color: Colors.coral }}>
+          <Text style={{ fontFamily: FontFamily.caption, fontSize: 12, color: Colors.coral }}>
             {(venue.average_rating ?? 0).toFixed(1)}
           </Text>
-          <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 12, color: Colors.grey }}>
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
             · {venue.category?.name ?? 'Venue'}
           </Text>
         </View>
       </View>
 
-      <Ionicons name="chevron-forward" size={18} color={Colors.greyLighter} />
+      <Ionicons name="chevron-forward" size={18} color={Colors.separator} />
     </TouchableOpacity>
   );
 });
 
 // Stable separator — module-level so FlatList never sees it as changed.
 function VenueRowSeparator() {
-  return <View style={{ height: 1, backgroundColor: Colors.greyLighter, marginLeft: 72 }} />;
+  return <View style={{ height: 1, backgroundColor: Colors.separator, marginLeft: 72 }} />;
 }
 
 // ─── VenueMarker ──────────────────────────────────────────────────────────
@@ -252,7 +233,7 @@ const VenueMarker = memo(function VenueMarker({
 
   if (!validCoords) return null;
 
-  const categoryColor = venue.category?.color ?? Colors.sky;
+  const categoryColor = venue.category?.color ?? Colors.accent;
 
   return (
     <Marker coordinate={coordinate} tracksViewChanges={!ready || isSelected} onPress={handlePress} anchor={{ x: 0.5, y: 0.5 }}>
@@ -470,7 +451,7 @@ function MapScreen({
       const cat = v.category;
       if (cat && !seen.has(cat.id)) {
         seen.add(cat.id);
-        cats.push({ id: cat.id, name: cat.name, icon: cat.icon, color: cat.color ?? T.sky });
+        cats.push({ id: cat.id, name: cat.name, icon: cat.icon, color: cat.color ?? Colors.accent });
       }
     }
     return cats;
@@ -745,16 +726,16 @@ function MapScreen({
     <TouchableOpacity
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 6,
-        backgroundColor: activeFilterCount > 0 ? Colors.sky : Colors.sandDark,
+        backgroundColor: activeFilterCount > 0 ? Colors.accent : Colors.surface2,
         borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7,
-        borderWidth: activeFilterCount > 0 ? 0 : 1.5, borderColor: Colors.greyLighter,
+        borderWidth: activeFilterCount > 0 ? 0 : 1.5, borderColor: Colors.separator,
       }}
       onPress={onFiltersPress}
       accessibilityRole="button"
       accessibilityLabel={activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : 'Filters'}
     >
-      <Ionicons name="options-outline" size={14} color={activeFilterCount > 0 ? '#fff' : Colors.charcoal} />
-      <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: activeFilterCount > 0 ? '#fff' : Colors.charcoal }}>
+      <Ionicons name="options-outline" size={14} color={activeFilterCount > 0 ? '#fff' : Colors.label} />
+      <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: activeFilterCount > 0 ? '#fff' : Colors.label }}>
         {activeFilterCount > 0 ? `Filters · ${activeFilterCount}` : 'Filters'}
       </Text>
     </TouchableOpacity>
@@ -771,7 +752,7 @@ function MapScreen({
       {/* "All" chip */}
       <Chip
         active={selectedCategoryId === null}
-        color={T.sky}
+        color={Colors.accent}
         onPress={() => setSelectedCategoryId(null)}
         accessibilityLabel="All categories"
         accessibilityState={{ selected: selectedCategoryId === null }}
@@ -812,14 +793,14 @@ function MapScreen({
         shadowOffset: { width: 0, height: 2 }, elevation: 5, gap: 8,
       }} pointerEvents="auto">
         {geocoding ? (
-          <ActivityIndicator size="small" color={Colors.sky} />
+          <ActivityIndicator size="small" color={Colors.accent} />
         ) : (
-          <Ionicons name="location-outline" size={18} color={Colors.sky} />
+          <Ionicons name="location-outline" size={18} color={Colors.accent} />
         )}
         <TextInput
-          style={{ flex: 1, fontFamily: 'Nunito-Regular', fontSize: 14, color: Colors.charcoal, paddingVertical: 0 }}
+          style={{ flex: 1, fontFamily: FontFamily.body, fontSize: 14, color: Colors.label, paddingVertical: 0 }}
           placeholder="Search by postcode…"
-          placeholderTextColor={Colors.grey}
+          placeholderTextColor={Colors.label3}
           value={postcodeInput}
           onChangeText={setPostcodeInput}
           returnKeyType="search"
@@ -838,12 +819,12 @@ function MapScreen({
             accessibilityLabel="Clear postcode search"
             accessibilityRole="button"
           >
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: Colors.grey }}>✕</Text>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3 }}>✕</Text>
           </TouchableOpacity>
         )}
       </View>
       {postcodeError && (
-        <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 12, color: Colors.coral, marginTop: 6, marginLeft: 14 }}>
+        <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.coral, marginTop: 6, marginLeft: 14 }}>
           {postcodeError}
         </Text>
       )}
@@ -909,9 +890,9 @@ function MapScreen({
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
         }}>
           {venuesLoading ? (
-            <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: Colors.grey }}>Finding venues…</Text>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3 }}>Finding venues…</Text>
           ) : (
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 15, color: Colors.charcoal }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: Colors.label }}>
               {filteredVenues.length === 0
                 ? 'No venues found'
                 : `${filteredVenues.length} venue${filteredVenues.length === 1 ? '' : 's'} nearby`}
@@ -926,7 +907,7 @@ function MapScreen({
             paddingHorizontal: 14, paddingVertical: 9,
             borderRadius: 12, backgroundColor: weatherBanner.tint,
           }}>
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: '#1D2630' }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: '#1D2630' }}>
               {weatherBanner.text}
             </Text>
           </View>
@@ -937,7 +918,7 @@ function MapScreen({
             {categoryChipRow}
           </View>
         )}
-        <View style={{ height: 1, backgroundColor: Colors.greyLighter }} />
+        <View style={{ height: 1, backgroundColor: Colors.separator }} />
 
         {venuesLoading ? (
           <View style={{ paddingTop: 4 }}>
@@ -946,11 +927,11 @@ function MapScreen({
           </View>
         ) : filteredVenues.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-            <Ionicons name="map-outline" size={38} color={Colors.greyLighter} />
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 15, color: Colors.charcoal, textAlign: 'center', marginTop: 12 }}>
+            <Ionicons name="map-outline" size={38} color={Colors.separator} />
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: Colors.label, textAlign: 'center', marginTop: 12 }}>
               No venues found
             </Text>
-            <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 13, color: Colors.grey, textAlign: 'center', marginTop: 6 }}>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, textAlign: 'center', marginTop: 6 }}>
               Adjust your filters or move the map to find venues nearby.
             </Text>
           </View>
@@ -983,7 +964,7 @@ function MapScreen({
     <View style={{ flex: 1 }}>
       {/* ── Sand-background scrollable feed ─────────────────────────────── */}
       <ScrollView
-        style={{ flex: 1, backgroundColor: T.sand }}
+        style={{ flex: 1, backgroundColor: Colors.bg }}
         contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
       >
@@ -993,10 +974,10 @@ function MapScreen({
           flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
         }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: T.mute }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label3 }}>
               {getGreetingWord()} 👋
             </Text>
-            <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 26, color: T.ink, letterSpacing: -0.5, lineHeight: 30, marginTop: 2 }}>
+            <Text style={{ fontFamily: FontFamily.display, fontSize: 26, color: Colors.label, letterSpacing: -0.5, lineHeight: 30, marginTop: 2 }}>
               Where to today?
             </Text>
           </View>
@@ -1006,7 +987,7 @@ function MapScreen({
             accessibilityLabel="Notifications"
             shadow
           >
-            <Icon name="bell" size={18} color={T.ink} />
+            <Icon name="bell" size={18} color={Colors.label} />
           </IconBtn>
         </View>
 
@@ -1014,39 +995,39 @@ function MapScreen({
         <Pressable
           style={{
             marginHorizontal: 20, marginBottom: 14,
-            backgroundColor: T.paper, borderRadius: 9999,
+            backgroundColor: Colors.surface, borderRadius: 9999,
             paddingHorizontal: 16, paddingVertical: 12,
             flexDirection: 'row', alignItems: 'center', gap: 10,
-            borderWidth: 1, borderColor: T.line,
-            shadowColor: T.ink, shadowOffset: { width: 0, height: 2 },
+            borderWidth: 1, borderColor: Colors.separator,
+            shadowColor: Colors.label, shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
           }}
           onPress={() => router.push('/(tabs)/search')}
           accessibilityRole="button"
           accessibilityLabel="Search venues or a postcode"
         >
-          <Icon name="search" size={18} color={T.mute} />
-          <Text style={{ flex: 1, fontFamily: 'Nunito-Bold', fontSize: 14, color: T.mute }}>
+          <Icon name="search" size={18} color={Colors.label3} />
+          <Text style={{ flex: 1, fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3 }}>
             Search venues or a postcode…
           </Text>
         </Pressable>
 
         {/* ── Location row ────────────────────────────────────────────── */}
         <View style={{ paddingHorizontal: 20, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Icon name="pin" size={14} color={T.skyDeep} />
+          <Icon name="pin" size={14} color={Colors.accent} />
           {trackLocation && locLoading ? (
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: T.mute }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label3 }}>
               Getting location…
             </Text>
           ) : locationLabel ? (
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: T.ink }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label }}>
               {locationLabel}{' '}
-              <Text style={{ fontFamily: 'Nunito-Regular', color: T.mute }}>
+              <Text style={{ fontFamily: FontFamily.body, color: Colors.label3 }}>
                 · within {radiusMiles} mile{radiusMiles === 1 ? '' : 's'}
               </Text>
             </Text>
           ) : (
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: T.mute }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label3 }}>
               Nearby · within {radiusMiles} mile{radiusMiles === 1 ? '' : 's'}
             </Text>
           )}
@@ -1061,10 +1042,10 @@ function MapScreen({
             as the user pans — the mini-map is interactive. */}
         <View style={{ marginHorizontal: 20, marginBottom: 18 }}>
           <View style={{
-            height: 240, borderRadius: 24,
+            height: 240, borderRadius: 32,
             overflow: 'hidden',
-            borderWidth: 1, borderColor: T.line,
-            shadowColor: T.ink, shadowOffset: { width: 0, height: 4 },
+            borderWidth: 1, borderColor: Colors.separator,
+            shadowColor: Colors.label, shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
           }}>
             <ClusterMapView
@@ -1105,7 +1086,7 @@ function MapScreen({
                   cx="50%"
                   cy={120}
                   r={100}
-                  stroke="rgba(45,184,176,0.65)"
+                  stroke="rgba(76,141,246,0.65)"
                   strokeWidth={1.5}
                   strokeDasharray="6 4"
                   fill="none"
@@ -1115,10 +1096,10 @@ function MapScreen({
                 position: 'absolute',
                 top: 16,
                 alignSelf: 'center',
-                fontFamily: 'Nunito-Bold',
+                fontFamily: FontFamily.caption,
                 fontSize: 10,
-                color: 'rgba(45,184,176,0.95)',
-                backgroundColor: 'rgba(248,243,234,0.88)',
+                color: 'rgba(76,141,246,0.95)',
+                backgroundColor: 'rgba(241,240,244,0.88)',
                 paddingHorizontal: 7,
                 paddingVertical: 2,
                 borderRadius: 8,
@@ -1135,10 +1116,10 @@ function MapScreen({
             >
               <Text
                 style={{
-                  fontFamily: 'Nunito-Regular',
+                  fontFamily: FontFamily.body,
                   fontSize: 9,
                   color: 'rgba(29,38,48,0.80)',
-                  backgroundColor: 'rgba(248,243,234,0.88)',
+                  backgroundColor: 'rgba(241,240,244,0.88)',
                   paddingHorizontal: 6,
                   paddingVertical: 2,
                   borderRadius: 8,
@@ -1158,7 +1139,7 @@ function MapScreen({
                 onPress={recenter}
                 accessibilityLabel="Recenter map to your location"
               >
-                <Icon name="locate" size={16} color={T.ink} />
+                <Icon name="locate" size={16} color={Colors.label} />
               </IconBtn>
               <IconBtn
                 size={38}
@@ -1166,7 +1147,7 @@ function MapScreen({
                 onPress={onFiltersPress}
                 accessibilityLabel="Open filters"
               >
-                <Icon name="sliders" size={16} color={T.ink} />
+                <Icon name="sliders" size={16} color={Colors.label} />
               </IconBtn>
             </View>
 
@@ -1174,19 +1155,19 @@ function MapScreen({
             {selectedVenue && (
               <View style={{
                 position: 'absolute', bottom: 12, left: 12,
-                backgroundColor: T.paper, borderRadius: 12,
+                backgroundColor: Colors.surface, borderRadius: 12,
                 paddingHorizontal: 12, paddingVertical: 8,
                 flexDirection: 'row', alignItems: 'center', gap: 8,
-                borderWidth: 1, borderColor: T.line,
-                shadowColor: T.ink, shadowOffset: { width: 0, height: 4 },
+                borderWidth: 1, borderColor: Colors.separator,
+                shadowColor: Colors.label, shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.12, shadowRadius: 8, elevation: 4,
               }}>
-                <View style={{ width: 8, height: 8, borderRadius: 9999, backgroundColor: selectedVenue.category?.color ?? T.sky }} />
+                <View style={{ width: 8, height: 8, borderRadius: 9999, backgroundColor: selectedVenue.category?.color ?? Colors.accent }} />
                 <View>
-                  <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 12, color: T.ink }} numberOfLines={1}>
+                  <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: Colors.label }} numberOfLines={1}>
                     {selectedVenue.name}
                   </Text>
-                  <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 10, color: T.mute }}>
+                  <Text style={{ fontFamily: FontFamily.body, fontSize: 10, color: Colors.label3 }}>
                     {selectedVenue.category?.name ?? 'Venue'}
                   </Text>
                 </View>
@@ -1195,7 +1176,7 @@ function MapScreen({
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   accessibilityLabel="Close venue label"
                 >
-                  <Icon name="close" size={14} color={T.mute} />
+                  <Icon name="close" size={14} color={Colors.label3} />
                 </TouchableOpacity>
               </View>
             )}
@@ -1206,10 +1187,10 @@ function MapScreen({
             <TouchableOpacity
               style={{
                 position: 'absolute', bottom: 12, right: 12,
-                backgroundColor: T.ink, borderRadius: 9999,
+                backgroundColor: Colors.label, borderRadius: 9999,
                 paddingHorizontal: 12, paddingVertical: 8,
                 flexDirection: 'row', alignItems: 'center', gap: 6,
-                shadowColor: T.ink, shadowOffset: { width: 0, height: 4 },
+                shadowColor: Colors.label, shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.25, shadowRadius: 8, elevation: 5,
               }}
               onPress={() => onViewModeChange('list')}
@@ -1217,7 +1198,7 @@ function MapScreen({
               accessibilityRole="button"
             >
               <Icon name="map" size={13} color="#fff" />
-              <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 12, color: '#fff' }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: '#fff' }}>
                 See all
               </Text>
             </TouchableOpacity>
@@ -1234,7 +1215,7 @@ function MapScreen({
             >
               <Chip
                 active={selectedCategoryId === null}
-                color={T.sky}
+                color={Colors.accent}
                 onPress={() => setSelectedCategoryId(null)}
                 accessibilityLabel="All categories"
                 accessibilityState={{ selected: selectedCategoryId === null }}
@@ -1267,7 +1248,7 @@ function MapScreen({
             paddingHorizontal: 14, paddingVertical: 10,
             borderRadius: 14, backgroundColor: weatherBanner.tint,
           }}>
-            <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: '#1D2630' }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: '#1D2630' }}>
               {weatherBanner.text}
             </Text>
           </View>
@@ -1279,11 +1260,11 @@ function MapScreen({
           flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
         }}>
           <View>
-            <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 18, color: T.ink, letterSpacing: -0.3 }}>
+            <Text style={{ fontFamily: FontFamily.heading, fontSize: 18, color: Colors.label, letterSpacing: -0.3 }}>
               Open right now
             </Text>
             {!venuesLoading && (
-              <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 12, color: T.mute, marginTop: 1, opacity: venuesFetching ? 0.5 : 1 }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3, marginTop: 1, opacity: venuesFetching ? 0.5 : 1 }}>
                 {openVenueCount} place{openVenueCount === 1 ? '' : 's'} within {radiusMiles} mile{radiusMiles === 1 ? '' : 's'}
               </Text>
             )}
@@ -1296,7 +1277,7 @@ function MapScreen({
               accessibilityRole="button"
               accessibilityLabel="See all venues"
             >
-              <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 12, color: T.skyDeep }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: Colors.accent }}>
                 See all
               </Text>
             </TouchableOpacity>
@@ -1313,21 +1294,21 @@ function MapScreen({
             </>
           ) : venuesError ? (
             <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-              <Ionicons name="cloud-offline-outline" size={38} color={Colors.greyLighter} />
-              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 15, color: Colors.charcoal, marginTop: 12 }}>
+              <Ionicons name="cloud-offline-outline" size={38} color={Colors.separator} />
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: Colors.label, marginTop: 12 }}>
                 Could not load venues
               </Text>
-              <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 13, color: Colors.grey, marginTop: 6, textAlign: 'center' }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center' }}>
                 Check your connection and pull down to refresh.
               </Text>
             </View>
           ) : filteredVenues.length === 0 ? (
             <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-              <Ionicons name="map-outline" size={38} color={Colors.greyLighter} />
-              <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 15, color: Colors.charcoal, marginTop: 12, textAlign: 'center' }}>
+              <Ionicons name="map-outline" size={38} color={Colors.separator} />
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: Colors.label, marginTop: 12, textAlign: 'center' }}>
                 No venues in this area
               </Text>
-              <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 13, color: Colors.grey, marginTop: 6, textAlign: 'center' }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center' }}>
                 Pan the map or adjust your filters to explore more.
               </Text>
             </View>
@@ -1353,9 +1334,9 @@ function MapScreen({
 // ─── Pill styles ───────────────────────────────────────────────────────────
 const pillStyles = StyleSheet.create({
   tab:           { paddingHorizontal: 20, paddingVertical: 7, borderRadius: 999 },
-  tabActive:     { backgroundColor: Colors.sky },
-  labelActive:   { fontFamily: 'Nunito-Bold', fontSize: 14, color: '#fff' },
-  labelInactive: { fontFamily: 'Nunito-Regular', fontSize: 14, color: Colors.charcoal },
+  tabActive:     { backgroundColor: Colors.accent },
+  labelActive:   { fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#fff' },
+  labelInactive: { fontFamily: FontFamily.body, fontSize: 14, color: Colors.label },
 });
 
 // ─── MapWithLocation ───────────────────────────────────────────────────────
@@ -1423,7 +1404,7 @@ export default function ExploreScreen() {
   const handleViewModeChange   = useCallback((mode: 'map' | 'list') => setViewMode(mode), []);
 
   // State 1: still reading SecureStore — render nothing to avoid consent prompt flash.
-  if (status === 'checking') return <View style={{ flex: 1, backgroundColor: Colors.slate }} />;
+  if (status === 'checking') return <View style={{ flex: 1, backgroundColor: Colors.bg }} />;
 
   // State 2: consent not yet given — show plain-English prompt first.
   if (status === 'undecided') {
