@@ -12,12 +12,12 @@ import { StyleSheet } from 'react-native';
 export const Colors = {
 
   // ── Screen backgrounds ──────────────────────────────────
-  bg:        '#F1F0F4',   // dark: '#0C0C11'
-  warm:      '#FBFAFC',   // dark: '#0E0E14' — home screen base
+  bg:        '#F6F1E6',   // dark: '#0C0C11'
+  warm:      '#FBF6EC',   // dark: '#0E0E14' — home screen base
 
   // ── Surface / card backgrounds ──────────────────────────
   surface:   '#FFFFFF',   // dark: '#17171F'
-  surface2:  '#F5F4F8',   // dark: '#1F1F29' — elevated panels
+  surface2:  '#F2EBDD',   // dark: '#1F1F29' — elevated panels
 
   // ── Text ────────────────────────────────────────────────
   label:     '#16151A',                      // dark: '#F4F4F6'
@@ -132,7 +132,7 @@ export const BorderRadius = {
   intentChipIcon:  13,   // intent chip emoji icon box
   section:         14,   // grouped info card / settings section
   chip:            18,   // intent chips, search bar
-  card:            20,   // all standard cards
+  card:            24,   // all standard cards
   featured:        26,   // featured hero card
   pill:            999,  // age filter, facility tags, trust pills
 

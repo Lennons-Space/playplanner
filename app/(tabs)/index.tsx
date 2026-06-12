@@ -35,9 +35,7 @@ import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 import { Icon } from '@/components/ui';
 import { QuickPicks } from '@/components/home/QuickPicks';
 import { NearbyPreview } from '@/components/home/NearbyPreview';
-import { QuickFilterChips } from '@/components/home/QuickFilterChips';
 import type { Mood } from '@/lib/curation';
-import type { QuickFilterId } from '@/lib/quickFilters';
 import type { Venue } from '@/types';
 
 // ── Age filter pills ─────────────────────────────────────────────────────
@@ -67,34 +65,18 @@ export default function HomeScreen() {
   // pass undefined and let the hook return null gracefully.
   const weather = useWeather(undefined, undefined);
 
-  // Quick filter chips state — persists while the user is on this screen.
-  // Cleared each time the parent navigates away (component unmounts).
-  const [activeFilters, setActiveFilters] = useState<QuickFilterId[]>([]);
-
   // Age filter toggle state (single-select for now)
   const [activeAge, setActiveAge] = useState<string | null>(null);
 
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? null;
 
-  // Toggle a quick filter chip on/off. Multiple chips can be active (AND logic).
-  const toggleFilter = (id: QuickFilterId) => {
-    setActiveFilters((prev) =>
-      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
-    );
-  };
-
   const toggleAge = (id: string) => {
     setActiveAge((prev) => (prev === id ? null : id));
   };
 
-  // Navigate to results. When quick filters are active, pass them as a
-  // comma-separated URL param so the results screen can apply them.
+  // Navigate to results, carrying the selected mood/intent.
   const goResults = (mood: Mood) => {
-    const params = new URLSearchParams({ mood });
-    if (activeFilters.length > 0) {
-      params.set('quickFilters', activeFilters.join(','));
-    }
-    router.push(`/explore/results?${params.toString()}`);
+    router.push(`/explore/results?${new URLSearchParams({ mood }).toString()}`);
   };
 
   const openSearch = () => router.push('/(tabs)/search');
@@ -214,10 +196,10 @@ export default function HomeScreen() {
           <Text
             style={{
               fontFamily: FontFamily.display,
-              fontSize: 28,
+              fontSize: 32,
               color: Colors.label,
               letterSpacing: -0.8,
-              lineHeight: 34,
+              lineHeight: 38,
             }}
           >
             {"What's the plan today?"}
@@ -300,7 +282,7 @@ export default function HomeScreen() {
                     paddingHorizontal: 14,
                     paddingVertical: 7,
                     borderRadius: BorderRadius.pill,
-                    backgroundColor: active ? Colors.accent : Colors.surface,
+                    backgroundColor: active ? Colors.accent : Colors.surface2,
                     borderWidth: 1,
                     borderColor: active ? Colors.accent : Colors.separator,
                     opacity: pressed ? 0.75 : 1,
@@ -324,13 +306,6 @@ export default function HomeScreen() {
               );
             })}
           </View>
-        </View>
-
-        {/* ── Quick filter chips ────────────────────────────────────── */}
-        {/* These narrow the results before the parent even leaves this screen.
-            Shown below the age pills. Hidden label variant (inline row only). */}
-        <View style={{ marginBottom: 26 }}>
-          <QuickFilterChips selected={activeFilters} onToggle={toggleFilter} />
         </View>
 
         {/* ── Nearby teaser (consent-aware) ─────────────────────────── */}
