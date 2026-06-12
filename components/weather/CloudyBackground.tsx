@@ -10,12 +10,11 @@ import {
   seededNodes,
   useLoop,
   type SeededNode,
+  type WeatherPalette,
 } from './WeatherLayer';
 import { useAnimatedStyle, interpolate } from 'react-native-reanimated';
 
-const C = ATMOSPHERE.cloudy;
-
-function Cloud({ node, animate, w, h }: { node: SeededNode; animate: boolean; w: number; h: number }) {
+function Cloud({ node, animate, w, h, c }: { node: SeededNode; animate: boolean; w: number; h: number; c: WeatherPalette }) {
   const t = useLoop(animate, 22000 + node.r * 14000, node.delay, true);
   const width = 280 + node.r * 220;
   const height = width * 0.42;
@@ -37,7 +36,7 @@ function Cloud({ node, animate, w, h }: { node: SeededNode; animate: boolean; w:
           width,
           height,
           borderRadius: height / 2,
-          backgroundColor: node.r > 0.5 ? C.tintA : C.tintB,
+          backgroundColor: node.r > 0.5 ? c.tintA : c.tintB,
         },
         style,
       ]}
@@ -45,14 +44,15 @@ function Cloud({ node, animate, w, h }: { node: SeededNode; animate: boolean; w:
   );
 }
 
-export function CloudyBackground({ animate }: { animate: boolean }) {
+export function CloudyBackground({ animate, palette }: { animate: boolean; palette?: WeatherPalette }) {
   const { width: w, height: h } = useWindowDimensions();
+  const c = palette ?? ATMOSPHERE.cloudy;
   const clouds = useMemo(() => seededNodes(4, 303), []);
   return (
-    <WeatherLayer atmosphere="cloudy">
+    <WeatherLayer atmosphere="cloudy" palette={palette}>
       <AnimatedView style={StyleSheet.absoluteFill}>
         {clouds.map((n, i) => (
-          <Cloud key={`c${i}`} node={n} animate={animate} w={w} h={h} />
+          <Cloud key={`c${i}`} node={n} animate={animate} w={w} h={h} c={c} />
         ))}
       </AnimatedView>
     </WeatherLayer>

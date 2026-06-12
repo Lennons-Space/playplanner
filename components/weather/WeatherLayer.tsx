@@ -26,28 +26,23 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import type { Atmosphere, WeatherPalette } from '@/lib/weatherTheme';
 
 export const AnimatedView = Animated.View;
 
 // ── Atmosphere kinds ───────────────────────────────────────────────────────
-export type Atmosphere = 'sunny' | 'cloudy' | 'rain' | 'snow' | 'night';
+// Canonical type + condition mapping live in lib/weatherTheme (pure, testable).
+// Re-exported here so the many existing `from './WeatherLayer'` imports keep
+// working unchanged.
+export type { Atmosphere, WeatherPalette } from '@/lib/weatherTheme';
 
-// ── Palette tokens ─────────────────────────────────────────────────────────
-// Every base stays in the cream/sand PlayPlanner family so the near-black
-// chrome text (#16151A) keeps contrast. Rain/Night lean cool + dusky for mood
-// without going to a literal navy that would bury the text on top.
-export const ATMOSPHERE: Record<
-  Atmosphere,
-  {
-    /** Base wash gradient (top → bottom). */
-    base: readonly [string, string, string];
-    /** Soft accent tints used by the moving shapes. */
-    tintA: string;
-    tintB: string;
-    /** Small particles (dust / stars / flakes). */
-    particle: string;
-  }
-> = {
+// ── Ambient palette tokens ─────────────────────────────────────────────────
+// The DEFAULT (ambient) palette used by Search / Results / Map. Every base
+// stays in the cream/sand PlayPlanner family so the near-black chrome text
+// (#16151A) keeps contrast on those screens, which do NOT adapt their text.
+// Home opts into the cinematic WEATHER_THEMES palette (deep navy rain/night)
+// by passing an explicit `palette` override — see WeatherBackground immersive.
+export const ATMOSPHERE: Record<Atmosphere, WeatherPalette> = {
   sunny: {
     base: ['#FDFAF2', '#FBF6EC', '#F7EEDB'],
     tintA: 'rgba(255, 206, 120, 0.20)',
@@ -85,12 +80,15 @@ export const ATMOSPHERE: Record<
 // wash gradient; children are the moving shapes for the chosen atmosphere.
 export function WeatherLayer({
   atmosphere,
+  palette,
   children,
 }: {
   atmosphere: Atmosphere;
+  /** Optional palette override (immersive mode). Defaults to the ambient set. */
+  palette?: WeatherPalette;
   children?: React.ReactNode;
 }) {
-  const colors = ATMOSPHERE[atmosphere];
+  const colors = palette ?? ATMOSPHERE[atmosphere];
   return (
     <View
       pointerEvents="none"

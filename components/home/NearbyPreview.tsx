@@ -26,13 +26,22 @@ import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { DEFAULT_FILTERS } from '@/types';
 import type { Venue, Category } from '@/types';
+import type { WeatherTheme } from '@/lib/weatherTheme';
 
 export interface NearbyPreviewProps {
   onSeeAll: () => void;
   onVenuePress: (venue: Venue) => void;
+  /**
+   * Optional WeatherTheme from Home. Drives the section header + empty/error
+   * text colours AND is forwarded to each VenueCard so the cards turn to glass
+   * on dark (rain/night) skies. Omitted / light theme → standard solid look.
+   */
+  theme?: WeatherTheme;
 }
 
-export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
+export function NearbyPreview({ onSeeAll, onVenuePress, theme }: NearbyPreviewProps) {
+  const headerColor = theme?.text.primary ?? Colors.label;
+  const mutedColor = theme?.text.tertiary ?? Colors.label3;
   const { coords, isLoading: locLoading } = useLocation();
 
   const ready = !!coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
@@ -97,7 +106,7 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
         marginBottom: 10,
       }}
     >
-      <Text style={{ fontFamily: FontFamily.heading, fontSize: 18, color: Colors.label, letterSpacing: -0.3 }}>
+      <Text style={{ fontFamily: FontFamily.heading, fontSize: 18, color: headerColor, letterSpacing: -0.3 }}>
         Good for today
       </Text>
       <TouchableOpacity onPress={onSeeAll} accessibilityRole="button" accessibilityLabel="See all suggestions">
@@ -117,13 +126,13 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
     );
   } else if (error) {
     body = (
-      <Text style={{ paddingHorizontal: 20, fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3 }}>
+      <Text style={{ paddingHorizontal: 20, fontFamily: FontFamily.body, fontSize: 13, color: mutedColor }}>
         Couldn't load nearby places. Pull to refresh, or tap "Find something for us".
       </Text>
     );
   } else if (curated.length === 0) {
     body = (
-      <Text style={{ paddingHorizontal: 20, fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3 }}>
+      <Text style={{ paddingHorizontal: 20, fontFamily: FontFamily.body, fontSize: 13, color: mutedColor }}>
         Nothing close by right now — try "Find something for us" to widen the search.
       </Text>
     );
@@ -137,6 +146,7 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
             onPress={() => onVenuePress(venue)}
             weatherBadge={weather ? getWeatherBadge(venue.category?.slug, weather.condition) : null}
             familyBadges={generateRecommendationReasons(venue)}
+            theme={theme}
           />
         ))}
       </View>

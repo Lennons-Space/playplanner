@@ -13,6 +13,7 @@ import type { Venue } from '../../types';
 import { getCategoryMeta } from '../../constants/categories';
 import { computeIsOpenNow } from '../../lib/venueAttributes';
 import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
+import type { WeatherTheme } from '@/lib/weatherTheme';
 import { CategoryPlaceholder } from './CategoryPlaceholder';
 import { Icon } from './Icon';
 import { Stars } from './Stars';
@@ -78,11 +79,30 @@ export interface VenueCardProps {
    * lib/recommendations/recommendationReasons.ts.
    */
   familyBadges?: string[];
+  /**
+   * Optional WeatherTheme. When it's a dark/"glass" theme (rain/night on Home),
+   * the card switches from solid white paper to a soft frosted-glass surface
+   * with light text so it reads as part of the weather environment. Omitted or
+   * a light theme → byte-identical to the original solid card, so every other
+   * screen that renders VenueCard is unaffected.
+   */
+  theme?: WeatherTheme;
 }
 
-export function VenueCard({ venue, saved = false, onToggleSave, onPress, weatherBadge, familyBadges }: VenueCardProps) {
+export function VenueCard({ venue, saved = false, onToggleSave, onPress, weatherBadge, familyBadges, theme }: VenueCardProps) {
   const categorySlug = venue.category?.slug ?? null;
   const meta = getCategoryMeta(categorySlug);
+
+  // ── Glass theming (rain/night on Home only) ──────────────────────────────
+  // Every override is gated on `glass`; when false we use the exact original
+  // Colors so the card is unchanged everywhere else.
+  const glass = theme?.card.style === 'glass';
+  const cardBg = glass ? theme!.card.background : Colors.surface;
+  const cardBorder = glass ? theme!.card.border : Colors.separator;
+  const nameColor = glass ? theme!.text.primary : Colors.label; // card title
+  const strongColor = glass ? theme!.text.primary : Colors.label; // rating value
+  const secondaryColor = glass ? theme!.text.secondary : Colors.label2; // distance
+  const mutedColor = glass ? theme!.text.tertiary : Colors.label3; // ages / dots / "no reviews"
 
   const openStatus = computeIsOpenNow(venue);
   const distanceText = formatDistance(venue.distance_km);
@@ -95,20 +115,21 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
     <Pressable
       onPress={onPress}
       style={{
-        backgroundColor: Colors.surface,
+        backgroundColor: cardBg,
         borderRadius: BorderRadius.card,
         padding: 10,
         flexDirection: 'row',
         gap: 12,
         borderWidth: 1,
-        borderColor: Colors.separator,
-        // Retain subtle elevation — new design uses border as the primary
-        // card boundary, with a lighter shadow underneath for depth on Android.
-        shadowColor: Colors.label,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 2,
+        borderColor: cardBorder,
+        // Solid cards keep the crisp border + tight shadow. Glass cards use a
+        // softer, more diffuse drop and no Android elevation (elevation on a
+        // translucent surface reads as a hard grey slab).
+        shadowColor: glass ? '#000000' : Colors.label,
+        shadowOffset: { width: 0, height: glass ? 8 : 2 },
+        shadowOpacity: glass ? 0.18 : 0.05,
+        shadowRadius: glass ? 18 : 8,
+        elevation: glass ? 0 : 2,
       }}
     >
       {/* ── Photo rail ── */}
@@ -200,7 +221,7 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
             style={{
               fontFamily: FontFamily.display,
               fontSize: 17,
-              color: Colors.label,
+              color: nameColor,
               lineHeight: 20,
               flexShrink: 1,
             }}
@@ -219,7 +240,7 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
               <Icon
                 name={saved ? 'heartFill' : 'heart'}
                 size={20}
-                color={saved ? Colors.coral : Colors.label3}
+                color={saved ? Colors.coral : mutedColor}
               />
             </Pressable>
           )}
@@ -247,7 +268,7 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
             </Text>
           </View>
           {(venue.min_age != null || venue.max_age != null) && (
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: mutedColor }}>
               Ages {venue.min_age}–{venue.max_age}
             </Text>
           )}
@@ -258,24 +279,24 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
           {hasRating ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <Stars rating={venue.average_rating} size={12} />
-              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: Colors.label, marginLeft: 3 }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: strongColor, marginLeft: 3 }}>
                 {venue.average_rating.toFixed(1)}
               </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: mutedColor }}>
                 ({venue.review_count})
               </Text>
             </View>
           ) : (
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: mutedColor }}>
               No reviews yet
             </Text>
           )}
           {distanceText != null && (
             <>
-              <Text style={{ color: Colors.label3 }}>{'·'}</Text>
+              <Text style={{ color: mutedColor }}>{'·'}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <Icon name="walk" size={13} color={Colors.label3} />
-                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: Colors.label2 }}>
+                <Icon name="walk" size={13} color={mutedColor} />
+                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: secondaryColor }}>
                   {distanceText}
                 </Text>
               </View>

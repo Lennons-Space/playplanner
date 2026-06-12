@@ -12,6 +12,7 @@
 import { ScrollView, Pressable, Text, View } from 'react-native';
 import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 import type { Mood } from '@/lib/curation';
+import type { WeatherTheme } from '@/lib/weatherTheme';
 
 interface Pick {
   mood: Mood;
@@ -35,9 +36,21 @@ const PICKS: Pick[] = [
 
 export interface QuickPicksProps {
   onPick: (mood: Mood) => void;
+  /**
+   * Optional WeatherTheme. On a dark/"glass" theme (rain/night on Home) the
+   * chips become frosted glass with light labels so they belong to the weather
+   * environment; the bright emoji icon boxes are kept (they pop on the dark sky
+   * and let a parent read the mood instantly). Omitted / light theme → the
+   * original solid white paper chips.
+   */
+  theme?: WeatherTheme;
 }
 
-export function QuickPicks({ onPick }: QuickPicksProps) {
+export function QuickPicks({ onPick, theme }: QuickPicksProps) {
+  const glass = theme?.card.style === 'glass';
+  const chipBg = glass ? theme!.card.background : Colors.surface;
+  const chipBorder = glass ? theme!.card.border : Colors.separator;
+  const labelColor = glass ? theme!.text.primary : Colors.label;
   return (
     <ScrollView
       horizontal
@@ -61,19 +74,20 @@ export function QuickPicks({ onPick }: QuickPicksProps) {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 9,
-            backgroundColor: Colors.surface,
+            backgroundColor: chipBg,
             borderRadius: BorderRadius.chip,
             borderWidth: 1,
-            borderColor: Colors.separator,
+            borderColor: chipBorder,
             paddingVertical: 10,
             paddingHorizontal: 12,
             opacity: pressed ? 0.7 : 1,
-            // Subtle shadow so chips lift off the bg
-            shadowColor: Colors.label,
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.06,
-            shadowRadius: 3,
-            elevation: 2,
+            // Solid chips lift off the paper bg with a tight shadow. Glass chips
+            // use a softer, more diffuse drop and no Android elevation.
+            shadowColor: glass ? '#000000' : Colors.label,
+            shadowOffset: { width: 0, height: glass ? 6 : 1 },
+            shadowOpacity: glass ? 0.16 : 0.06,
+            shadowRadius: glass ? 12 : 3,
+            elevation: glass ? 0 : 2,
           })}
         >
           {/* Coloured emoji icon box */}
@@ -95,7 +109,7 @@ export function QuickPicks({ onPick }: QuickPicksProps) {
             style={{
               fontFamily: FontFamily.bodyStrong,
               fontSize: 14,
-              color: Colors.label,
+              color: labelColor,
             }}
           >
             {p.label}

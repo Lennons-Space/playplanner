@@ -31,6 +31,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfile } from '@/hooks/useAuth';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { useWeather } from '@/hooks/useWeather';
+import { useWeatherTheme } from '@/hooks/useWeatherTheme';
+import type { WeatherTheme } from '@/lib/weatherTheme';
 import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 import { Icon } from '@/components/ui';
 import { QuickPicks } from '@/components/home/QuickPicks';
@@ -66,6 +68,22 @@ export default function HomeScreen() {
   // pass undefined and let the hook return null gracefully.
   const weather = useWeather(undefined, undefined);
 
+  // ── Weather theme (drives adaptive chrome) ──────────────────────────────
+  // Home is the hero screen: its text and cards adapt to the weather, not just
+  // the background. In light atmospheres (sunny/cloudy/snow) these tokens equal
+  // the standard Colors, so the screen looks exactly as before; in dark
+  // atmospheres (rain/night) text goes light and cards go "glass".
+  const theme = useWeatherTheme();
+  const isDark = theme.mode === 'light'; // light text ⇒ dark sky behind
+  const isGlass = theme.card.style === 'glass';
+  // Card/pill surface — solid white in light atmospheres, frosted glass on dark.
+  const cardBg = isDark ? theme.card.background : Colors.surface;
+  const cardBorder = isDark ? theme.card.border : Colors.separator;
+  // Drop shadows read as muddy smears on dark/glass, so suppress them there.
+  const cardShadowOpacity = isDark ? 0 : 0.06;
+  // Inset fill (search-pill filter chip) needs to be a light tint on dark.
+  const insetFill = isGlass ? 'rgba(255,255,255,0.14)' : Colors.fill;
+
   // Age filter toggle state (single-select for now)
   const [activeAge, setActiveAge] = useState<string | null>(null);
 
@@ -90,7 +108,7 @@ export default function HomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.warm }}>
-      <WeatherBackground />
+      <WeatherBackground mode="immersive" />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ paddingTop: 4, paddingBottom: 120 }}
@@ -110,9 +128,9 @@ export default function HomeScreen() {
         >
           {/* Location label — static for now; a future iteration will use reverse geocode. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Icon name="locate" size={13} color={Colors.label3} />
+            <Icon name="locate" size={13} color={theme.text.tertiary} />
             <Text
-              style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3 }}
+              style={{ fontFamily: FontFamily.body, fontSize: 13, color: theme.text.tertiary }}
               accessibilityRole="text"
               accessibilityLabel="Your area"
             >
@@ -133,18 +151,18 @@ export default function HomeScreen() {
               paddingHorizontal: 11,
               paddingVertical: 7,
               borderRadius: BorderRadius.pill,
-              backgroundColor: Colors.surface,
+              backgroundColor: cardBg,
               borderWidth: 1,
-              borderColor: Colors.separator,
+              borderColor: cardBorder,
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.06,
+              shadowOpacity: cardShadowOpacity,
               shadowRadius: 3,
-              elevation: 2,
+              elevation: isDark ? 0 : 2,
             }}
           >
-            <Icon name="map" size={14} color={Colors.accent} />
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label }}>
+            <Icon name="map" size={14} color={theme.accent} />
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: theme.text.primary }}>
               Map
             </Text>
           </TouchableOpacity>
@@ -163,7 +181,7 @@ export default function HomeScreen() {
             gap: 8,
           }}
         >
-          <Text style={{ fontFamily: FontFamily.body, fontSize: 15, color: Colors.label2 }}>
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 15, color: theme.text.secondary }}>
             {`Hi ${firstName ?? 'there'} 👋`}
           </Text>
 
@@ -175,19 +193,19 @@ export default function HomeScreen() {
                 paddingHorizontal: 10,
                 paddingVertical: 5,
                 borderRadius: BorderRadius.pill,
-                backgroundColor: Colors.surface,
+                backgroundColor: cardBg,
                 borderWidth: 1,
-                borderColor: Colors.separator,
+                borderColor: cardBorder,
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.05,
+                shadowOpacity: isDark ? 0 : 0.05,
                 shadowRadius: 2,
-                elevation: 1,
+                elevation: isDark ? 0 : 1,
               }}
               accessibilityRole="text"
               accessibilityLabel={`Weather: ${weatherPill}`}
             >
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label2 }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: theme.text.secondary }}>
                 {weatherPill}
               </Text>
             </View>
@@ -200,7 +218,7 @@ export default function HomeScreen() {
             style={{
               fontFamily: FontFamily.display,
               fontSize: 32,
-              color: Colors.label,
+              color: theme.text.primary,
               letterSpacing: -0.8,
               lineHeight: 38,
             }}
@@ -219,28 +237,28 @@ export default function HomeScreen() {
             style={({ pressed }) => ({
               flexDirection: 'row',
               alignItems: 'center',
-              backgroundColor: Colors.surface,
+              backgroundColor: cardBg,
               borderRadius: BorderRadius.pill,
               borderWidth: 1,
-              borderColor: Colors.separator,
+              borderColor: cardBorder,
               paddingHorizontal: 16,
               paddingVertical: 13,
               gap: 10,
               opacity: pressed ? 0.85 : 1,
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.06,
+              shadowOpacity: cardShadowOpacity,
               shadowRadius: 4,
-              elevation: 2,
+              elevation: isDark ? 0 : 2,
             })}
           >
-            <Icon name="search" size={17} color={Colors.label3} />
+            <Icon name="search" size={17} color={theme.text.tertiary} />
             <Text
               style={{
                 flex: 1,
                 fontFamily: FontFamily.body,
                 fontSize: 15,
-                color: Colors.label3,
+                color: theme.text.tertiary,
               }}
               numberOfLines={1}
             >
@@ -252,12 +270,12 @@ export default function HomeScreen() {
                 width: 30,
                 height: 30,
                 borderRadius: 10,
-                backgroundColor: Colors.fill,
+                backgroundColor: insetFill,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Icon name="filter" size={15} color={Colors.label2} />
+              <Icon name="filter" size={15} color={theme.text.secondary} />
             </View>
           </Pressable>
         </View>
@@ -265,7 +283,7 @@ export default function HomeScreen() {
         {/* ── Intent chips ──────────────────────────────────────────── */}
         {/* Horizontal scroll row — each chip maps to a Mood + curation. */}
         <View style={{ marginBottom: 18 }}>
-          <QuickPicks onPick={goResults} />
+          <QuickPicks onPick={goResults} theme={theme} />
         </View>
 
         {/* ── Age filter pills ──────────────────────────────────────── */}
@@ -285,22 +303,26 @@ export default function HomeScreen() {
                     paddingHorizontal: 14,
                     paddingVertical: 7,
                     borderRadius: BorderRadius.pill,
-                    backgroundColor: active ? Colors.accent : Colors.surface2,
+                    backgroundColor: active
+                      ? theme.accent
+                      : isDark
+                        ? theme.card.background
+                        : Colors.surface2,
                     borderWidth: 1,
-                    borderColor: active ? Colors.accent : Colors.separator,
+                    borderColor: active ? theme.accent : cardBorder,
                     opacity: pressed ? 0.75 : 1,
                     shadowColor: Colors.label,
                     shadowOffset: { width: 0, height: 1 },
-                    shadowOpacity: active ? 0 : 0.05,
+                    shadowOpacity: active || isDark ? 0 : 0.05,
                     shadowRadius: 2,
-                    elevation: active ? 0 : 1,
+                    elevation: active || isDark ? 0 : 1,
                   })}
                 >
                   <Text
                     style={{
                       fontFamily: FontFamily.bodyStrong,
                       fontSize: 13,
-                      color: active ? '#FFFFFF' : Colors.label,
+                      color: active ? '#FFFFFF' : theme.text.primary,
                     }}
                   >
                     {f.label}
@@ -313,9 +335,13 @@ export default function HomeScreen() {
 
         {/* ── Nearby teaser (consent-aware) ─────────────────────────── */}
         {status === 'granted' ? (
-          <NearbyPreview onSeeAll={() => goResults('auto')} onVenuePress={openVenue} />
+          <NearbyPreview
+            onSeeAll={() => goResults('auto')}
+            onVenuePress={openVenue}
+            theme={theme}
+          />
         ) : status === 'checking' ? null : (
-          <LocationNudge onEnable={() => goResults('auto')} />
+          <LocationNudge onEnable={() => goResults('auto')} theme={theme} />
         )}
       </ScrollView>
       </SafeAreaView>
@@ -327,7 +353,14 @@ export default function HomeScreen() {
 // Shown when location consent has not been granted. Calm, honest, no dark
 // patterns: it explains the benefit and routes into the results flow, where
 // the actual consent prompt is presented (consent-on-intent).
-function LocationNudge({ onEnable }: { onEnable: () => void }) {
+function LocationNudge({ onEnable, theme }: { onEnable: () => void; theme: WeatherTheme }) {
+  // Mirror the card glass treatment so the pre-consent state stays part of the
+  // weather environment on dark (rain/night) skies; unchanged on light themes.
+  const glass = theme.card.style === 'glass';
+  const cardBg = glass ? theme.card.background : Colors.surface;
+  const cardBorder = glass ? theme.card.border : Colors.separator;
+  // Keep the accent halo readable on glass with a slightly stronger tint.
+  const iconBg = glass ? 'rgba(255,255,255,0.16)' : Colors.accentLight;
   return (
     <View style={{ paddingHorizontal: 20 }}>
       <Pressable
@@ -335,15 +368,19 @@ function LocationNudge({ onEnable }: { onEnable: () => void }) {
         accessibilityRole="button"
         accessibilityLabel="See what's near you"
         style={({ pressed }) => ({
-          backgroundColor: Colors.surface,
+          backgroundColor: cardBg,
           borderRadius: BorderRadius.card,
           borderWidth: 1,
-          borderColor: Colors.separator,
+          borderColor: cardBorder,
           padding: 18,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 14,
           opacity: pressed ? 0.8 : 1,
+          shadowColor: glass ? '#000000' : undefined,
+          shadowOffset: glass ? { width: 0, height: 8 } : undefined,
+          shadowOpacity: glass ? 0.18 : undefined,
+          shadowRadius: glass ? 18 : undefined,
         })}
       >
         <View
@@ -351,22 +388,22 @@ function LocationNudge({ onEnable }: { onEnable: () => void }) {
             width: 44,
             height: 44,
             borderRadius: 14,
-            backgroundColor: Colors.accentLight,
+            backgroundColor: iconBg,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Icon name="locate" size={20} color={Colors.accent} />
+          <Icon name="locate" size={20} color={glass ? theme.text.primary : Colors.accent} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontFamily: FontFamily.heading, fontSize: 15, color: Colors.label }}>
+          <Text style={{ fontFamily: FontFamily.heading, fontSize: 15, color: theme.text.primary }}>
             {"See what's near you"}
           </Text>
-          <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 2 }}>
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: theme.text.tertiary, marginTop: 2 }}>
             Turn on location to get suggestions tailored to where you are.
           </Text>
         </View>
-        <Icon name="chevR" size={18} color={Colors.label3} />
+        <Icon name="chevR" size={18} color={theme.text.tertiary} />
       </Pressable>
     </View>
   );

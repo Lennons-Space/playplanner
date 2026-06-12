@@ -25,8 +25,9 @@ jest.mock('@/hooks/useWeather', () => ({
   useWeather: (...args: unknown[]) => mockUseWeather(...args),
 }));
 
-import { render } from '@testing-library/react-native';
+import { render, renderHook } from '@testing-library/react-native';
 import { WeatherBackground, resolveAtmosphere } from '@/components/weather/WeatherBackground';
+import { useLoop } from '@/components/weather/WeatherLayer';
 import type { WeatherCondition } from '@/lib/weather';
 
 beforeEach(() => {
@@ -94,5 +95,19 @@ describe('WeatherBackground', () => {
     const { toJSON } = render(<WeatherBackground />);
     expect(toJSON()).toBeTruthy();
     expect(mockUseWeather).toHaveBeenCalled();
+  });
+
+  it('renders the immersive palette without crashing', () => {
+    const { toJSON } = render(<WeatherBackground condition="rain" mode="immersive" />);
+    expect(toJSON()).toBeTruthy();
+  });
+});
+
+describe('reduced motion', () => {
+  it('useLoop parks at its resting value and runs no animation when animate=false', () => {
+    // animate=false models reduced-motion (or a backgrounded app): the driver
+    // must hold a constant resting value rather than loop.
+    const { result } = renderHook(() => useLoop(false, 1000));
+    expect(result.current.value).toBe(0.5);
   });
 });

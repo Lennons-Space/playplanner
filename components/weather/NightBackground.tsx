@@ -10,12 +10,11 @@ import {
   seededNodes,
   useLoop,
   type SeededNode,
+  type WeatherPalette,
 } from './WeatherLayer';
 import { useAnimatedStyle, interpolate } from 'react-native-reanimated';
 
-const C = ATMOSPHERE.night;
-
-function Star({ node, animate, w, h }: { node: SeededNode; animate: boolean; w: number; h: number }) {
+function Star({ node, animate, w, h, c }: { node: SeededNode; animate: boolean; w: number; h: number; c: WeatherPalette }) {
   const t = useLoop(animate, 3000 + node.r * 4000, node.delay, true);
   const size = 1.5 + node.r * 2.5;
   const style = useAnimatedStyle(() => ({
@@ -32,7 +31,7 @@ function Star({ node, animate, w, h }: { node: SeededNode; animate: boolean; w: 
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: C.particle,
+          backgroundColor: c.particle,
         },
         style,
       ]}
@@ -40,7 +39,7 @@ function Star({ node, animate, w, h }: { node: SeededNode; animate: boolean; w: 
   );
 }
 
-function MoonGlow({ animate, w, h }: { animate: boolean; w: number; h: number }) {
+function MoonGlow({ animate, w, h, c }: { animate: boolean; w: number; h: number; c: WeatherPalette }) {
   const t = useLoop(animate, 14000, 0, true);
   const size = w * 0.7;
   const style = useAnimatedStyle(() => ({
@@ -57,7 +56,7 @@ function MoonGlow({ animate, w, h }: { animate: boolean; w: number; h: number })
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: C.tintA,
+          backgroundColor: c.tintA,
         },
         style,
       ]}
@@ -65,15 +64,16 @@ function MoonGlow({ animate, w, h }: { animate: boolean; w: number; h: number })
   );
 }
 
-export function NightBackground({ animate }: { animate: boolean }) {
+export function NightBackground({ animate, palette }: { animate: boolean; palette?: WeatherPalette }) {
   const { width: w, height: h } = useWindowDimensions();
+  const c = palette ?? ATMOSPHERE.night;
   const stars = useMemo(() => seededNodes(18, 606), []);
   return (
-    <WeatherLayer atmosphere="night">
+    <WeatherLayer atmosphere="night" palette={palette}>
       <AnimatedView style={StyleSheet.absoluteFill}>
-        <MoonGlow animate={animate} w={w} h={h} />
+        <MoonGlow animate={animate} w={w} h={h} c={c} />
         {stars.map((n, i) => (
-          <Star key={`n${i}`} node={n} animate={animate} w={w} h={h} />
+          <Star key={`n${i}`} node={n} animate={animate} w={w} h={h} c={c} />
         ))}
       </AnimatedView>
     </WeatherLayer>

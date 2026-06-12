@@ -10,12 +10,11 @@ import {
   seededNodes,
   useLoop,
   type SeededNode,
+  type WeatherPalette,
 } from './WeatherLayer';
 import { useAnimatedStyle, interpolate } from 'react-native-reanimated';
 
-const C = ATMOSPHERE.snow;
-
-function Flake({ node, animate, w, h }: { node: SeededNode; animate: boolean; w: number; h: number }) {
+function Flake({ node, animate, w, h, c }: { node: SeededNode; animate: boolean; w: number; h: number; c: WeatherPalette }) {
   const fallT = useLoop(animate, 11000 + node.r * 9000, node.delay, false);
   const swayT = useLoop(animate, 4000 + node.r * 3000, node.delay, true);
   const size = 4 + node.r * 5;
@@ -38,7 +37,7 @@ function Flake({ node, animate, w, h }: { node: SeededNode; animate: boolean; w:
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: C.particle,
+          backgroundColor: c.particle,
         },
         style,
       ]}
@@ -46,14 +45,15 @@ function Flake({ node, animate, w, h }: { node: SeededNode; animate: boolean; w:
   );
 }
 
-export function SnowBackground({ animate }: { animate: boolean }) {
+export function SnowBackground({ animate, palette }: { animate: boolean; palette?: WeatherPalette }) {
   const { width: w, height: h } = useWindowDimensions();
+  const c = palette ?? ATMOSPHERE.snow;
   const flakes = useMemo(() => seededNodes(14, 505, 8000), []);
   return (
-    <WeatherLayer atmosphere="snow">
+    <WeatherLayer atmosphere="snow" palette={palette}>
       <AnimatedView style={StyleSheet.absoluteFill}>
         {flakes.map((n, i) => (
-          <Flake key={`s${i}`} node={n} animate={animate} w={w} h={h} />
+          <Flake key={`s${i}`} node={n} animate={animate} w={w} h={h} c={c} />
         ))}
       </AnimatedView>
     </WeatherLayer>

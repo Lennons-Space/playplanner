@@ -11,12 +11,11 @@ import {
   seededNodes,
   useLoop,
   type SeededNode,
+  type WeatherPalette,
 } from './WeatherLayer';
 import { useAnimatedStyle, interpolate } from 'react-native-reanimated';
 
-const C = ATMOSPHERE.rain;
-
-function Streak({ node, animate, w, h }: { node: SeededNode; animate: boolean; w: number; h: number }) {
+function Streak({ node, animate, w, h, c }: { node: SeededNode; animate: boolean; w: number; h: number; c: WeatherPalette }) {
   // Non-reversing loop = continuous fall.
   const t = useLoop(animate, 1400 + node.r * 1100, node.delay, false);
   const len = 26 + node.r * 26;
@@ -36,7 +35,7 @@ function Streak({ node, animate, w, h }: { node: SeededNode; animate: boolean; w
           width: 1.5,
           height: len,
           borderRadius: 1,
-          backgroundColor: C.particle,
+          backgroundColor: c.particle,
         },
         style,
       ]}
@@ -44,7 +43,7 @@ function Streak({ node, animate, w, h }: { node: SeededNode; animate: boolean; w
   );
 }
 
-function Haze({ animate, w, h }: { animate: boolean; w: number; h: number }) {
+function Haze({ animate, w, h, c }: { animate: boolean; w: number; h: number; c: WeatherPalette }) {
   const t = useLoop(animate, 20000, 0, true);
   const size = w * 0.9;
   const style = useAnimatedStyle(() => ({
@@ -61,7 +60,7 @@ function Haze({ animate, w, h }: { animate: boolean; w: number; h: number }) {
           width: size,
           height: size * 0.5,
           borderRadius: size / 2,
-          backgroundColor: C.tintA,
+          backgroundColor: c.tintA,
         },
         style,
       ]}
@@ -69,15 +68,16 @@ function Haze({ animate, w, h }: { animate: boolean; w: number; h: number }) {
   );
 }
 
-export function RainBackground({ animate }: { animate: boolean }) {
+export function RainBackground({ animate, palette }: { animate: boolean; palette?: WeatherPalette }) {
   const { width: w, height: h } = useWindowDimensions();
+  const c = palette ?? ATMOSPHERE.rain;
   const streaks = useMemo(() => seededNodes(16, 404, 2000), []);
   return (
-    <WeatherLayer atmosphere="rain">
+    <WeatherLayer atmosphere="rain" palette={palette}>
       <AnimatedView style={StyleSheet.absoluteFill}>
-        <Haze animate={animate} w={w} h={h} />
+        <Haze animate={animate} w={w} h={h} c={c} />
         {streaks.map((n, i) => (
-          <Streak key={`r${i}`} node={n} animate={animate} w={w} h={h} />
+          <Streak key={`r${i}`} node={n} animate={animate} w={w} h={h} c={c} />
         ))}
       </AnimatedView>
     </WeatherLayer>

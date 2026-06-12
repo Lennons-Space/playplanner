@@ -10,12 +10,11 @@ import {
   seededNodes,
   useLoop,
   type SeededNode,
+  type WeatherPalette,
 } from './WeatherLayer';
 import { useAnimatedStyle, interpolate } from 'react-native-reanimated';
 
-const C = ATMOSPHERE.sunny;
-
-function LightBlob({ node, animate, w, h }: { node: SeededNode; animate: boolean; w: number; h: number }) {
+function LightBlob({ node, animate, w, h, c }: { node: SeededNode; animate: boolean; w: number; h: number; c: WeatherPalette }) {
   const t = useLoop(animate, 16000 + node.r * 10000, node.delay, true);
   const size = 240 + node.r * 180;
   const drift = 14 + node.r * 10;
@@ -37,7 +36,7 @@ function LightBlob({ node, animate, w, h }: { node: SeededNode; animate: boolean
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: node.r > 0.5 ? C.tintA : C.tintB,
+          backgroundColor: node.r > 0.5 ? c.tintA : c.tintB,
         },
         style,
       ]}
@@ -45,7 +44,7 @@ function LightBlob({ node, animate, w, h }: { node: SeededNode; animate: boolean
   );
 }
 
-function Dust({ node, animate, w, h }: { node: SeededNode; animate: boolean; w: number; h: number }) {
+function Dust({ node, animate, w, h, c }: { node: SeededNode; animate: boolean; w: number; h: number; c: WeatherPalette }) {
   const t = useLoop(animate, 9000 + node.r * 7000, node.delay, true);
   const size = 3 + node.r * 3;
   const style = useAnimatedStyle(() => ({
@@ -65,7 +64,7 @@ function Dust({ node, animate, w, h }: { node: SeededNode; animate: boolean; w: 
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: C.particle,
+          backgroundColor: c.particle,
         },
         style,
       ]}
@@ -73,18 +72,19 @@ function Dust({ node, animate, w, h }: { node: SeededNode; animate: boolean; w: 
   );
 }
 
-export function SunnyBackground({ animate }: { animate: boolean }) {
+export function SunnyBackground({ animate, palette }: { animate: boolean; palette?: WeatherPalette }) {
   const { width: w, height: h } = useWindowDimensions();
+  const c = palette ?? ATMOSPHERE.sunny;
   const blobs = useMemo(() => seededNodes(3, 101), []);
   const dust = useMemo(() => seededNodes(8, 202), []);
   return (
-    <WeatherLayer atmosphere="sunny">
+    <WeatherLayer atmosphere="sunny" palette={palette}>
       <AnimatedView style={StyleSheet.absoluteFill}>
         {blobs.map((n, i) => (
-          <LightBlob key={`b${i}`} node={n} animate={animate} w={w} h={h} />
+          <LightBlob key={`b${i}`} node={n} animate={animate} w={w} h={h} c={c} />
         ))}
         {dust.map((n, i) => (
-          <Dust key={`d${i}`} node={n} animate={animate} w={w} h={h} />
+          <Dust key={`d${i}`} node={n} animate={animate} w={w} h={h} c={c} />
         ))}
       </AnimatedView>
     </WeatherLayer>
