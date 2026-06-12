@@ -110,24 +110,29 @@ export const WEATHER_THEMES: Record<Atmosphere, WeatherTheme> = {
     atmosphere: 'sunny',
     mode: 'dark',
     palette: {
-      base: ['#FEF8EC', '#FCF2E0', '#F7E7CF'],
-      tintA: 'rgba(255, 198, 110, 0.30)', // warm golden glow (top/right)
-      tintB: 'rgba(150, 200, 235, 0.10)', // faint blue sky tint
+      // Real top→bottom depth: a soft blue morning sky fading into warm cream
+      // and a deeper amber base (per the original sunny spec). The previous
+      // three stops were near-identical cream, so the gradient read as a flat
+      // fill with no perceptible "sky". Still light enough for dark text.
+      base: ['#E8F1FC', '#FBEFD6', '#F3DCBA'],
+      tintA: 'rgba(255, 190, 84, 0.55)', // warm golden sun glow (clearly visible)
+      tintB: 'rgba(150, 198, 236, 0.22)', // soft blue sky shapes
       particle: 'rgba(255, 246, 226, 0.90)',
     },
     text: DARK_TEXT,
     card: SOLID_CARD,
-    glow: 'rgba(255, 200, 120, 0.50)',
+    glow: 'rgba(255, 196, 110, 0.60)',
     accent: ACCENT,
   },
   cloudy: {
     atmosphere: 'cloudy',
     mode: 'dark',
     palette: {
-      base: ['#EDEFF3', '#E5E9EF', '#DBE0E8'],
-      tintA: 'rgba(255, 255, 255, 0.55)',
-      tintB: 'rgba(120, 130, 145, 0.10)',
-      particle: 'rgba(255, 255, 255, 0.50)',
+      // Deeper grey-blue spread so the overcast mood actually reads.
+      base: ['#E4E9F2', '#D7DEEA', '#C7D0E0'],
+      tintA: 'rgba(255, 255, 255, 0.60)',
+      tintB: 'rgba(120, 130, 145, 0.14)',
+      particle: 'rgba(255, 255, 255, 0.55)',
     },
     text: DARK_TEXT,
     card: SOLID_CARD,
@@ -138,9 +143,10 @@ export const WEATHER_THEMES: Record<Atmosphere, WeatherTheme> = {
     atmosphere: 'snow',
     mode: 'dark',
     palette: {
-      base: ['#EEF3F8', '#E6ECF3', '#D9E2EC'],
-      tintA: 'rgba(255, 255, 255, 0.60)',
-      tintB: 'rgba(150, 170, 190, 0.10)',
+      // Icy blue with more depth so the winter mood is visible.
+      base: ['#EAF2FC', '#DCE8F5', '#CBDAEC'],
+      tintA: 'rgba(255, 255, 255, 0.65)',
+      tintB: 'rgba(150, 170, 190, 0.14)',
       particle: 'rgba(255, 255, 255, 0.95)',
     },
     text: DARK_TEXT,
@@ -212,7 +218,12 @@ export function resolveAtmosphere(
     case 'snow':
       return 'snow';
     default:
-      return 'sunny';
+      // Unknown / not-yet-loaded / failed weather: fall back to a *time-aware*
+      // clear sky — calm "sunny" by day, "night" after dark. Without this, a
+      // null condition (the coarse fetch still loading or having failed) always
+      // resolved to the LIGHT "sunny" theme, so at night Home rendered a jarring
+      // pale wash with dark text instead of the deep-navy night atmosphere.
+      return night ? 'night' : 'sunny';
   }
 }
 

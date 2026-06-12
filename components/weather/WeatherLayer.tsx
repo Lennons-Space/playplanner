@@ -44,8 +44,11 @@ export type { Atmosphere, WeatherPalette } from '@/lib/weatherTheme';
 // by passing an explicit `palette` override — see WeatherBackground immersive.
 export const ATMOSPHERE: Record<Atmosphere, WeatherPalette> = {
   sunny: {
-    base: ['#FDFAF2', '#FBF6EC', '#F7EEDB'],
-    tintA: 'rgba(255, 206, 120, 0.20)',
+    // Gentle warm top→bottom depth so the restrained (Search/Results/Map)
+    // weather wash is perceptible, not a flat single cream. Stays light for
+    // the non-adaptive dark chrome on those screens.
+    base: ['#FDF8EA', '#FBF0D6', '#F6E5C4'],
+    tintA: 'rgba(255, 204, 116, 0.24)',
     tintB: 'rgba(255, 176, 92, 0.12)',
     particle: 'rgba(255, 244, 222, 0.85)',
   },

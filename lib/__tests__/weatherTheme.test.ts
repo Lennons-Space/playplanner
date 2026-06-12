@@ -33,9 +33,27 @@ describe('resolveAtmosphere', () => {
     expect(resolveAtmosphere('snow', false)).toBe('snow');
   });
 
-  it('falls back to sunny on null/undefined weather', () => {
+  it('falls back to a TIME-AWARE clear sky on null/undefined weather', () => {
+    // By day → calm sunny; after dark → night. This is the regression fix:
+    // a null/loading/failed condition must not show a pale daytime wash at night.
     expect(resolveAtmosphere(null, false)).toBe('sunny');
     expect(resolveAtmosphere(undefined, false)).toBe('sunny');
+    expect(resolveAtmosphere(null, true)).toBe('night');
+    expect(resolveAtmosphere(undefined, true)).toBe('night');
+  });
+});
+
+describe('time-aware fallback theme (regression guard)', () => {
+  it('null weather resolves to the night theme after dark (not a pale light theme)', () => {
+    const t = resolveWeatherTheme(null, true);
+    expect(t.atmosphere).toBe('night');
+    expect(t.mode).toBe('light'); // white text on deep navy
+  });
+
+  it('null weather resolves to the calm sunny theme during the day', () => {
+    const t = resolveWeatherTheme(null, false);
+    expect(t.atmosphere).toBe('sunny');
+    expect(t.mode).toBe('dark');
   });
 });
 

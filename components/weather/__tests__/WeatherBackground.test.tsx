@@ -25,10 +25,27 @@ jest.mock('@/hooks/useWeather', () => ({
   useWeather: (...args: unknown[]) => mockUseWeather(...args),
 }));
 
+import { AccessibilityInfo } from 'react-native';
 import { render, renderHook } from '@testing-library/react-native';
 import { WeatherBackground, resolveAtmosphere } from '@/components/weather/WeatherBackground';
-import { useLoop } from '@/components/weather/WeatherLayer';
+import { useLoop, ATMOSPHERE } from '@/components/weather/WeatherLayer';
+import { WEATHER_THEMES } from '@/lib/weatherTheme';
 import type { WeatherCondition } from '@/lib/weather';
+
+// Walks a react-test-renderer JSON tree collecting every `colors` array — the
+// stubbed LinearGradient passes its `colors` prop straight onto a host View, so
+// this lets us assert which palette the background actually rendered.
+function collectGradientColors(node: unknown, acc: string[][] = []): string[][] {
+  if (!node || typeof node !== 'object') return acc;
+  if (Array.isArray(node)) {
+    node.forEach((n) => collectGradientColors(n, acc));
+    return acc;
+  }
+  const n = node as { props?: { colors?: unknown }; children?: unknown };
+  if (n.props && Array.isArray(n.props.colors)) acc.push(n.props.colors as string[]);
+  if (n.children) collectGradientColors(n.children, acc);
+  return acc;
+}
 
 beforeEach(() => {
   mockUseWeather.mockReset();
@@ -109,5 +126,53 @@ describe('reduced motion', () => {
     // must hold a constant resting value rather than loop.
     const { result } = renderHook(() => useLoop(false, 1000));
     expect(result.current.value).toBe(0.5);
+  });
+
+  it('keeps the static weather gradient mounted even when reduced motion is enabled', () => {
+    // Reduced motion must stop animation, NOT remove the static weather artwork.
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValueOnce(true);
+    const tree = render(<WeatherBackground condition="snow" mode="immersive" />).toJSON();
+    const colors = collectGradientColors(tree);
+    expect(colors).toContainEqual([...WEATHER_THEMES.snow.palette.base]);
+  });
+});
+
+describe('active theme reaches the background (regression guard)', () => {
+  it('immersive mode renders the cinematic theme palette, not the ambient one', () => {
+    const tree = render(<WeatherBackground condition="rain" mode="immersive" />).toJSON();
+    const colors = collectGradientColors(tree);
+    expect(colors).toContainEqual([...WEATHER_THEMES.rain.palette.base]);
+    expect(colors).not.toContainEqual([...ATMOSPHERE.rain.base]);
+  });
+
+  it('ambient mode (Search/Results/Map) renders the restrained ambient palette', () => {
+    const tree = render(<WeatherBackground condition="rain" />).toJSON();
+    const colors = collectGradientColors(tree);
+    expect(colors).toContainEqual([...ATMOSPHERE.rain.base]);
+    expect(colors).not.toContainEqual([...WEATHER_THEMES.rain.palette.base]);
+  });
+
+  it('uses the fetched condition (active weather), not a hard-coded fallback', () => {
+    mockUseWeather.mockReturnValue({
+      condition: 'rain',
+      temperatureC: 9,
+      precipProbabilityPct: 80,
+      emoji: '🌧',
+      label: 'Rainy',
+    });
+    const tree = render(<WeatherBackground mode="immersive" />).toJSON();
+    const colors = collectGradientColors(tree);
+    // Proves the fetched rain condition flowed through to the rendered palette,
+    // rather than the screen silently falling back to the sunny default.
+    expect(colors).toContainEqual([...WEATHER_THEMES.rain.palette.base]);
+  });
+
+  it('mounts as a non-interactive full-bleed layer (sits behind content)', () => {
+    const tree = render(<WeatherBackground condition="clear" mode="immersive" />).toJSON() as {
+      props: { pointerEvents?: string };
+    };
+    expect(tree.props.pointerEvents).toBe('none');
+    // And it actually painted a gradient (it is mounted, not an empty layer).
+    expect(collectGradientColors(tree).length).toBeGreaterThan(0);
   });
 });
