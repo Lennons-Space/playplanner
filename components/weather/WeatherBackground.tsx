@@ -26,7 +26,7 @@ import React from 'react';
 import { useWeather } from '@/hooks/useWeather';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import type { WeatherCondition } from '@/lib/weather';
-import { resolveAtmosphere, WEATHER_THEMES, type WeatherPalette } from '@/lib/weatherTheme';
+import { resolveAtmosphere, resolveWeatherPalette, WEATHER_THEMES, type WeatherPalette } from '@/lib/weatherTheme';
 import { SunnyBackground } from './SunnyBackground';
 import { CloudyBackground } from './CloudyBackground';
 import { RainBackground } from './RainBackground';
@@ -51,9 +51,21 @@ export interface WeatherBackgroundProps {
    * is paired with weather-aware chrome (Home).
    */
   mode?: 'ambient' | 'immersive';
+  /**
+   * App-theme mode (from useAppTheme()) — only used in 'immersive' mode to
+   * pick the dark/light variant of the new Home palette (see
+   * WEATHER_PALETTES_BY_MODE in lib/weatherTheme). Ignored in 'ambient' mode.
+   *
+   * IMPORTANT: leave this UNSET for any screen other than the new Home —
+   * when omitted, immersive mode falls back to the original WEATHER_THEMES
+   * cinematic palette (the existing look used by venue detail / map / etc.).
+   * Only Home opts into the new dark/light Home-specific palettes by passing
+   * this prop explicitly.
+   */
+  paletteMode?: 'dark' | 'light';
 }
 
-export function WeatherBackground({ condition, mode = 'ambient' }: WeatherBackgroundProps) {
+export function WeatherBackground({ condition, mode = 'ambient', paletteMode }: WeatherBackgroundProps) {
   // Always coarse, fixed coordinates — no user location, no OS prompt.
   const fetched = useWeather(FALLBACK_LOCATION.latitude, FALLBACK_LOCATION.longitude);
   const effective = condition ?? fetched?.condition ?? null;
@@ -64,10 +76,19 @@ export function WeatherBackground({ condition, mode = 'ambient' }: WeatherBackgr
 
   const atmosphere = resolveAtmosphere(effective);
 
-  // Immersive mode swaps in the cinematic palette; ambient passes undefined so
+  // Immersive mode swaps in a cinematic palette; ambient passes undefined so
   // each background falls back to its calm default — identical to before.
+  //
+  //   - paletteMode explicitly set (Home only) -> new Home-specific
+  //     dark/light palette (WEATHER_PALETTES_BY_MODE).
+  //   - paletteMode unset (every other immersive screen: venue detail, map,
+  //     etc.) -> original WEATHER_THEMES cinematic palette, unchanged.
   const palette: WeatherPalette | undefined =
-    mode === 'immersive' ? WEATHER_THEMES[atmosphere].palette : undefined;
+    mode === 'immersive'
+      ? paletteMode != null
+        ? resolveWeatherPalette(atmosphere, paletteMode)
+        : WEATHER_THEMES[atmosphere].palette
+      : undefined;
 
   switch (atmosphere) {
     case 'night':

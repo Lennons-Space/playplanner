@@ -56,7 +56,6 @@ import { useEffect } from 'react';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { WeatherBackground } from '@/components/weather/WeatherBackground';
 import { useVenueSearch, useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { useLocation } from '@/hooks/location';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
@@ -508,8 +507,8 @@ export default function SearchScreen() {
   const showHint = !hintDismissed && !hasActiveFilters && !isSearchActive;
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <WeatherBackground />
+    <View style={{ flex: 1 }}>
+      {/* Weather background now lives once, globally, in app/(tabs)/_layout. */}
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
 
       {/* ── Header ──────────────────────────────────────────────── */}

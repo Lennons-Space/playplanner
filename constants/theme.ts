@@ -195,3 +195,81 @@ export const CardBorder = StyleSheet.create({
     borderColor: Colors.separator,
   },
 });
+
+// ============================================================
+// Themes — Phase 1 Home reskin (additive, June 2026)
+//
+// Ported verbatim from the design handoff's `window.PP_THEMES` (dark + light
+// token sets) plus the "Ocean" accent palette. These are intentionally
+// SEPARATE from the `Colors` export above — other screens still consume
+// `Colors` (light-only) and will be migrated to `Themes` in a later phase.
+//
+// Do NOT merge these into `Colors` and do NOT change `Colors` to read from
+// here — that would re-theme every existing screen as a side effect.
+// ============================================================
+
+export interface ThemeTokens {
+  mode: 'dark' | 'light';
+  bg: string;
+  warm: string;
+  surface: string;
+  surface2: string;
+  label: string;
+  label2: string;
+  label3: string;
+  label4: string;
+  separator: string;
+  fill: string;
+  fill2: string;
+  star: string;
+  appBg: string;
+}
+
+export const Themes: { dark: ThemeTokens; light: ThemeTokens } = {
+  dark: {
+    mode: 'dark',
+    bg: '#0C0C11',
+    warm: '#0E0E14',
+    surface: '#17171F',
+    surface2: '#1F1F29',
+    label: '#F4F4F6',
+    label2: 'rgba(235,235,245,0.76)',
+    label3: 'rgba(235,235,245,0.44)',
+    label4: 'rgba(235,235,245,0.22)',
+    separator: 'rgba(255,255,255,0.08)',
+    fill: 'rgba(255,255,255,0.07)',
+    fill2: 'rgba(255,255,255,0.04)',
+    star: '#FFB23E',
+    appBg: '#060608',
+  },
+  light: {
+    mode: 'light',
+    bg: '#F1F0F4',
+    warm: '#FBFAFC',
+    surface: '#FFFFFF',
+    surface2: '#F5F4F8',
+    label: '#16151A',
+    label2: 'rgba(20,18,28,0.74)',
+    label3: 'rgba(20,18,28,0.48)',
+    label4: 'rgba(20,18,28,0.26)',
+    separator: 'rgba(20,18,28,0.10)',
+    fill: 'rgba(20,18,28,0.05)',
+    fill2: 'rgba(20,18,28,0.03)',
+    star: '#FF9F0A',
+    appBg: '#E4E3E8',
+  },
+};
+
+// ── Ocean accent palette (default) ───────────────────────────
+// Matches README "Accent Palettes" — used by the new Home alongside `Themes`.
+export interface AccentPalette {
+  accent: string;
+  light: string;
+  tagText: string;
+}
+
+export const ocean: AccentPalette = {
+  accent: '#4C8DF6',
+  light: 'rgba(76,141,246,0.16)',
+  tagText: '#82AEFA',
+};

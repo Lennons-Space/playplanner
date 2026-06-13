@@ -75,7 +75,14 @@ function Dust({ node, animate, w, h, c }: { node: SeededNode; animate: boolean; 
 export function SunnyBackground({ animate, palette }: { animate: boolean; palette?: WeatherPalette }) {
   const { width: w, height: h } = useWindowDimensions();
   const c = palette ?? ATMOSPHERE.sunny;
-  const blobs = useMemo(() => seededNodes(3, 101), []);
+  // Anchor the brightest blob top-right so the glow reads as a "sun" (matches
+  // design 06-home-light), instead of three scattered discs. The other two stay
+  // seeded for gentle ambient movement.
+  const blobs = useMemo(() => {
+    const n = seededNodes(3, 101);
+    n[0] = { ...n[0], x: 0.82, y: 0.06, r: 0.95 };
+    return n;
+  }, []);
   const dust = useMemo(() => seededNodes(8, 202), []);
   return (
     <WeatherLayer atmosphere="sunny" palette={palette}>

@@ -23,3 +23,5 @@ export { VenueMini } from './VenueMini';
 export type { VenueMiniProps } from './VenueMini';
 export { ScreenTitle } from './ScreenTitle';
 export { IconBtn } from './IconBtn';
+export { PPBrandMark } from './PPBrandMark';
+export type { PPBrandMarkProps } from './PPBrandMark';

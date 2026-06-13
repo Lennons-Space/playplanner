@@ -184,6 +184,110 @@ export const WEATHER_THEMES: Record<Atmosphere, WeatherTheme> = {
   },
 };
 
+// ── Palettes by app theme mode (Phase 1 Home reskin, additive) ──────────────
+//
+// WHY a separate table from WEATHER_THEMES above:
+// WEATHER_THEMES couples "atmosphere" to a single fixed text-mode/card-style
+// (e.g. rain ⇒ always light text + glass cards). The new Home reskin reads
+// its chrome (text/cards) from useAppTheme() (Themes.dark / Themes.light)
+// instead — independent of the weather. But the *background* still needs to
+// look right in BOTH app-theme modes for a given atmosphere: a sunny dark-mode
+// Home should show the README "Sunny (dark mode)" warm-on-near-black wash, and
+// a sunny light-mode Home should show the "Sunny (light mode)" warm cream wash
+// — both with the SAME dark-text-friendly OR light-text-friendly chrome
+// determined separately by useAppTheme(), not by the weather.
+//
+// Exact specs (README "Weather Background Animation"):
+//   Rainy (dark):  radial(rgba(91,143,199,0.16)) + linear(#0F1219→#0E0E14→#0C0C11)
+//   Sunny (dark):  radial(rgba(255,195,107,0.18)) + radial(rgba(255,138,91,0.10))
+//                   + linear(#15110E→#0E0E14→#0C0C11)
+//   Rainy (light): radial(rgba(124,156,192,0.4)) + linear(#BFCBDA→#D4DBE6→#FBFAFC)
+//   Sunny (light): radial(rgba(255,200,95,0.5)) + radial(rgba(255,154,77,0.28))
+//                   + linear(#FCEAC6→#FDF4E5→#FBFAFC)
+//
+// `base` below approximates the layered radial+linear gradients as a single
+// 3-stop linear gradient (the existing WeatherLayer/RainBackground/
+// SunnyBackground rendering approach) — consistent with how WEATHER_THEMES
+// already approximates the design spec for RN.
+//
+// Cloudy/snow/night: not specified exactly for both modes in the README
+// ("don't over-engineer"). Dark variant reuses the existing WEATHER_THEMES
+// palette (already dark-leaning for night, neutral for cloudy/snow); light
+// variant reuses the ambient ATMOSPHERE palette (lighter cream/grey family).
+// Night additionally maps to a calm dark variant without rain streaks.
+export const WEATHER_PALETTES_BY_MODE: Record<Atmosphere, { dark: WeatherPalette; light: WeatherPalette }> = {
+  sunny: {
+    dark: {
+      base: ['#15110E', '#0E0E14', '#0C0C11'],
+      tintA: 'rgba(255, 195, 107, 0.18)', // warm amber sun glow on near-black
+      tintB: 'rgba(255, 138, 91, 0.10)', // secondary warm glow (top-right)
+      particle: 'rgba(255, 223, 163, 0.50)', // bokeh motes
+    },
+    light: {
+      base: ['#FCEAC6', '#FDF4E5', '#FBFAFC'],
+      tintA: 'rgba(255, 200, 95, 0.50)', // warm golden sun glow
+      tintB: 'rgba(255, 154, 77, 0.28)', // secondary warm glow (top-right)
+      particle: 'rgba(255, 246, 226, 0.90)',
+    },
+  },
+  rain: {
+    dark: {
+      base: ['#0F1219', '#0E0E14', '#0C0C11'],
+      tintA: 'rgba(91, 143, 199, 0.16)', // cloud blobs / blue cast
+      tintB: 'rgba(90, 115, 150, 0.14)',
+      particle: 'rgba(205, 220, 245, 0.50)', // light rain streaks on navy
+    },
+    light: {
+      base: ['#BFCBDA', '#D4DBE6', '#FBFAFC'],
+      tintA: 'rgba(124, 156, 192, 0.40)', // cloud blobs
+      tintB: 'rgba(90, 115, 150, 0.18)',
+      particle: 'rgba(63, 95, 132, 0.70)', // darker rain streaks read on pale sky
+    },
+  },
+  cloudy: {
+    dark: WEATHER_THEMES.cloudy.palette,
+    // Inlined from components/weather/WeatherLayer.tsx ATMOSPHERE.cloudy —
+    // not imported to avoid a circular dependency (WeatherLayer imports the
+    // Atmosphere/WeatherPalette TYPES from this module). Keep in sync if the
+    // ambient cloudy palette there changes.
+    light: {
+      base: ['#F4F1EA', '#EEEAE0', '#E7E2D6'],
+      tintA: 'rgba(255, 255, 255, 0.55)',
+      tintB: 'rgba(120, 122, 130, 0.08)',
+      particle: 'rgba(255, 255, 255, 0.5)',
+    },
+  },
+  snow: {
+    dark: WEATHER_THEMES.snow.palette,
+    // Inlined from components/weather/WeatherLayer.tsx ATMOSPHERE.snow — see
+    // cloudy.light comment above for why this isn't imported.
+    light: {
+      base: ['#EEEFF1', '#E7E9EC', '#DEE1E6'],
+      tintA: 'rgba(255, 255, 255, 0.6)',
+      tintB: 'rgba(150, 160, 175, 0.08)',
+      particle: 'rgba(255, 255, 255, 0.92)',
+    },
+  },
+  night: {
+    // Night is already a "calm dark variant without rain streaks" in both
+    // app-theme modes — a light app theme doesn't make the night sky pale.
+    dark: WEATHER_THEMES.night.palette,
+    light: WEATHER_THEMES.night.palette,
+  },
+};
+
+/**
+ * Resolve the WeatherBackground palette for a given atmosphere + app theme
+ * mode (from useAppTheme()). Pure lookup — see WEATHER_PALETTES_BY_MODE above
+ * for the exact specs and rationale.
+ */
+export function resolveWeatherPalette(
+  atmosphere: Atmosphere,
+  appThemeMode: 'dark' | 'light' = 'dark',
+): WeatherPalette {
+  return WEATHER_PALETTES_BY_MODE[atmosphere][appThemeMode];
+}
+
 // ── Time-of-day ──────────────────────────────────────────────────────────────
 // Night window: clear skies during these hours read as "clear night".
 const NIGHT_START_HOUR = 20; // 8pm

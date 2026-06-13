@@ -1,8 +1,10 @@
+import { View } from 'react-native';
 import { Tabs, Redirect } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { Colors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WeatherBackground } from '@/components/weather/WeatherBackground';
 
 export default function TabsLayout() {
   const session = useAuthStore((s) => s.session);
@@ -17,23 +19,33 @@ export default function TabsLayout() {
   if (!session) return <Redirect href="/(auth)" />;
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: Colors.sky,
-        tabBarInactiveTintColor: Colors.grey,
-        tabBarStyle: {
-          backgroundColor: Colors.white,
-          borderTopColor: Colors.greyLighter,
-          paddingBottom: insets.bottom,
-          height: 64 + insets.bottom,
-        },
-        tabBarLabelStyle: {
-          fontFamily: 'Nunito-Bold',
-          fontSize: 11,
-        },
-      }}
-    >
+    <View style={{ flex: 1 }}>
+      {/* Single global weather layer behind every tab. Ambient (light) family,
+          readable with the dark text used across Home/Search/Favourites/Profile.
+          Replaces the per-screen WeatherBackground instances that used to live
+          in Home (immersive) and Search (ambient) — see the de-dupe in those
+          files. It is absolute-fill, non-interactive, pauses when backgrounded
+          and respects reduced motion (WeatherLayer). */}
+      <WeatherBackground />
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: Colors.sky,
+          tabBarInactiveTintColor: Colors.grey,
+          // Let the global weather layer show through each tab's scene.
+          sceneStyle: { backgroundColor: 'transparent' },
+          tabBarStyle: {
+            backgroundColor: Colors.white,
+            borderTopColor: Colors.greyLighter,
+            paddingBottom: insets.bottom,
+            height: 64 + insets.bottom,
+          },
+          tabBarLabelStyle: {
+            fontFamily: 'Nunito-Bold',
+            fontSize: 11,
+          },
+        }}
+      >
       <Tabs.Screen
         name="index"
         options={{
@@ -62,6 +74,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" color={color} size={size} />,
         }}
       />
-    </Tabs>
+      </Tabs>
+    </View>
   );
 }

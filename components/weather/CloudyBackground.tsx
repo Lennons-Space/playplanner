@@ -24,7 +24,7 @@ function Cloud({ node, animate, w, h, c }: { node: SeededNode; animate: boolean;
       { translateX: interpolate(t.value, [0, 1], [-drift, drift]) },
       { translateY: interpolate(t.value, [0, 1], [-4, 4]) },
     ],
-    opacity: interpolate(t.value, [0, 0.5, 1], [0.7, 0.95, 0.7]),
+    opacity: interpolate(t.value, [0, 0.5, 1], [0.3, 0.45, 0.3]),
   }));
   return (
     <AnimatedView

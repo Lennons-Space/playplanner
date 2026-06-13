@@ -2,7 +2,7 @@
  * Tests for app/(tabs)/index.tsx — the decision Home.
  *
  * Focus (not over-tested):
- *   1. The hero search pill and all six intent chips render.
+ *   1. The kids' mood section and all six intent chips render.
  *   2. Tapping an intent chip routes into the results flow with the correct mood.
  *   3. Privacy: when consent is not granted, Home shows the calm nudge
  *      (NOT the location-using NearbyPreview), proving Home never reaches
@@ -29,7 +29,15 @@ jest.mock('@/hooks/useLocationConsent', () => ({
 // NearbyPreview transitively imports location/weather/venue hooks. Mock them so
 // importing Home never pulls in native location modules, even though the nudge
 // path (undecided) does not mount NearbyPreview.
-jest.mock('@/hooks/location', () => ({ useLocation: jest.fn(() => ({ coords: null, isLoading: false })) }));
+jest.mock('@/hooks/location', () => ({
+  useLocation: jest.fn(() => ({ coords: null, isLoading: false })),
+  useAreaLabel: jest.fn(() => null),
+}));
+
+// Recently viewed is local-only; keep it empty here so the row stays hidden.
+jest.mock('@/hooks/useRecentlyViewed', () => ({
+  useRecentlyViewed: jest.fn(() => ({ items: [], loading: false })),
+}));
 jest.mock('@/hooks/useWeather', () => ({ useWeather: jest.fn(() => null) }));
 jest.mock('@/hooks/useVenues', () => ({
   useNearbyVenues: jest.fn(() => ({ data: [], isLoading: false, error: null })),
@@ -51,10 +59,12 @@ beforeEach(() => {
 });
 
 describe('HomeScreen', () => {
-  it('renders the search pill and all six intent chips', () => {
-    const { getByLabelText } = render(<HomeScreen />);
-    // Search pill
-    expect(getByLabelText('Search for places')).toBeTruthy();
+  it('renders the kids mood section and all six intent chips', () => {
+    const { getByText, getByLabelText } = render(<HomeScreen />);
+    // Kids' mood discovery section (replaced the old search field — TASK 2)
+    expect(getByText('What are the kids in the mood for?')).toBeTruthy();
+    expect(getByLabelText('Adventurous')).toBeTruthy();
+    expect(getByLabelText('Treat Day')).toBeTruthy();
     // Six intent chips — accessibilityLabel uses "<label> intent" suffix
     // to distinguish from the QuickFilterChips row which reuses some labels.
     expect(getByLabelText('Rainy Day intent')).toBeTruthy();
@@ -72,13 +82,17 @@ describe('HomeScreen', () => {
 
   it('renders the hero heading', () => {
     const { getByText } = render(<HomeScreen />);
-    expect(getByText("What's the plan today?")).toBeTruthy();
+    expect(getByText("What's the\nplan today?")).toBeTruthy();
   });
 
-  it('opens the search tab when the search pill is tapped', () => {
-    const { getByLabelText } = render(<HomeScreen />);
-    fireEvent.press(getByLabelText('Search for places'));
-    expect((router.push as jest.Mock)).toHaveBeenCalledWith('/(tabs)/search');
+  it('selects a kids mood on tap and deselects on second tap (local UI state)', () => {
+    const { getByLabelText, queryByLabelText } = render(<HomeScreen />);
+    fireEvent.press(getByLabelText('Calm'));
+    expect(getByLabelText('Calm, selected')).toBeTruthy();
+    // Mood selection is local UI only — it must NOT navigate.
+    expect((router.push as jest.Mock)).not.toHaveBeenCalled();
+    fireEvent.press(getByLabelText('Calm, selected'));
+    expect(queryByLabelText('Calm, selected')).toBeNull();
   });
 
   it('routes to results with mood=indoor when "Rainy Day" intent chip is tapped', () => {

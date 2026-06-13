@@ -6,6 +6,13 @@
 // still exercising the condition→atmosphere mapping and a crash-free render of
 // every atmosphere.
 
+import { AccessibilityInfo } from 'react-native';
+import { render, renderHook } from '@testing-library/react-native';
+import { WeatherBackground, resolveAtmosphere } from '@/components/weather/WeatherBackground';
+import { useLoop, ATMOSPHERE } from '@/components/weather/WeatherLayer';
+import { WEATHER_THEMES } from '@/lib/weatherTheme';
+import type { WeatherCondition } from '@/lib/weather';
+
 jest.unmock('@/components/weather/WeatherBackground');
 
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
@@ -24,13 +31,6 @@ const mockUseWeather = jest.fn();
 jest.mock('@/hooks/useWeather', () => ({
   useWeather: (...args: unknown[]) => mockUseWeather(...args),
 }));
-
-import { AccessibilityInfo } from 'react-native';
-import { render, renderHook } from '@testing-library/react-native';
-import { WeatherBackground, resolveAtmosphere } from '@/components/weather/WeatherBackground';
-import { useLoop, ATMOSPHERE } from '@/components/weather/WeatherLayer';
-import { WEATHER_THEMES } from '@/lib/weatherTheme';
-import type { WeatherCondition } from '@/lib/weather';
 
 // Walks a react-test-renderer JSON tree collecting every `colors` array — the
 // stubbed LinearGradient passes its `colors` prop straight onto a host View, so

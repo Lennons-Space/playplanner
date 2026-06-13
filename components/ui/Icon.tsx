@@ -54,7 +54,8 @@ export type IconName =
   | 'leaf'
   | 'flame'
   | 'minus'
-  | 'camera';
+  | 'camera'
+  | 'refresh';
 
 export interface IconProps {
   name: IconName;
@@ -392,6 +393,18 @@ export function Icon({ name, size = 20, color = '#1D2630', strokeWidth = 1.75 }:
         <Svg {...svg}>
           <Path d="M4 8h4l2-2h4l2 2h4v12H4z" />
           <Circle cx="12" cy="14" r="4" />
+        </Svg>
+      );
+
+    case 'refresh':
+      // "Re-roll" icon for the nearby-list refresh button (Home, Phase 1).
+      // Ported from pp2-home.jsx: <polyline points="23 4 23 10 17 10"/>
+      // <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/> — combined into two
+      // Paths since react-native-svg Polyline isn't imported elsewhere here.
+      return (
+        <Svg {...svg}>
+          <Path d="M23 4v6h-6" />
+          <Path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
         </Svg>
       );
 

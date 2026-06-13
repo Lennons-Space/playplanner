@@ -446,7 +446,8 @@ const styles = StyleSheet.create({
   // Root
   root: {
     flex: 1,
-    backgroundColor: '#FBF6EC',
+    // Transparent so the global weather layer (app/(tabs)/_layout) shows through.
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     paddingBottom: 96,
@@ -455,7 +456,7 @@ const styles = StyleSheet.create({
   // Skeleton
   skeletonRoot: {
     flex: 1,
-    backgroundColor: '#FBF6EC',
+    backgroundColor: 'transparent',
   },
   skeletonHero: {
     margin: 16,

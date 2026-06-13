@@ -356,7 +356,8 @@ export default function FavouritesScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: C.sand,
+    // Transparent so the global weather layer (app/(tabs)/_layout) shows through.
+    backgroundColor: 'transparent',
   },
   centred: {
     flex: 1,

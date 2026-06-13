@@ -44,19 +44,23 @@ export type { Atmosphere, WeatherPalette } from '@/lib/weatherTheme';
 // by passing an explicit `palette` override — see WeatherBackground immersive.
 export const ATMOSPHERE: Record<Atmosphere, WeatherPalette> = {
   sunny: {
-    // Gentle warm top→bottom depth so the restrained (Search/Results/Map)
-    // weather wash is perceptible, not a flat single cream. Stays light for
-    // the non-adaptive dark chrome on those screens.
-    base: ['#FDF8EA', '#FBF0D6', '#F6E5C4'],
-    tintA: 'rgba(255, 204, 116, 0.24)',
-    tintB: 'rgba(255, 176, 92, 0.12)',
-    particle: 'rgba(255, 244, 222, 0.85)',
+    // Warm, premium "sun glow" wash (matches design 06-home-light): a brighter
+    // amber top fading into cream. Stronger golden tints so the glow reads as
+    // sun, not a flat cream. Still light enough for dark chrome text.
+    base: ['#FFF2D6', '#FCE8C6', '#F7DEB6'],
+    tintA: 'rgba(255, 194, 104, 0.50)', // warm golden sun glow (clearly visible)
+    tintB: 'rgba(255, 162, 86, 0.22)', // secondary warm glow
+    particle: 'rgba(255, 245, 224, 0.85)',
   },
   cloudy: {
-    base: ['#F4F1EA', '#EEEAE0', '#E7E2D6'],
-    tintA: 'rgba(255, 255, 255, 0.55)',
-    tintB: 'rgba(120, 122, 130, 0.08)',
-    particle: 'rgba(255, 255, 255, 0.5)',
+    // Warm hazy daylight rather than cold grey overcast — keeps the tab
+    // environment feeling sunlit on cloudy days. Soft warm-white shapes only
+    // (their opacity is dialled right down in CloudyBackground so they read as
+    // a gentle haze, not grey smudges).
+    base: ['#FBF3E2', '#F5EAD6', '#EFE1C9'],
+    tintA: 'rgba(255, 246, 230, 0.45)', // warm haze
+    tintB: 'rgba(214, 198, 170, 0.12)', // faint warm grey
+    particle: 'rgba(255, 250, 240, 0.5)',
   },
   rain: {
     base: ['#E7EAEF', '#DCE1E9', '#D2D9E4'],

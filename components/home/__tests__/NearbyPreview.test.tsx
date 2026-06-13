@@ -55,15 +55,48 @@ jest.mock('@/hooks/useVenues', () => ({
   useCategories: jest.fn(() => ({ data: mockCategories, isLoading: false, error: null })),
 }));
 
-jest.mock('@/components/ui', () => {
+// SmartFeaturedCard renders the top-ranked (curated[0]) venue — its
+// `contextReasons` prop carries curateVenues()'s weather-aware reasons
+// (the modern equivalent of the old VenueCard `weatherBadge` prop), and its
+// own `generateRecommendationReasons(venue)` call is the equivalent of the
+// old `familyBadges` prop. This mock surfaces both as testIDs so the
+// category-hydration / weather-badge / family-badges assertions below keep
+// working against the new component split.
+jest.mock('../SmartFeaturedCard', () => {
   const { View, Text } = require('react-native');
+  const { generateRecommendationReasons } = require('@/lib/recommendations/recommendationReasons');
   return {
-    VenueCard: ({ venue, weatherBadge, familyBadges }: { venue: Venue; weatherBadge?: string | null; familyBadges?: string[] }) => (
+    SmartFeaturedCard: ({ venue, contextReasons }: { venue: Venue; contextReasons?: string[] }) => (
       <View>
         <Text>{venue.name}</Text>
         <Text testID={`category-${venue.id}`}>{venue.category?.slug ?? 'no-category'}</Text>
-        <Text testID={`weather-badge-${venue.id}`}>{weatherBadge ?? 'no-weather-badge'}</Text>
-        <Text testID={`family-badges-${venue.id}`}>{(familyBadges ?? []).join(',') || 'no-family-badges'}</Text>
+        <Text testID={`weather-badge-${venue.id}`}>{(contextReasons ?? [])[0] ?? 'no-weather-badge'}</Text>
+        <Text testID={`family-badges-${venue.id}`}>
+          {generateRecommendationReasons(venue).join(',') || 'no-family-badges'}
+        </Text>
+      </View>
+    ),
+  };
+});
+
+// ExploreCard renders the remaining ("Continue Exploring") venues as a
+// horizontal card row. `contextTag` is NearbyPreview's
+// `reasons[0] ?? generateRecommendationReasons(venue)[0]` — the row equivalent
+// of SmartFeaturedCard's weather-badge testID above. `family-badges-*` is
+// exposed the same way as the SmartFeaturedCard mock so assertion (3) below
+// works regardless of which slot a venue lands in.
+jest.mock('../ExploreCard', () => {
+  const { View, Text } = require('react-native');
+  const { generateRecommendationReasons } = require('@/lib/recommendations/recommendationReasons');
+  return {
+    ExploreCard: ({ venue, contextTag }: { venue: Venue; contextTag?: string | null }) => (
+      <View>
+        <Text>{venue.name}</Text>
+        <Text testID={`category-${venue.id}`}>{venue.category?.slug ?? 'no-category'}</Text>
+        <Text testID={`weather-badge-${venue.id}`}>{contextTag ?? 'no-weather-badge'}</Text>
+        <Text testID={`family-badges-${venue.id}`}>
+          {generateRecommendationReasons(venue).join(',') || 'no-family-badges'}
+        </Text>
       </View>
     ),
   };

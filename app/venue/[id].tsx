@@ -7,7 +7,7 @@
  * Visual layer only — no logic, hooks, data fetching, mutations, or
  * accessibility changes from the previous version.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVenue } from '@/hooks/useVenues';
+import { addRecentlyViewed } from '@/lib/recentlyViewed';
 import { useVenueReviews, useMyReview } from '@/hooks/useReviews';
 import { useUser } from '@/hooks/useAuth';
 import { useReportVenue } from '@/hooks/useVenueReport';
@@ -137,6 +138,16 @@ export default function VenueDetailScreen() {
   const venueId = id ?? '';
 
   const { data: venue, isLoading, error } = useVenue(venueId);
+
+  // Record this venue in the local "Recently viewed" list — ONLY once a real
+  // venue has loaded (never a placeholder/loading state). Local AsyncStorage
+  // only; non-blocking and failure-safe (see lib/recentlyViewed).
+  useEffect(() => {
+    if (venue?.id) {
+      void addRecentlyViewed(venue);
+    }
+  }, [venue?.id, venue]);
+
   const { data: reviews, isLoading: reviewsLoading } = useVenueReviews(venueId);
   // myReview is fetched so the review screen (navigated via "Write review" button)
   // can show an upfront duplicate-review gate. It is not rendered on this screen.
