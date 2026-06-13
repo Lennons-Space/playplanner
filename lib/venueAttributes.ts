@@ -93,6 +93,22 @@ export function computeIsOpenNow(venue: Venue): boolean | null {
   return nowMins >= toMins(todayRow.opens_at) && nowMins < toMins(todayRow.closes_at);
 }
 
+/**
+ * Today's closing time as "HH:MM" (24h) when the venue is open now AND the
+ * closing time is parseable; null otherwise. Built on the SAME opening_hours
+ * rules as computeIsOpenNow (the single source of truth) — never fabricates a
+ * time. Use for an honest "Until 18:00" label on open venues.
+ */
+export function getOpenUntilLabel(venue: Venue): string | null {
+  if (computeIsOpenNow(venue) !== true) return null;
+  const now = new Date();
+  const row = venue.opening_hours?.find((h) => h.day_of_week === now.getDay());
+  if (!row || row.is_closed || !row.closes_at) return null;
+  const [h, m] = row.closes_at.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 // ─── Main export ───────────────────────────────────────────────────────────────
 
 /**

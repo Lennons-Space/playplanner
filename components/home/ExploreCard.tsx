@@ -46,13 +46,15 @@ function formatDistance(km: number | undefined): string | null {
 export interface ExploreCardProps {
   venue: ExploreCardVenue;
   onPress: () => void;
-  /** A real "why this" reason (lg only). Pass null/undefined to hide. */
+  /** A real "why this" reason (lg/md overlay). Pass null/undefined to hide. */
   contextTag?: string | null;
-  /** 'lg' overlay (Continue Exploring, default) or 'sm' compact (Recently viewed). */
-  size?: 'lg' | 'sm';
+  /** Real closing time "HH:MM" → green "Open · until …" pill (Open Now). Never fake. */
+  openUntil?: string | null;
+  /** 'lg' overlay (default) · 'md' overlay (Open Now) · 'sm' compact (Recently viewed). */
+  size?: 'lg' | 'md' | 'sm';
 }
 
-export function ExploreCard({ venue, onPress, contextTag, size = 'lg' }: ExploreCardProps) {
+export function ExploreCard({ venue, onPress, contextTag, openUntil, size = 'lg' }: ExploreCardProps) {
   const categorySlug = venue.category?.slug ?? null;
   const meta = getCategoryMeta(categorySlug);
   const distanceText = formatDistance(venue.distance_km);
@@ -119,9 +121,10 @@ export function ExploreCard({ venue, onPress, contextTag, size = 'lg' }: Explore
     );
   }
 
-  // ── Large card (Continue Exploring): overlaid name/meta on the image ─────
+  // ── Overlay card: 'lg' (Continue Exploring) or 'md' (Open Now) ───────────
   const W = 210;
-  const H = 270;
+  const H = size === 'md' ? 230 : 270;
+  const nameSize = size === 'md' ? 16 : 17;
   return (
     <Pressable
       onPress={onPress}
@@ -162,7 +165,29 @@ export function ExploreCard({ venue, onPress, contextTag, size = 'lg' }: Explore
         style={{ position: 'absolute', inset: 0 }}
       />
 
-      {contextTag != null && (
+      {/* Top-left pill: green "Open · until …" for Open Now, else the glass reason pill */}
+      {openUntil != null ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            maxWidth: W - 24,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: 'rgba(28,140,80,0.92)',
+            borderRadius: BorderRadius.pill,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+          }}
+        >
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#BFF3D4' }} />
+          <Text numberOfLines={1} style={{ fontFamily: FontFamily.bodyStrong, fontSize: 11.5, color: '#FFFFFF' }}>
+            {`Open · until ${openUntil}`}
+          </Text>
+        </View>
+      ) : contextTag != null ? (
         <View
           style={{
             position: 'absolute',
@@ -181,12 +206,12 @@ export function ExploreCard({ venue, onPress, contextTag, size = 'lg' }: Explore
             {contextTag}
           </Text>
         </View>
-      )}
+      ) : null}
 
       <View style={{ position: 'absolute', left: 14, right: 14, bottom: 14 }}>
         <Text
           numberOfLines={2}
-          style={{ fontFamily: FontFamily.display, fontSize: 17, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 21, marginBottom: 6 }}
+          style={{ fontFamily: FontFamily.display, fontSize: nameSize, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: nameSize + 4, marginBottom: 6 }}
         >
           {venue.name}
         </Text>

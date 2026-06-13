@@ -49,6 +49,7 @@ import { QuickPicks } from '@/components/home/QuickPicks';
 import { MoodPicks } from '@/components/home/MoodPicks';
 import { NearbyPreview } from '@/components/home/NearbyPreview';
 import { RecentlyViewedRow } from '@/components/home/RecentlyViewedRow';
+import { OpenNowRow } from '@/components/home/OpenNowRow';
 import type { MoodId } from '@/lib/moods';
 import type { Mood } from '@/lib/curation';
 import type { Venue } from '@/types';
@@ -396,6 +397,11 @@ export default function HomeScreen() {
 
           {/* ── Recently viewed (local only; hides itself when empty) ─────── */}
           <RecentlyViewedRow onVenuePress={(venueId) => router.push(`/venue/${venueId}`)} />
+
+          {/* ── Open right now (consent-gated; reuses cached venues; hides when none) ── */}
+          {status === 'granted' && (
+            <OpenNowRow onVenuePress={(venueId) => router.push(`/venue/${venueId}`)} />
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
