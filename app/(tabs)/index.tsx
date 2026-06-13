@@ -80,12 +80,12 @@ const AGE_FILTERS: AgeFilter[] = [
 // sections (see also NearbyPreview). Purely presentational.
 const SECTION_BUBBLE: ViewStyle = {
   marginHorizontal: 18,
-  borderRadius: 28,
+  borderRadius: 32,
   backgroundColor: 'rgba(255,255,255,0.56)',
   // Soft paper edge for definition (NOT a harsh grey border).
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.55)',
-  paddingVertical: 16,
+  paddingVertical: 18,
   paddingHorizontal: 20,
   // iOS soft shadow. NOTE: no Android `elevation` here — `elevation` combined
   // with a translucent backgroundColor renders an opaque rectangular shadow-
@@ -93,18 +93,18 @@ const SECTION_BUBBLE: ViewStyle = {
   // depth comes from the translucent paper layering + soft border instead.
   shadowColor: '#2A1E0A',
   shadowOffset: { width: 0, height: 8 },
-  shadowOpacity: 0.06,
+  shadowOpacity: 0.04,
   shadowRadius: 18,
 };
 
-// Shared eyebrow heading for utility sections (uppercase, warm grey, subtle
+// Shared eyebrow heading for utility sections (uppercase, warm grey, wider
 // tracking). "Good for today" keeps its larger display title (NearbyPreview).
 const EYEBROW: TextStyle = {
   fontFamily: FontFamily.bodyStrong,
-  fontSize: 12,
+  fontSize: 13,
   textTransform: 'uppercase',
-  letterSpacing: 1.2,
-  marginBottom: 12,
+  letterSpacing: 2,
+  marginBottom: 14,
 };
 
 // ── Context line ────────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ export default function HomeScreen() {
                 onPress={openMap}
                 accessibilityRole="button"
                 accessibilityLabel={`Your area: ${areaLabel} — open map`}
-                style={({ pressed }) => ({ gap: 3, opacity: pressed ? 0.7 : 1 })}
+                style={({ pressed }) => ({ gap: 5, opacity: pressed ? 0.7 : 1 })}
               >
                 <Text
                   style={{
@@ -244,8 +244,8 @@ export default function HomeScreen() {
 
           {/* ── Greeting + weather pill + headline + context line ───────── */}
           <Animated.View entering={FadeIn.duration(450).delay(60)}>
-            <View style={{ paddingHorizontal: 20, paddingTop: 20 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
+            <View style={{ paddingHorizontal: 20, paddingTop: 28 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                 <Text style={{ fontFamily: FontFamily.body, fontSize: 14.5, color: tokens.label3 }}>
                   {`Hi ${firstName ?? 'there'} 👋`}
                 </Text>
@@ -286,16 +286,17 @@ export default function HomeScreen() {
               <Text
                 style={{
                   fontFamily: FontFamily.display,
-                  fontSize: 30,
+                  fontSize: 40,
+                  fontWeight: '800',
                   color: tokens.label,
-                  letterSpacing: -0.8,
-                  lineHeight: 32,
+                  letterSpacing: -1,
+                  lineHeight: 44,
                 }}
               >
                 {"What's the\nplan today?"}
               </Text>
 
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 14.5, color: tokens.label3, marginTop: 8 }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 15, color: tokens.label, opacity: 0.65, marginTop: 12 }}>
                 {ctxLine}
               </Text>
             </View>
@@ -303,7 +304,7 @@ export default function HomeScreen() {
 
           {/* ── Kids' mood discovery bubble (replaces the old search field) ── */}
           <Animated.View entering={FadeIn.duration(450).delay(100)}>
-            <View style={[SECTION_BUBBLE, { marginTop: 24, paddingHorizontal: 0 }]}>
+            <View style={[SECTION_BUBBLE, { marginTop: 28, paddingHorizontal: 0 }]}>
               <Text style={[EYEBROW, { color: tokens.label3, paddingHorizontal: 20 }]}>
                 What are the kids in the mood for?
               </Text>
@@ -313,7 +314,7 @@ export default function HomeScreen() {
 
           {/* ── Intent chips ─────────────────────────────────────────────── */}
           <Animated.View entering={FadeIn.duration(450).delay(120)}>
-            <View style={[SECTION_BUBBLE, { marginTop: 24, paddingHorizontal: 0 }]}>
+            <View style={[SECTION_BUBBLE, { marginTop: 28, paddingHorizontal: 0 }]}>
               <Text style={[EYEBROW, { color: tokens.label3, paddingHorizontal: 20 }]}>
                 What do you need today?
               </Text>
@@ -323,7 +324,7 @@ export default function HomeScreen() {
 
           {/* ── Age filter tiles (emoji on top, centred label) ───────────── */}
           <Animated.View entering={FadeIn.duration(450).delay(140)}>
-            <View style={[SECTION_BUBBLE, { marginTop: 24 }]}>
+            <View style={[SECTION_BUBBLE, { marginTop: 28 }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <Text style={[EYEBROW, { color: tokens.label3, marginBottom: 0 }]}>Who&apos;s coming?</Text>
                 {activeAge != null && (
@@ -385,7 +386,7 @@ export default function HomeScreen() {
           </Animated.View>
 
           {/* ── Nearby teaser (consent-aware) ────────────────────────────── */}
-          <View style={{ paddingTop: 24 }}>
+          <View style={{ paddingTop: 28 }}>
             {status === 'granted' ? (
               <NearbyPreview onSeeAll={() => goResults('auto')} onVenuePress={openVenue} />
             ) : status === 'checking' ? null : (

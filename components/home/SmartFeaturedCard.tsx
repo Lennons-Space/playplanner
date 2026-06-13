@@ -126,10 +126,10 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
         // Android elevation is safe here (no translucent-plate artifact);
         // shadow* drive iOS.
         shadowColor: '#1A1208',
-        shadowOffset: { width: 0, height: 14 },
-        shadowOpacity: 0.22,
-        shadowRadius: 26,
-        elevation: 8,
+        shadowOffset: { width: 0, height: 16 },
+        shadowOpacity: 0.26,
+        shadowRadius: 30,
+        elevation: 10,
         opacity: pressed ? 0.94 : 1,
         transform: [{ scale: pressed ? 0.99 : 1 }],
       })}
@@ -208,7 +208,7 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
         </Pressable>
 
         {/* ── Bottom content stack ── */}
-        <View style={{ position: 'absolute', left: 18, right: 18, bottom: 18 }}>
+        <View style={{ position: 'absolute', left: 20, right: 20, bottom: 20 }}>
           {openPill != null && (
             <View
               style={{
@@ -240,11 +240,11 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
           <Text
             style={{
               fontFamily: FontFamily.display,
-              fontSize: 30,
+              fontSize: 34,
               color: '#FFFFFF',
-              letterSpacing: -0.6,
-              lineHeight: 33,
-              marginBottom: 8,
+              letterSpacing: -0.7,
+              lineHeight: 38,
+              marginBottom: 10,
             }}
             numberOfLines={2}
           >

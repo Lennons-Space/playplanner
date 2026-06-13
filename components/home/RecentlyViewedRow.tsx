@@ -31,7 +31,7 @@ export function RecentlyViewedRow({ onVenuePress }: RecentlyViewedRowProps) {
   if (loading || items.length === 0) return null;
 
   return (
-    <View style={{ paddingTop: 24 }}>
+    <View style={{ paddingTop: 28 }}>
       <View style={{ paddingHorizontal: 20, paddingBottom: 16 }}>
         <Text style={{ fontFamily: FontFamily.display, fontSize: 20, color: tokens.label, letterSpacing: -0.5 }}>
           Recently viewed
