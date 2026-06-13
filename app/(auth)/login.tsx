@@ -8,6 +8,10 @@
  *    no dark patterns or nudge techniques (ICO Children's Code Standard 7).
  *  - Terms and Privacy Policy are linked at the bottom so parents can read
  *    them before signing in (ICO Children's Code Standard 4 — transparency).
+ *
+ * Visual: PlayPlanner v3 style — Bricolage display heading, Hanken body, Ocean
+ * accent (no teal), warm cream + ambient weather wash, soft paper cards/inputs.
+ * Auth LOGIC is unchanged from the previous version.
  */
 
 import { useState } from 'react';
@@ -21,11 +25,41 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  type TextStyle,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
+import { Themes, ocean, FontFamily } from '@/constants/theme';
+import { WeatherBackground } from '@/components/weather/WeatherBackground';
+
+const t = Themes.light;
+
+// Shared rounded input (opaque surface — safe with elevation on Android).
+const inputStyle: TextStyle = {
+  height: 54,
+  backgroundColor: t.surface,
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: t.separator,
+  paddingHorizontal: 16,
+  fontFamily: FontFamily.body,
+  fontSize: 15,
+  color: t.label,
+  shadowColor: '#2A1E0A',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.05,
+  shadowRadius: 10,
+  elevation: 1,
+};
+
+const labelStyle: TextStyle = {
+  fontFamily: FontFamily.bodyStrong,
+  fontSize: 13.5,
+  color: t.label2,
+  marginBottom: 7,
+};
 
 // Client-side sanity check only — real validation happens on the server.
 // Catches obvious typos before hitting the network.
@@ -109,194 +143,178 @@ export default function LoginScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-slate">
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
-      >
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
+    <View style={{ flex: 1, backgroundColor: t.warm }}>
+      {/* Ambient weather wash — matches the rest of the app, decorative only. */}
+      <WeatherBackground />
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
         >
-
-          {/* ── Back button ───────────────────────────────────────────── */}
-          <TouchableOpacity
-            className="mt-4 self-start"
-            style={{ paddingVertical: 10, paddingRight: 16 }}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Go back to the previous screen"
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            <Text className="text-sky text-base" style={{ fontFamily: 'Nunito-Bold' }}>
-              ← Back
-            </Text>
-          </TouchableOpacity>
-
-          {/* ── Heading ──────────────────────────────────────────────── */}
-          <View className="mt-8 mb-8">
-            <Text
-              className="text-4xl text-charcoal"
-              style={{ fontFamily: 'Nunito-ExtraBold' }}
-              accessibilityRole="header"
-            >
-              Welcome back!
-            </Text>
-            <Text className="text-base text-grey mt-1" style={{ fontFamily: 'Nunito-Regular' }}>
-              Sign in to your Play Planner account
-            </Text>
-          </View>
-
-          {/* ── Input fields ─────────────────────────────────────────── */}
-          <View style={{ gap: 12 }}>
-
-            <View>
-              <Text className="text-charcoal text-sm mb-1" style={{ fontFamily: 'Nunito-Medium' }}>
-                Email address
-              </Text>
-              <TextInput
-                className="bg-white border border-greyLighter rounded-xl px-4 text-charcoal text-base"
-                style={{
-                  height: 52,
-                  fontFamily: 'Nunito-Regular',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 1 },
-                  shadowOpacity: 0.04,
-                  shadowRadius: 3,
-                  elevation: 1,
-                }}
-                placeholder="you@example.com"
-                placeholderTextColor="#B2BEC3"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="email"
-                returnKeyType="next"
-                value={email}
-                onChangeText={setEmail}
-                accessibilityLabel="Email address"
-              />
-            </View>
-
-            <View>
-              <Text className="text-charcoal text-sm mb-1" style={{ fontFamily: 'Nunito-Medium' }}>
-                Password
-              </Text>
-              <TextInput
-                className="bg-white border border-greyLighter rounded-xl px-4 text-charcoal text-base"
-                style={{
-                  height: 52,
-                  fontFamily: 'Nunito-Regular',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 1 },
-                  shadowOpacity: 0.04,
-                  shadowRadius: 3,
-                  elevation: 1,
-                }}
-                placeholder="Your password"
-                placeholderTextColor="#B2BEC3"
-                secureTextEntry
-                autoComplete="password"
-                returnKeyType="done"
-                onSubmitEditing={handleLogin}
-                value={password}
-                onChangeText={setPassword}
-                accessibilityLabel="Password"
-              />
-            </View>
-
-            {/* Forgot password — anti-enumeration: always same response */}
+            {/* ── Back button ───────────────────────────────────────────── */}
             <TouchableOpacity
-              className="self-end"
-              style={{ paddingVertical: 8, paddingLeft: 16 }}
-              onPress={handleForgotPassword}
+              style={{ marginTop: 16, alignSelf: 'flex-start', paddingVertical: 10, paddingRight: 16 }}
+              onPress={() => router.back()}
               accessibilityRole="button"
-              accessibilityLabel="Forgot your password — tap to receive a reset link"
+              accessibilityLabel="Go back to the previous screen"
             >
-              <Text className="text-grey text-sm" style={{ fontFamily: 'Nunito-Medium' }}>
-                Forgot password?
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: ocean.accent }}>← Back</Text>
+            </TouchableOpacity>
+
+            {/* ── Heading ──────────────────────────────────────────────── */}
+            <View style={{ marginTop: 28, marginBottom: 28 }}>
+              <Text
+                style={{ fontFamily: FontFamily.display, fontSize: 34, color: t.label, letterSpacing: -0.6, lineHeight: 38 }}
+                accessibilityRole="header"
+              >
+                Welcome back!
+              </Text>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 15, color: t.label3, marginTop: 6 }}>
+                Sign in to your Play Planner account
+              </Text>
+            </View>
+
+            {/* ── Input fields ─────────────────────────────────────────── */}
+            <View style={{ gap: 14 }}>
+              <View>
+                <Text style={labelStyle}>Email address</Text>
+                <TextInput
+                  style={inputStyle}
+                  placeholder="you@example.com"
+                  placeholderTextColor={t.label3}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  returnKeyType="next"
+                  value={email}
+                  onChangeText={setEmail}
+                  accessibilityLabel="Email address"
+                />
+              </View>
+
+              <View>
+                <Text style={labelStyle}>Password</Text>
+                <TextInput
+                  style={inputStyle}
+                  placeholder="Your password"
+                  placeholderTextColor={t.label3}
+                  secureTextEntry
+                  autoComplete="password"
+                  returnKeyType="done"
+                  onSubmitEditing={handleLogin}
+                  value={password}
+                  onChangeText={setPassword}
+                  accessibilityLabel="Password"
+                />
+              </View>
+
+              {/* Forgot password — anti-enumeration: always same response */}
+              <TouchableOpacity
+                style={{ alignSelf: 'flex-end', paddingVertical: 8, paddingLeft: 16 }}
+                onPress={handleForgotPassword}
+                accessibilityRole="button"
+                accessibilityLabel="Forgot your password — tap to receive a reset link"
+              >
+                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13.5, color: ocean.accent }}>
+                  Forgot password?
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Primary CTA ───────────────────────────────────────────── */}
+            <TouchableOpacity
+              style={{
+                height: 54,
+                backgroundColor: ocean.accent,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginTop: 24,
+                shadowColor: ocean.accent,
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.3,
+                shadowRadius: 14,
+                elevation: 4,
+              }}
+              onPress={handleLogin}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in to your account"
+              accessibilityState={{ disabled: loading }}
+            >
+              {loading
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 17, color: '#FFFFFF' }}>Sign in</Text>
+              }
+            </TouchableOpacity>
+
+            {/* ── Switch to register ────────────────────────────────────── */}
+            <TouchableOpacity
+              style={{ marginTop: 20, alignItems: 'center', paddingVertical: 10 }}
+              onPress={() => router.push('/(auth)/register')}
+              accessibilityRole="button"
+              accessibilityLabel="Go to the Create Account screen"
+            >
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 15, color: t.label3 }}>
+                Don't have an account?{' '}
+                <Text style={{ fontFamily: FontFamily.bodyStrong, color: ocean.accent }}>Sign up free</Text>
               </Text>
             </TouchableOpacity>
 
-          </View>
-
-          {/* ── Primary CTA ───────────────────────────────────────────── */}
-          <TouchableOpacity
-            className="w-full bg-sky rounded-2xl items-center justify-center mt-6"
-            style={{
-              height: 52,
-              shadowColor: '#4ECDC4',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.30,
-              shadowRadius: 8,
-              elevation: 4,
-            }}
-            onPress={handleLogin}
-            disabled={loading}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in to your account"
-            accessibilityState={{ disabled: loading }}
-          >
-            {loading
-              ? <ActivityIndicator color="#fff" />
-              : <Text className="text-white text-lg" style={{ fontFamily: 'Nunito-Bold' }}>Sign in</Text>
-            }
-          </TouchableOpacity>
-
-          {/* ── Switch to register ────────────────────────────────────── */}
-          <TouchableOpacity
-            className="mt-5 items-center"
-            style={{ paddingVertical: 10 }}
-            onPress={() => router.push('/(auth)/register')}
-            accessibilityRole="button"
-            accessibilityLabel="Go to the Create Account screen"
-          >
-            <Text className="text-grey text-base" style={{ fontFamily: 'Nunito-Regular' }}>
-              Don't have an account?{' '}
-              <Text className="text-sky" style={{ fontFamily: 'Nunito-Bold' }}>Sign up free</Text>
-            </Text>
-          </TouchableOpacity>
-
-          {/* ── Privacy reminder strip (ICO Standard 4 — transparency) ── */}
-          <View
-            className="flex-row items-start bg-mint rounded-2xl px-4 py-3 mt-6"
-            style={{ gap: 10 }}
-          >
-            <Text style={{ fontSize: 18, marginTop: 1 }} accessible={false} importantForAccessibility="no-hide-descendants">
-              🔒
-            </Text>
-            <Text className="text-charcoal text-sm flex-1" style={{ fontFamily: 'Nunito-Regular' }}>
-              <Text style={{ fontFamily: 'Nunito-Bold' }}>Your privacy matters. </Text>
-              Location is <Text style={{ fontFamily: 'Nunito-Bold' }}>off by default</Text>. We never sell your data.
-            </Text>
-          </View>
-
-          {/* ── Legal footer ─────────────────────────────────────────── */}
-          <Text className="text-grey text-xs text-center mt-5" style={{ fontFamily: 'Nunito-Regular' }}>
-            By signing in you agree to our{' '}
-            <Text
-              className="underline"
-              style={{ fontFamily: 'Nunito-Bold', color: '#636E72' }}
-              onPress={() => router.push('/(auth)/terms')}
-              accessibilityRole="link"
+            {/* ── Privacy reminder strip (ICO Standard 4 — transparency) ── */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+                backgroundColor: 'rgba(255,255,255,0.62)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.55)',
+                borderRadius: 18,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                marginTop: 24,
+              }}
             >
-              Terms of Service
-            </Text>
-            {' '}and{' '}
-            <Text
-              className="underline"
-              style={{ fontFamily: 'Nunito-Bold', color: '#636E72' }}
-              onPress={() => router.push('/(auth)/privacy')}
-              accessibilityRole="link"
-            >
-              Privacy Policy
-            </Text>
-            .
-          </Text>
+              <Text style={{ fontSize: 18, marginTop: 1 }} accessible={false} importantForAccessibility="no-hide-descendants">
+                🔒
+              </Text>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13.5, color: t.label2, flex: 1, lineHeight: 19 }}>
+                <Text style={{ fontFamily: FontFamily.bodyStrong }}>Your privacy matters. </Text>
+                Location is <Text style={{ fontFamily: FontFamily.bodyStrong }}>off by default</Text>. We never sell your data.
+              </Text>
+            </View>
 
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            {/* ── Legal footer ─────────────────────────────────────────── */}
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: t.label3, textAlign: 'center', marginTop: 20, lineHeight: 18 }}>
+              By signing in you agree to our{' '}
+              <Text
+                style={{ fontFamily: FontFamily.bodyStrong, color: t.label2, textDecorationLine: 'underline' }}
+                onPress={() => router.push('/(auth)/terms')}
+                accessibilityRole="link"
+              >
+                Terms of Service
+              </Text>
+              {' '}and{' '}
+              <Text
+                style={{ fontFamily: FontFamily.bodyStrong, color: t.label2, textDecorationLine: 'underline' }}
+                onPress={() => router.push('/(auth)/privacy')}
+                accessibilityRole="link"
+              >
+                Privacy Policy
+              </Text>
+              .
+            </Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
