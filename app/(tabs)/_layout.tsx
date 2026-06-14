@@ -54,10 +54,20 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="discover"
+        options={{
+          title: 'Discover',
+          tabBarIcon: ({ color, size }) => <Ionicons name="compass-outline" color={color} size={size} />,
+        }}
+      />
+      {/* Search is no longer a visible tab (Discover replaces it), but the screen
+          and all its logic/tests stay intact — it is reachable from the search
+          bar on Discover via router.push('/search'). href:null hides it from the
+          tab bar while keeping it a navigable route. */}
+      <Tabs.Screen
         name="search"
         options={{
-          title: 'Search',
-          tabBarIcon: ({ color, size }) => <Ionicons name="search-outline" color={color} size={size} />,
+          href: null,
         }}
       />
       <Tabs.Screen
