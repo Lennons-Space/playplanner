@@ -32,19 +32,26 @@ import { curateVenues } from '@/lib/curation';
 import { calculateRecommendationScore } from '@/lib/recommendations/familyScore';
 import { generateRecommendationReasons } from '@/lib/recommendations/recommendationReasons';
 import { SmartFeaturedCard } from './SmartFeaturedCard';
+import { GoodForTodayFallback } from './GoodForTodayFallback';
 import { ExploreCard } from './ExploreCard';
 import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
-import { Icon } from '@/components/ui/Icon';
 import { FALLBACK_LOCATION } from '@/constants/location';
+import { getSeasonalCollection, getCollection } from '@/lib/collections';
 import { DEFAULT_FILTERS } from '@/types';
 import type { Venue, Category } from '@/types';
 
 export interface NearbyPreviewProps {
   onSeeAll: () => void;
   onVenuePress: (venue: Venue) => void;
+  /**
+   * Open a Discover collection by key — used by the editorial fallback hero
+   * when there's no nearby recommendation. Optional so existing tests need no
+   * change; Home always provides it. Routing lives in Home (no expo-router here).
+   */
+  onOpenCollection?: (key: string) => void;
 }
 
-export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
+export function NearbyPreview({ onSeeAll, onVenuePress, onOpenCollection }: NearbyPreviewProps) {
   const { tokens, accent } = useAppTheme();
   const { coords, isLoading: locLoading } = useLocation();
 
@@ -53,7 +60,7 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
 
   const weather = useWeather(center.latitude, center.longitude);
 
-  const { data: venues = [], isLoading, error, refetch } = useNearbyVenues(
+  const { data: venues = [], isLoading, error } = useNearbyVenues(
     center,
     DEFAULT_FILTERS,
     !locLoading && ready,
@@ -106,6 +113,20 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
   const featured = curated[0];
   const rest = curated.slice(1);
 
+  // Editorial fallback so "Good for today" NEVER collapses into dead space.
+  // Weather-aware, but only ever surfaces an EXISTING Discover collection (no
+  // new query, no fabricated venue): rain → "Rainy Day", otherwise the seasonal
+  // hero (Summer Adventures / etc.). Tapping opens the existing collection page.
+  const isRain =
+    weather?.condition === 'rain' ||
+    weather?.condition === 'drizzle' ||
+    weather?.condition === 'showers' ||
+    weather?.condition === 'thunderstorm';
+  const fallbackDef = useMemo(
+    () => (isRain ? getCollection('rainy-day') ?? getSeasonalCollection() : getSeasonalCollection()),
+    [isRain],
+  );
+
   const isActuallyLoading = (locLoading && !ready) || (ready && isLoading);
   if (isActuallyLoading) {
     return (
@@ -119,54 +140,25 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
     );
   }
 
-  if (error) {
+  // No nearby recommendation (query error OR nothing curated) → the editorial
+  // fallback hero. NEVER a cold/apologetic text state: "Good for today" always
+  // shows a full hero with somewhere worth going.
+  if (error || curated.length === 0) {
     return (
-      <View style={{ paddingHorizontal: 20 }}>
+      <View style={{ paddingHorizontal: 18 }}>
         <SectionHeading title="Good for today" />
-        <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: tokens.label3 }}>
-          Couldn't load nearby places. Pull to refresh, or tap "Find something for us".
-        </Text>
-      </View>
-    );
-  }
-
-  if (curated.length === 0) {
-    return (
-      <View style={{ paddingHorizontal: 20 }}>
-        <SectionHeading title="Good for today" />
-        <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: tokens.label3 }}>
-          Nothing close by right now — try "Find something for us" to widen the search.
-        </Text>
+        <GoodForTodayFallback def={fallbackDef} onPress={() => onOpenCollection?.(fallbackDef.key)} />
       </View>
     );
   }
 
   return (
     <View>
-      {/* ── "Good for today" — smart featured card, grouped in a soft bubble ──
-          Translucent paper island matching the search/intent/age bubbles. The
-          hero card stays inside and remains clipped/contained. */}
-      <View
-        style={{
-          // Matches SECTION_BUBBLE in app/(tabs)/index.tsx. No Android `elevation`
-          // — elevation + a translucent bg renders an opaque rectangular plate
-          // artifact on Android. Depth via translucent paper + soft border.
-          marginHorizontal: 18,
-          borderRadius: 28,
-          backgroundColor: 'rgba(255,255,255,0.56)',
-          borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.55)',
-          paddingVertical: 16,
-          paddingHorizontal: 14,
-          shadowColor: '#2A1E0A',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.06,
-          shadowRadius: 18,
-        }}
-      >
-        <View style={{ paddingHorizontal: 4 }}>
-          <SectionHeading title="Good for today" />
-        </View>
+      {/* ── "Good for today" — the hero. De-bubbled (no translucent paper
+          island): the SmartFeaturedCard is a full-bleed magazine cover and the
+          dominant object on Home. It carries its own soft shadow. */}
+      <View style={{ paddingHorizontal: 18 }}>
+        <SectionHeading title="Good for today" />
         {featured != null && (
           <SmartFeaturedCard
             venue={featured.venue}
@@ -176,59 +168,35 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
         )}
       </View>
 
-      {/* ── "Continue Exploring" — remaining venues as a horizontal card row ── */}
+      {/* ── "Near You" — a QUIET supporting row of nearby curated venues
+          (small cards, lighter heading) so it supports the hero rather than
+          competing. NOT "Open right now": this row is distance-curated, not
+          open-status-filtered, so we never claim an open state we don't have. */}
       {rest.length > 0 && (
         <>
           <View
             style={{
               paddingHorizontal: 20,
-              paddingTop: 28,
-              paddingBottom: 16,
+              paddingTop: 32,
+              paddingBottom: 12,
               flexDirection: 'row',
-              alignItems: 'flex-start',
+              alignItems: 'center',
               justifyContent: 'space-between',
             }}
           >
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontFamily: FontFamily.display,
-                  fontSize: 20,
-                  color: tokens.label,
-                  letterSpacing: -0.5,
-                }}
-              >
-                Continue Exploring
-              </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: tokens.label3, marginTop: 3 }}>
-                Places near you
-              </Text>
-            </View>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {typeof refetch === 'function' && (
-                <TouchableOpacity
-                  onPress={() => refetch()}
-                  accessibilityRole="button"
-                  accessibilityLabel="Refresh suggestions"
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 13,
-                    backgroundColor: tokens.surface,
-                    borderWidth: 1,
-                    borderColor: tokens.separator,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Icon name="refresh" size={16} color={accent.accent} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={onSeeAll} accessibilityRole="button" accessibilityLabel="See all suggestions">
-                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: accent.accent }}>See all</Text>
-              </TouchableOpacity>
-            </View>
+            <Text
+              style={{
+                fontFamily: FontFamily.bodyStrong,
+                fontSize: 14,
+                color: tokens.label2,
+                letterSpacing: 0.2,
+              }}
+            >
+              Near You
+            </Text>
+            <TouchableOpacity onPress={onSeeAll} accessibilityRole="button" accessibilityLabel="See all suggestions">
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: accent.accent }}>See all</Text>
+            </TouchableOpacity>
           </View>
 
           <ScrollView
@@ -243,6 +211,7 @@ export function NearbyPreview({ onSeeAll, onVenuePress }: NearbyPreviewProps) {
               <ExploreCard
                 key={venue.id}
                 venue={venue}
+                size="sm"
                 onPress={() => onVenuePress(venue)}
                 contextTag={reasons[0] ?? generateRecommendationReasons(venue)[0] ?? null}
               />

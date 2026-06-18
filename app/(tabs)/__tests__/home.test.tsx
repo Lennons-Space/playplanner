@@ -1,13 +1,13 @@
 /**
- * Tests for app/(tabs)/index.tsx — the decision Home.
+ * Tests for app/(tabs)/index.tsx — the simplified, calm Home.
  *
- * Focus (not over-tested):
- *   1. The kids' mood section and all six intent chips render.
- *   2. Tapping an intent chip routes into the results flow with the correct mood.
- *   3. Privacy: when consent is not granted, Home shows the calm nudge
- *      (NOT the location-using NearbyPreview), proving Home never reaches
- *      for GPS on its own.
- *   4. The location nudge CTA still routes into the results flow (mood=auto).
+ * Home Final pass: Home is a calm hallway — welcome + ONE editorial collection
+ * hero + recently-viewed + a quiet Discover link. No venue hero, no Near You,
+ * no mood/intent/age browse chips (all live on Discover). Focus (not over-tested):
+ *   1. Greeting + hero heading render.
+ *   2. The removed browsing sections are NO LONGER present on Home.
+ *   3. The editorial collection hero always renders and opens a collection page.
+ *   4. There is no duplicate bottom Discover CTA (the hero owns Explore).
  */
 
 import React from 'react';
@@ -59,22 +59,6 @@ beforeEach(() => {
 });
 
 describe('HomeScreen', () => {
-  it('renders the kids mood section and all six intent chips', () => {
-    const { getByText, getByLabelText } = render(<HomeScreen />);
-    // Kids' mood discovery section (replaced the old search field — TASK 2)
-    expect(getByText('What are the kids in the mood for?')).toBeTruthy();
-    expect(getByLabelText('Adventurous')).toBeTruthy();
-    expect(getByLabelText('Treat Day')).toBeTruthy();
-    // Six intent chips — accessibilityLabel uses "<label> intent" suffix
-    // to distinguish from the QuickFilterChips row which reuses some labels.
-    expect(getByLabelText('Rainy Day intent')).toBeTruthy();
-    expect(getByLabelText('Burn Energy intent')).toBeTruthy();
-    expect(getByLabelText('Free Day Out intent')).toBeTruthy();
-    expect(getByLabelText('Animal Fix intent')).toBeTruthy();
-    expect(getByLabelText('Toddler Time intent')).toBeTruthy();
-    expect(getByLabelText('Parent Friendly intent')).toBeTruthy();
-  });
-
   it('renders the greeting with the user first name', () => {
     const { getByText } = render(<HomeScreen />);
     expect(getByText('Hi Liam 👋')).toBeTruthy();
@@ -85,42 +69,28 @@ describe('HomeScreen', () => {
     expect(getByText("What's the\nplan today?")).toBeTruthy();
   });
 
-  it('selects a kids mood on tap and deselects on second tap (local UI state)', () => {
-    const { getByLabelText, queryByLabelText } = render(<HomeScreen />);
-    fireEvent.press(getByLabelText('Calm'));
-    expect(getByLabelText('Calm, selected')).toBeTruthy();
-    // Mood selection is local UI only — it must NOT navigate.
-    expect((router.push as jest.Mock)).not.toHaveBeenCalled();
-    fireEvent.press(getByLabelText('Calm, selected'));
-    expect(queryByLabelText('Calm, selected')).toBeNull();
+  it('no longer renders the mood / need / age browsing sections (moved to Discover)', () => {
+    const { queryByText } = render(<HomeScreen />);
+    expect(queryByText('What are the kids in the mood for?')).toBeNull();
+    expect(queryByText('What do you need today?')).toBeNull();
+    expect(queryByText("Who's coming?")).toBeNull();
   });
 
-  it('routes to results with mood=indoor when "Rainy Day" intent chip is tapped', () => {
+  it('always shows an editorial collection hero that opens a Discover collection', () => {
     const { getByLabelText } = render(<HomeScreen />);
-    fireEvent.press(getByLabelText('Rainy Day intent'));
-    expect((router.push as jest.Mock)).toHaveBeenCalledWith('/explore/results?mood=indoor');
+    // The hero is a collection (never a venue) and shows regardless of location
+    // consent — Home no longer reads location for its main content. With weather
+    // mocked null, the weather-aware choice falls to the seasonal collection.
+    fireEvent.press(getByLabelText(/Open collection/));
+    expect((router.push as jest.Mock)).toHaveBeenCalledWith({
+      pathname: '/discover/[collection]',
+      params: { collection: 'seasonal' },
+    });
   });
 
-  it('routes to results with mood=active when "Burn Energy" intent chip is tapped', () => {
-    const { getByLabelText } = render(<HomeScreen />);
-    fireEvent.press(getByLabelText('Burn Energy intent'));
-    expect((router.push as jest.Mock)).toHaveBeenCalledWith('/explore/results?mood=active');
-  });
-
-  it('routes to results with mood=free when "Free Day Out" intent chip is tapped', () => {
-    const { getByLabelText } = render(<HomeScreen />);
-    fireEvent.press(getByLabelText('Free Day Out intent'));
-    expect((router.push as jest.Mock)).toHaveBeenCalledWith('/explore/results?mood=free');
-  });
-
-  it('shows the location nudge (not the GPS preview) when consent is not granted', () => {
-    const { getByText } = render(<HomeScreen />);
-    expect(getByText("See what's near you")).toBeTruthy();
-  });
-
-  it('routes to results with mood=auto when the location nudge is tapped', () => {
-    const { getByLabelText } = render(<HomeScreen />);
-    fireEvent.press(getByLabelText("See what's near you"));
-    expect((router.push as jest.Mock)).toHaveBeenCalledWith('/explore/results?mood=auto');
+  it('has no duplicate bottom Discover CTA (the hero owns the Explore action)', () => {
+    const { queryByText, queryByLabelText } = render(<HomeScreen />);
+    expect(queryByText('Need ideas?')).toBeNull();
+    expect(queryByLabelText('Need ideas? Open Discover')).toBeNull();
   });
 });

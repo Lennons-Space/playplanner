@@ -1,5 +1,6 @@
 import { View } from 'react-native';
 import { Tabs, Redirect } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/store/authStore';
 import { Colors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,12 @@ export default function TabsLayout() {
 
   return (
     <View style={{ flex: 1 }}>
+      {/* Single, app-wide status-bar style for the tabs. The app content is
+          ALWAYS light (cream weather wash), so we force DARK icons here rather
+          than letting userInterfaceStyle:'automatic' follow the device theme
+          (which drew invisible light icons on the cream background). One global
+          instance means switching tabs never leaves a stale per-screen mode. */}
+      <StatusBar style="dark" />
       {/* Single global weather layer behind every tab. Ambient (light) family,
           readable with the dark text used across Home/Search/Favourites/Profile.
           Replaces the per-screen WeatherBackground instances that used to live
@@ -35,14 +42,18 @@ export default function TabsLayout() {
           // Let the global weather layer show through each tab's scene.
           sceneStyle: { backgroundColor: 'transparent' },
           tabBarStyle: {
-            backgroundColor: Colors.white,
-            borderTopColor: Colors.greyLighter,
+            // Warm off-white (was pure white) so the bar belongs to the cream
+            // editorial palette instead of looking like a stark system chrome.
+            backgroundColor: Colors.surface2,
+            borderTopColor: Colors.separator,
             paddingBottom: insets.bottom,
-            height: 64 + insets.bottom,
+            // Slightly trimmed (was 64) — still ≥48dp touch targets with the label.
+            height: 58 + insets.bottom,
           },
           tabBarLabelStyle: {
             fontFamily: 'Nunito-Bold',
             fontSize: 11,
+            marginTop: -2, // tighten icon→label spacing
           },
         }}
       >

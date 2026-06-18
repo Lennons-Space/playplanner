@@ -8,7 +8,7 @@
 // theme-independent (always white text on a dark photo-gradient).
 //
 // Spec (README "Good for today" — smart featured card):
-//   - 380px tall, radius 26 (BorderRadius.featured), full-bleed image.
+//   - Tall magazine cover (460px), large radius (64), full-bleed image.
 //   - Bottom gradient rgba(8,6,10,0.94) → transparent at 72%, via
 //     expo-linear-gradient (already installed).
 //   - Top-left: price/"Free entry" dark-glass pill — ONLY if
@@ -32,16 +32,7 @@ import { getCategoryMeta } from '@/constants/categories';
 import { computeIsOpenNow } from '@/lib/venueAttributes';
 import { generateRecommendationReasons } from '@/lib/recommendations/recommendationReasons';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
-import { Icon } from '@/components/ui/Icon';
 import type { Venue } from '@/types';
-
-// ── Distance formatter (mirrors VenueCard.tsx / VenueCard2.tsx) ────────────
-function formatDistance(km: number | undefined): string | null {
-  if (km == null) return null;
-  if (km < 1) return `${Math.round(km * 1000)}m`;
-  const miles = km * 0.621371;
-  return `${miles.toFixed(1)}mi`;
-}
 
 // ── Price pill text ──────────────────────────────────────────────────────
 // Only rendered when venue.price_range is set — never fabricated.
@@ -100,11 +91,13 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
   const categorySlug = venue.category?.slug ?? null;
   const meta = getCategoryMeta(categorySlug);
 
-  const distanceText = formatDistance(venue.distance_km);
   const pricePill = pricePillText(venue);
   const openPill = openUntilText(venue);
-  const hasRating = venue.review_count > 0;
-  const whyReasons = Array.from(new Set([...contextReasons, ...generateRecommendationReasons(venue)])).slice(0, 3);
+  // ONE honest editorial reason: the top curation/recommendation reason if there
+  // is one, otherwise a neutral category label. Never fabricated — both sources
+  // derive from real venue.category + current weather.
+  const whyReasons = Array.from(new Set([...contextReasons, ...generateRecommendationReasons(venue)]));
+  const heroReason = whyReasons[0] ?? meta.label;
 
   return (
     // Plain, static, in-flow card — NO Animated/reanimated wrapper. The root
@@ -117,19 +110,19 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
       accessibilityRole="button"
       accessibilityLabel={`Open ${venue.name}`}
       style={({ pressed }) => ({
-        height: 380,
+        height: 460,
         width: '100%',
         position: 'relative',
-        borderRadius: BorderRadius.featured,
+        borderRadius: 64,
         overflow: 'hidden',
-        // Floating, editorial feel — soft deep shadow. The card is opaque, so
-        // Android elevation is safe here (no translucent-plate artifact);
-        // shadow* drive iOS.
+        // Editorial magazine cover — soft, diffuse shadow only. This is the
+        // dominant object on Home, but the lift stays gentle (cream-paper feel).
+        // Opaque card, so Android elevation is safe (no translucent-plate artifact).
         shadowColor: '#1A1208',
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 0.26,
-        shadowRadius: 30,
-        elevation: 10,
+        shadowOffset: { width: 0, height: 18 },
+        shadowOpacity: 0.16,
+        shadowRadius: 40,
+        elevation: 8,
         opacity: pressed ? 0.94 : 1,
         transform: [{ scale: pressed ? 0.99 : 1 }],
       })}
@@ -141,7 +134,7 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
             0 height (the explicit height didn't hold) and the bottom-anchored
             overlay escaped upward over the headings. The image/placeholder fill
             this layer; the gradient + pills + text overlay it absolutely. */}
-        <View style={{ width: '100%', height: 380 }}>
+        <View style={{ width: '100%', height: 460 }}>
           {venue.cover_photo_url ? (
             <Image
               source={{ uri: venue.cover_photo_url }}
@@ -150,7 +143,7 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
               accessibilityLabel={`Photo of ${venue.name}`}
             />
           ) : (
-            <CategoryPlaceholder categorySlug={categorySlug} fill iconSize={88} borderRadius={0} />
+            <CategoryPlaceholder categorySlug={categorySlug} fill iconSize={60} borderRadius={0} />
           )}
         </View>
 
@@ -184,31 +177,9 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
           </View>
         )}
 
-        {/* ── Top-right: circular button -> venue detail ── */}
-        <Pressable
-          onPress={onPress}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={`View details for ${venue.name}`}
-          style={{
-            position: 'absolute',
-            top: 14,
-            right: 14,
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: 'rgba(20,18,24,0.6)',
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.14)',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon name="chevR" size={18} color="#FFFFFF" />
-        </Pressable>
-
-        {/* ── Bottom content stack ── */}
-        <View style={{ position: 'absolute', left: 20, right: 20, bottom: 20 }}>
+        {/* ── Bottom content stack — magazine cover: open pill, big name, one
+            honest editorial reason, large soft Explore pill. ── */}
+        <View style={{ position: 'absolute', left: 24, right: 24, bottom: 26 }}>
           {openPill != null && (
             <View
               style={{
@@ -220,17 +191,10 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
                 borderRadius: BorderRadius.pill,
                 paddingHorizontal: 11,
                 paddingVertical: 5,
-                marginBottom: 10,
+                marginBottom: 12,
               }}
             >
-              <View
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: 4,
-                  backgroundColor: '#5BD08A',
-                }}
-              />
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#5BD08A' }} />
               <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: '#FFFFFF' }}>
                 {openPill}
               </Text>
@@ -240,70 +204,40 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
           <Text
             style={{
               fontFamily: FontFamily.display,
-              fontSize: 34,
+              fontSize: 40,
               color: '#FFFFFF',
-              letterSpacing: -0.7,
-              lineHeight: 38,
-              marginBottom: 10,
+              letterSpacing: -0.9,
+              lineHeight: 44,
             }}
             numberOfLines={2}
           >
             {venue.name}
           </Text>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-            {hasRating && (
-              <>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Icon name="star" size={14} color="#FFC53D" />
-                  <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14.5, color: '#FFFFFF' }}>
-                    {venue.average_rating.toFixed(1)}
-                  </Text>
-                  <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: 'rgba(255,255,255,0.65)' }}>
-                    ({venue.review_count})
-                  </Text>
-                </View>
-                <Text style={{ color: 'rgba(255,255,255,0.4)' }}>·</Text>
-              </>
-            )}
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: 'rgba(255,255,255,0.82)' }}>
-              {meta.label}
-            </Text>
-            {distanceText != null && (
-              <>
-                <Text style={{ color: 'rgba(255,255,255,0.4)' }}>·</Text>
-                <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: 'rgba(255,255,255,0.82)' }}>
-                  {distanceText}
-                </Text>
-              </>
-            )}
-          </View>
+          {/* One honest editorial reason (top curation reason, else neutral
+              category label) — never fabricated. */}
+          <Text
+            style={{ fontFamily: FontFamily.body, fontSize: 15, color: 'rgba(255,255,255,0.9)', marginTop: 6 }}
+            numberOfLines={1}
+          >
+            {heroReason}
+          </Text>
 
-          {whyReasons.length > 0 && (
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-              {whyReasons.map((reason) => (
-                <View
-                  key={reason}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 5,
-                    backgroundColor: 'rgba(255,255,255,0.16)',
-                    borderWidth: 1,
-                    borderColor: 'rgba(255,255,255,0.15)',
-                    borderRadius: BorderRadius.pill,
-                    paddingHorizontal: 11,
-                    paddingVertical: 5,
-                  }}
-                >
-                  <Icon name="check" size={10} color="rgba(255,255,255,0.9)" strokeWidth={3} />
-                  <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: 'rgba(255,255,255,0.95)' }}>
-                    {reason}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
+          {/* Large soft Explore pill inside the card */}
+          <View
+            style={{
+              alignSelf: 'flex-start',
+              marginTop: 18,
+              backgroundColor: 'rgba(255,255,255,0.92)',
+              borderRadius: BorderRadius.pill,
+              paddingHorizontal: 22,
+              paddingVertical: 13,
+            }}
+          >
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: '#1C1408' }}>
+              Explore →
+            </Text>
+          </View>
         </View>
       </Pressable>
   );

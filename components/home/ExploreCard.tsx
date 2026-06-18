@@ -60,31 +60,34 @@ export function ExploreCard({ venue, onPress, contextTag, openUntil, size = 'lg'
   const distanceText = formatDistance(venue.distance_km);
   const hasRating = (venue.review_count ?? 0) > 0;
 
-  // ── Compact card (Recently viewed): image on top, caption below ──────────
+  // ── Compact card (Recently viewed): rounded image + caption BELOW, sitting
+  //    directly in the paper bubble — no own white surface (avoids white-on-
+  //    white) and softer shadow / more breathing room. Airbnb style. ─────────
   if (size === 'sm') {
-    const W = 164;
-    const IMG_H = 118;
+    const W = 228;
+    const IMG_H = 150;
     return (
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={`Open ${venue.name}`}
-        style={({ pressed }) => ({
-          width: W,
-          borderRadius: 18,
-          overflow: 'hidden',
-          backgroundColor: t.surface,
-          shadowColor: '#1A1208',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.08,
-          shadowRadius: 12,
-          elevation: 3,
-          opacity: pressed ? 0.94 : 1,
-          transform: [{ scale: pressed ? 0.99 : 1 }],
-        })}
+        style={({ pressed }) => ({ width: W, opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}
       >
-        {/* Image area — in-flow, explicit numeric size */}
-        <View style={{ width: W, height: IMG_H }}>
+        {/* Rounded image with a soft lift (opaque → elevation safe) */}
+        <View
+          style={{
+            width: W,
+            height: IMG_H,
+            borderRadius: 16,
+            overflow: 'hidden',
+            backgroundColor: t.fill,
+            shadowColor: '#1A1208',
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.12,
+            shadowRadius: 10,
+            elevation: 3,
+          }}
+        >
           {venue.cover_photo_url ? (
             <Image
               source={{ uri: venue.cover_photo_url }}
@@ -93,28 +96,30 @@ export function ExploreCard({ venue, onPress, contextTag, openUntil, size = 'lg'
               accessibilityLabel={`Photo of ${venue.name}`}
             />
           ) : (
-            <CategoryPlaceholder categorySlug={categorySlug} fill iconSize={42} borderRadius={0} />
+            // Deliberate empty-image state: soft category-tinted surface + a
+            // calm centred category icon (not a loading/broken-image look).
+            <CategoryPlaceholder categorySlug={categorySlug} fill iconSize={52} borderRadius={0} />
           )}
         </View>
 
-        {/* Caption */}
-        <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12 }}>
+        {/* Caption — on the bubble (no card surface) */}
+        <View style={{ paddingTop: 10 }}>
           <Text
             numberOfLines={2}
-            style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: t.label, lineHeight: 18 }}
+            style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14.5, color: t.label, lineHeight: 18 }}
           >
             {venue.name}
           </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
             {hasRating && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                 <Icon name="star" size={12} color={t.star} />
-                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12.5, color: t.label }}>
+                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: t.label }}>
                   {(venue.average_rating ?? 0).toFixed(1)}
                 </Text>
               </View>
             )}
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 12.5, color: t.label3 }}>{meta.label}</Text>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: t.label3 }}>{meta.label}</Text>
           </View>
         </View>
       </Pressable>

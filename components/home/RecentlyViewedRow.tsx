@@ -30,13 +30,16 @@ export function RecentlyViewedRow({ onVenuePress }: RecentlyViewedRowProps) {
   // Empty / still loading → hide the whole section (no placeholders).
   if (loading || items.length === 0) return null;
 
+  // De-bubbled: no outer paper card. The heading + cards sit directly on the
+  // page so Recently Viewed reads as a quiet, elegant strip that supports the
+  // hero rather than another container competing with it.
   return (
-    <View style={{ paddingTop: 28 }}>
-      <View style={{ paddingHorizontal: 20, paddingBottom: 16 }}>
-        <Text style={{ fontFamily: FontFamily.display, fontSize: 20, color: tokens.label, letterSpacing: -0.5 }}>
-          Recently viewed
+    <View style={{ paddingTop: 36 }}>
+      <View style={{ paddingHorizontal: 20, paddingBottom: 14 }}>
+        <Text style={{ fontFamily: FontFamily.display, fontSize: 19, color: tokens.label, letterSpacing: -0.4 }}>
+          Continue exploring
         </Text>
-        <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: tokens.label3, marginTop: 3 }}>
+        <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: tokens.label, opacity: 0.6, marginTop: 3 }}>
           Continue where you left off
         </Text>
       </View>
@@ -46,7 +49,7 @@ export function RecentlyViewedRow({ onVenuePress }: RecentlyViewedRowProps) {
         data={items}
         keyExtractor={(v) => v.id}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8, gap: 14 }}
+        contentContainerStyle={{ paddingHorizontal: 20, gap: 16 }}
         accessibilityRole="list"
         accessibilityLabel="Recently viewed venues"
         renderItem={({ item }) => (

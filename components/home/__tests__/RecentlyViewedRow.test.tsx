@@ -24,13 +24,13 @@ describe('RecentlyViewedRow', () => {
   it('renders nothing when there are no items', () => {
     mockHook.mockReturnValue({ items: [], loading: false });
     const { queryByText } = render(<RecentlyViewedRow onVenuePress={jest.fn()} />);
-    expect(queryByText('Recently viewed')).toBeNull();
+    expect(queryByText('Continue exploring')).toBeNull();
   });
 
   it('renders nothing while loading', () => {
     mockHook.mockReturnValue({ items: [{ id: 'a', name: 'A' }], loading: true });
     const { queryByText } = render(<RecentlyViewedRow onVenuePress={jest.fn()} />);
-    expect(queryByText('Recently viewed')).toBeNull();
+    expect(queryByText('Continue exploring')).toBeNull();
   });
 
   it('renders the header and cards when items are present', () => {
@@ -42,7 +42,7 @@ describe('RecentlyViewedRow', () => {
       loading: false,
     });
     const { getByText } = render(<RecentlyViewedRow onVenuePress={jest.fn()} />);
-    expect(getByText('Recently viewed')).toBeTruthy();
+    expect(getByText('Continue exploring')).toBeTruthy();
     expect(getByText('Continue where you left off')).toBeTruthy();
     expect(getByText('Chester Zoo')).toBeTruthy();
     expect(getByText('Attingham Park')).toBeTruthy();

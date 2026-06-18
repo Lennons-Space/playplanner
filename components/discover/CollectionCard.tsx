@@ -18,7 +18,7 @@
 // Presentation only — all data/membership/pill logic lives in lib/collections.
 // ─────────────────────────────────────────────────────────────────────────
 
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FontFamily } from '@/constants/theme';
 import { getCategoryMeta } from '@/constants/categories';
@@ -48,6 +48,7 @@ export interface CollectionCardProps {
 }
 
 export function CollectionCard({ def, onPress, layout = 'right', hero = false, compact = false, compactHeight }: CollectionCardProps) {
+  const { width } = useWindowDimensions();
   const pillLabels = def.pillSlugs.map((slug) => getCategoryMeta(slug).label);
   // Compact tiles drop the tagline and show at most two categories as a quiet
   // dotted line; the hero keeps richer translucent chips.
@@ -58,7 +59,9 @@ export function CollectionCard({ def, onPress, layout = 'right', hero = false, c
   const minHeight = hero ? 300 : compact ? (compactHeight ?? 160) : 186;
   const radius = hero ? 60 : compact ? 56 : 56;
   const pad = hero ? 34 : compact ? 20 : 26;
-  const titleSize = hero ? 35 : compact ? 16.5 : 23;
+  // Hero title is responsive: stays 35 on normal/wide screens (unchanged look),
+  // steps down only on narrow Android widths to keep ≤2 lines without clipping.
+  const titleSize = hero ? (width < 360 ? 30 : width < 410 ? 33 : 35) : compact ? 16.5 : 23;
   const glyphSize = hero ? 230 : 158;
   const off = hero ? -44 : -40; // how far the illustration is pushed off the corner
 
@@ -114,6 +117,11 @@ export function CollectionCard({ def, onPress, layout = 'right', hero = false, c
         style={{
           borderRadius: radius,
           backgroundColor: def.gradient[0],
+          // Hero only: a subtle hairline edge so the card boundary reads clearly
+          // against the warm background on a physical Android screen. Compact
+          // tiles keep no border (unchanged). Shadow is untouched.
+          borderWidth: hero ? 1 : 0,
+          borderColor: 'rgba(28,20,8,0.08)',
           shadowColor: '#2A1E0A',
           shadowOffset: { width: 0, height: hero ? 16 : 12 },
           shadowOpacity: 0.04,
@@ -152,8 +160,13 @@ export function CollectionCard({ def, onPress, layout = 'right', hero = false, c
 
         {/* Centred title column */}
         <View style={{ alignItems: 'center' }}>
-          {/* Clean type — the corner illustration now carries the personality. */}
-          <Text style={{ fontFamily: FontFamily.display, fontSize: titleSize, color: INK, letterSpacing: -0.5, textAlign: 'center' }}>
+          {/* Clean type — the corner illustration now carries the personality.
+              Capped at 2 lines so a long title can never clip horizontally; the
+              card's minHeight lets it grow vertically if accessibility text needs it. */}
+          <Text
+            numberOfLines={2}
+            style={{ fontFamily: FontFamily.display, fontSize: titleSize, color: INK, letterSpacing: -0.5, textAlign: 'center' }}
+          >
             {def.title}
           </Text>
 
@@ -185,8 +198,20 @@ export function CollectionCard({ def, onPress, layout = 'right', hero = false, c
             </Text>
           )}
 
-          {/* Non-hero cards keep the Explore pill inside the centred column. */}
-          {!hero && <View style={{ marginTop: compact ? 14 : 16 }}>{ExplorePill}</View>}
+          {/* Compact mosaic tiles use a QUIET text-link affordance (the whole
+              card is tappable) instead of repeating a heavy Explore pill on every
+              tile. The full pill is reserved for the Seasonal hero. */}
+          {!hero && (
+            <View style={{ marginTop: compact ? 12 : 16 }}>
+              {compact ? (
+                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: EXPLORE_BLUE, letterSpacing: 0.3 }}>
+                  Explore →
+                </Text>
+              ) : (
+                ExplorePill
+              )}
+            </View>
+          )}
         </View>
 
         {/* Hero: Explore pill sits near the bottom of the cover. */}

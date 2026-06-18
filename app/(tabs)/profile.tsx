@@ -482,8 +482,10 @@ const styles = StyleSheet.create({
   // Hero card
   heroCard: {
     borderRadius: 24,
-    margin: 16,
-    padding: 20,
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 8,
+    padding: 18,
     borderWidth: 1,
     borderColor: '#E6E2DB',
   },
@@ -539,16 +541,17 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
 
-  // MenuGroup
+  // MenuGroup — warm paper surface + soft Home/Discover-style shadow (was a
+  // pure-white card with a tight, harsh shadow).
   menuGroup: {
-    marginHorizontal: 16,
-    borderRadius: 16,
+    marginHorizontal: 20,
+    borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
+    backgroundColor: '#FBF7EF',
+    shadowColor: '#2A1E0A',
+    shadowOpacity: 0.04,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 2,
   },
 
@@ -556,7 +559,7 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FBF7EF',
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 12,
@@ -619,7 +622,7 @@ const styles = StyleSheet.create({
 
   // Sign out
   signOutBtn: {
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     paddingVertical: 14,
     alignItems: 'center',
     flexDirection: 'row',
@@ -634,7 +637,7 @@ const styles = StyleSheet.create({
 
   // Delete account
   deleteWrapper: {
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     marginTop: 8,
     marginBottom: 48,
     backgroundColor: '#FFE8E8',

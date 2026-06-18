@@ -28,6 +28,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useUser, useProfile } from '@/hooks/useAuth';
 import { Icon, ScreenTitle, CategoryPlaceholder } from '@/components/ui';
+import { SavedEmptyState } from '@/components/favourites/SavedEmptyState';
 import { getCategoryMeta } from '@/constants/categories';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -147,19 +148,6 @@ function FavCard({
         )}
       </View>
     </TouchableOpacity>
-  );
-}
-
-// ─── EmptyState ───────────────────────────────────────────────────────────────
-function EmptyState() {
-  return (
-    <View style={styles.emptyWrap}>
-      <Text style={styles.emptyEmoji}>💛</Text>
-      <Text style={styles.emptyTitle}>Nothing saved yet</Text>
-      <Text style={styles.emptySub}>
-        Tap the heart on any venue to save it here.
-      </Text>
-    </View>
   );
 }
 
@@ -320,14 +308,21 @@ export default function FavouritesScreen() {
       {showEmpty ? (
         // When the active tab has nothing to show, render header + empty state
         // in a plain ScrollView (no FlatList needed).
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.emptyScrollContent}
-        >
-          {listHeader}
-          <EmptyState />
-          <View style={styles.bottomPad} />
-        </ScrollView>
+        <View style={{ flex: 1 }}>
+          {/* Favourites-only soft cream scrim — calms the global sunny weather
+              circles behind the empty state so the content stays the focus.
+              Non-interactive, absolute-fill (no layout impact); keeps the warm
+              ambience rather than removing it. Does NOT touch the weather layer. */}
+          <View pointerEvents="none" style={styles.emptyScrim} />
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.emptyScrollContent}
+          >
+            {listHeader}
+            <SavedEmptyState />
+            <View style={styles.bottomPad} />
+          </ScrollView>
+        </View>
       ) : (
         <FlatList
           data={favRows}
@@ -377,6 +372,11 @@ const styles = StyleSheet.create({
   },
   emptyScrollContent: {
     flexGrow: 1,
+  },
+  // Soft cream wash over the global sunny background — empty state only.
+  emptyScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(251,246,236,0.42)',
   },
   bottomPad: {
     height: 110, // clear tab bar
@@ -455,18 +455,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // ── Empty state ───────────────────────────────────────────────────
-  emptyWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 60,
-  },
-  emptyEmoji: {
-    fontSize: 56,
-    marginBottom: 12,
-  },
+  // ── Shared empty/error copy (used by not-signed-in + error states) ──
   emptyTitle: {
     fontFamily: 'Nunito-ExtraBold',
     fontSize: 20,

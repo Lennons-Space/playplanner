@@ -23,6 +23,7 @@ import { useLocation } from '@/hooks/location';
 import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { computeIsOpenNow, getOpenUntilLabel } from '@/lib/venueAttributes';
 import { ExploreCard } from './ExploreCard';
+import { SECTION_BUBBLE } from './homeStyles';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { DEFAULT_FILTERS } from '@/types';
 import type { Venue, Category } from '@/types';
@@ -74,50 +75,52 @@ export function OpenNowRow({ onVenuePress }: OpenNowRowProps) {
 
   return (
     <View style={{ paddingTop: 28 }}>
-      <View style={{ paddingHorizontal: 20, paddingBottom: 16 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Text style={{ fontFamily: FontFamily.display, fontSize: 20, color: tokens.label, letterSpacing: -0.5 }}>
-            Open right now
-          </Text>
-          {/* Subtle live pill */}
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 5,
-              backgroundColor: 'rgba(28,140,80,0.14)',
-              borderRadius: 999,
-              paddingHorizontal: 9,
-              paddingVertical: 3,
-            }}
-          >
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#1C8C50' }} />
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 11, color: '#1C8C50' }}>Live</Text>
+      <View style={[SECTION_BUBBLE, { paddingHorizontal: 0 }]}>
+        <View style={{ paddingHorizontal: 20, paddingBottom: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={{ fontFamily: FontFamily.display, fontSize: 20, color: tokens.label, letterSpacing: -0.5 }}>
+              Open right now
+            </Text>
+            {/* Subtle live pill */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                backgroundColor: 'rgba(28,140,80,0.14)',
+                borderRadius: 999,
+                paddingHorizontal: 9,
+                paddingVertical: 3,
+              }}
+            >
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#1C8C50' }} />
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 11, color: '#1C8C50' }}>Live</Text>
+            </View>
           </View>
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: tokens.label, opacity: 0.65, marginTop: 3 }}>
+            Ready to go
+          </Text>
         </View>
-        <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: tokens.label, opacity: 0.65, marginTop: 3 }}>
-          Ready to go
-        </Text>
-      </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8, gap: 14 }}
-        style={{ flexGrow: 0 }}
-        accessibilityRole="list"
-        accessibilityLabel="Venues open right now"
-      >
-        {openVenues.map((venue) => (
-          <ExploreCard
-            key={venue.id}
-            venue={venue}
-            size="md"
-            openUntil={getOpenUntilLabel(venue)}
-            onPress={() => onVenuePress(venue.id)}
-          />
-        ))}
-      </ScrollView>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, gap: 14 }}
+          style={{ flexGrow: 0 }}
+          accessibilityRole="list"
+          accessibilityLabel="Venues open right now"
+        >
+          {openVenues.map((venue) => (
+            <ExploreCard
+              key={venue.id}
+              venue={venue}
+              size="md"
+              openUntil={getOpenUntilLabel(venue)}
+              onPress={() => onVenuePress(venue.id)}
+            />
+          ))}
+        </ScrollView>
+      </View>
     </View>
   );
 }
