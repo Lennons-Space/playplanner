@@ -10,6 +10,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { Icon } from '@/components/ui';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 import { ONBOARDING_KEY } from '.';
 
 async function markOnboardingSeen() {
@@ -52,7 +53,7 @@ export default function Onboarding1() {
         <View style={styles.heroCard}>
           {/* Pin icon centred in a soft circle */}
           <View style={styles.pinCircle}>
-            <Icon name="pin" size={32} color="#1B8A85" />
+            <Icon name="pin" size={32} color={Colors.accent} />
           </View>
           {/* Accent dots — purely decorative */}
           <View style={[styles.dot, { backgroundColor: '#FFD66B', top: 28, right: 36 }]} />
@@ -89,7 +90,7 @@ export default function Onboarding1() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FBF6EC',
+    backgroundColor: Colors.bg,
     paddingHorizontal: 28,
     paddingBottom: 32,
   },
@@ -99,9 +100,9 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   skipText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#7B8794',
+    color: Colors.label3,
   },
 
   // Hero card
@@ -115,8 +116,10 @@ const styles = StyleSheet.create({
   heroCard: {
     width: 200,
     height: 200,
-    backgroundColor: '#EEF9F8',
+    backgroundColor: Colors.surface2,
     borderRadius: 28,
+    borderWidth: 1,
+    borderColor: Colors.separator,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -124,11 +127,11 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 999,
-    backgroundColor: '#D4F0EE',
+    backgroundColor: Colors.accentLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Small accent dots scattered on the card
+  // Small accent dots scattered on the card (decorative brand colours)
   dot: {
     position: 'absolute',
     width: 8,
@@ -141,16 +144,17 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   headline: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 30,
-    color: '#1D2630',
+    color: Colors.label,
     lineHeight: 38,
     marginBottom: 10,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#4A5560',
+    color: Colors.label2,
     lineHeight: 22,
   },
 
@@ -165,23 +169,23 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#E6E2DB',
+    backgroundColor: Colors.separator,
   },
   dotActive: {
-    backgroundColor: '#2FB8B0',
+    backgroundColor: Colors.accent,
     width: 22,
     borderRadius: 4,
   },
 
   // CTA
   nextBtn: {
-    backgroundColor: '#2FB8B0',
-    borderRadius: 999,
+    backgroundColor: Colors.accent,
+    borderRadius: BorderRadius.pill,
     paddingVertical: 16,
     alignItems: 'center',
   },
   nextBtnText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 16,
     color: '#FFFFFF',
   },

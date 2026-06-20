@@ -3,8 +3,12 @@
  *
  * ICO Children's Code Standard 10: users must understand WHY location is
  * needed and that it is OFF by default, before the OS dialog appears.
+ *
+ * Visual: v2 dark editorial — colours/typography via the shared Colors +
+ * FontFamily tokens (layout kept as NativeWind utility classes).
  */
 import { View, Text, TouchableOpacity } from 'react-native';
+import { Colors, FontFamily } from '@/constants/theme';
 
 interface Props {
   onAccept: () => void;
@@ -13,16 +17,16 @@ interface Props {
 
 export function LocationConsentPrompt({ onAccept, onDecline }: Props) {
   return (
-    <View className="flex-1 bg-slate items-center justify-center px-6">
+    <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: Colors.bg }}>
       <Text
-        className="text-2xl text-charcoal text-center mb-3"
-        style={{ fontFamily: 'Nunito-ExtraBold' }}
+        className="text-center mb-3"
+        style={{ fontFamily: FontFamily.display, fontSize: 24, color: Colors.label, letterSpacing: -0.4 }}
       >
         Find venues near you?
       </Text>
       <Text
-        className="text-base text-grey text-center mb-8"
-        style={{ fontFamily: 'Nunito-Regular' }}
+        className="text-center mb-8"
+        style={{ fontFamily: FontFamily.body, fontSize: 15, color: Colors.label2, lineHeight: 22 }}
       >
         {/*
           Wording note (GDPR Art.7 — informed consent):
@@ -38,24 +42,24 @@ export function LocationConsentPrompt({ onAccept, onDecline }: Props) {
         {'\n\n'}You can still browse venues without sharing your location — we'll show places across London instead. You can change this anytime in Settings.
       </Text>
       <TouchableOpacity
-        className="w-full bg-sky rounded-2xl items-center justify-center mb-3"
-        style={{ height: 52 }}
+        className="w-full rounded-2xl items-center justify-center mb-3"
+        style={{ height: 52, backgroundColor: Colors.accent }}
         onPress={onAccept}
         accessibilityRole="button"
         accessibilityLabel="Allow location access"
       >
-        <Text className="text-white text-lg" style={{ fontFamily: 'Nunito-Bold' }}>
+        <Text className="text-lg" style={{ fontFamily: FontFamily.bodyStrong, color: '#FFFFFF' }}>
           Allow location
         </Text>
       </TouchableOpacity>
       <TouchableOpacity
-        className="w-full border-2 border-sky rounded-2xl items-center justify-center"
-        style={{ height: 52 }}
+        className="w-full rounded-2xl items-center justify-center"
+        style={{ height: 52, borderWidth: 2, borderColor: Colors.accent }}
         onPress={onDecline}
         accessibilityRole="button"
         accessibilityLabel="Browse without location"
       >
-        <Text className="text-sky text-lg" style={{ fontFamily: 'Nunito-Bold' }}>
+        <Text className="text-lg" style={{ fontFamily: FontFamily.bodyStrong, color: Colors.accent }}>
           Not now — browse without location
         </Text>
       </TouchableOpacity>

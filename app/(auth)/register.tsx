@@ -46,7 +46,7 @@ import { migratePendingLocationConsent } from '@/services/consent/locationConsen
 import { Themes, ocean, FontFamily } from '@/constants/theme';
 import { WeatherBackground } from '@/components/weather/WeatherBackground';
 
-const t = Themes.light;
+const t = Themes.dark;
 
 const inputStyle: TextStyle = {
   height: 54,
@@ -250,8 +250,8 @@ export default function RegisterScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.warm }}>
-      {/* Ambient weather wash — matches the rest of the app, decorative only. */}
-      <WeatherBackground />
+      {/* Immersive dark weather wash — matches the dark tabs, decorative only. */}
+      <WeatherBackground mode="immersive" paletteMode="dark" />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -347,9 +347,9 @@ export default function RegisterScreen() {
                   fields — harder for parents to accidentally skip them. */}
               <View
                 style={{
-                  backgroundColor: 'rgba(255,255,255,0.62)',
+                  backgroundColor: t.surface2,
                   borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.55)',
+                  borderColor: t.separator,
                   borderRadius: 18,
                   paddingHorizontal: 16,
                   paddingVertical: 16,
@@ -495,9 +495,9 @@ export default function RegisterScreen() {
                 flexDirection: 'row',
                 alignItems: 'flex-start',
                 gap: 10,
-                backgroundColor: 'rgba(255,255,255,0.62)',
+                backgroundColor: t.surface2,
                 borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.55)',
+                borderColor: t.separator,
                 borderRadius: 18,
                 paddingHorizontal: 16,
                 paddingVertical: 14,

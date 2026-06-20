@@ -33,6 +33,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { usePublicProfile } from '@/hooks/useProfile';
 import { usePublicProfileReviews, type PublicReviewItem } from '@/hooks/useReviews';
 import { formatMonthYear, getInitials, AVATAR_COLOURS } from '@/lib/utils';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -92,7 +93,7 @@ export default function PublicProfileScreen() {
       <>
         <Stack.Screen options={{ title: 'Profile' }} />
         <SafeAreaView style={styles.centreContainer} edges={['top', 'bottom']}>
-          <ActivityIndicator size="large" color="#4ECDC4" />
+          <ActivityIndicator size="large" color={Colors.accent} />
         </SafeAreaView>
       </>
     );
@@ -230,7 +231,7 @@ export default function PublicProfileScreen() {
               );
             }
             if (item.type === 'loading') {
-              return <ActivityIndicator color="#4ECDC4" style={{ marginTop: 16 }} />;
+              return <ActivityIndicator color={Colors.accent} style={{ marginTop: 16 }} />;
             }
             if (item.type === 'empty') {
               return (
@@ -299,7 +300,7 @@ function ReviewItem({ review }: { review: PublicReviewItem }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#F0F7F7',   // slate
+    backgroundColor: Colors.bg,
   },
   scrollContent: {
     paddingBottom: 40,
@@ -308,27 +309,27 @@ const styles = StyleSheet.create({
   // ---- Centre-aligned full-screen states ----
   centreContainer: {
     flex: 1,
-    backgroundColor: '#F0F7F7',
+    backgroundColor: Colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
   errorText: {
     fontSize: 16,
-    color: '#636E72',
-    fontFamily: 'Nunito-Regular',
+    color: Colors.label2,
+    fontFamily: FontFamily.body,
     textAlign: 'center',
     marginBottom: 16,
   },
   retryButton: {
-    backgroundColor: '#4ECDC4',
+    backgroundColor: Colors.accent,
     borderRadius: 18,
     paddingHorizontal: 24,
     paddingVertical: 12,
   },
   retryButtonText: {
     color: '#FFFFFF',
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
   },
 
@@ -339,35 +340,37 @@ const styles = StyleSheet.create({
   },
   privateTitle: {
     fontSize: 20,
-    fontFamily: 'Nunito-Bold',
-    color: '#2D3436',
+    fontFamily: FontFamily.display,
+    color: Colors.label,
     marginBottom: 8,
     textAlign: 'center',
   },
   privateSubtext: {
     fontSize: 14,
-    fontFamily: 'Nunito-Regular',
-    color: '#636E72',
+    fontFamily: FontFamily.body,
+    color: Colors.label2,
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 20,
   },
   backButton: {
     borderWidth: 1.5,
-    borderColor: '#4ECDC4',
+    borderColor: Colors.accent,
     borderRadius: 18,
     paddingHorizontal: 24,
     paddingVertical: 12,
   },
   backButtonText: {
-    color: '#4ECDC4',
-    fontFamily: 'Nunito-Bold',
+    color: Colors.accent,
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
   },
 
   // ---- Profile header ----
   header: {
-    backgroundColor: '#4ECDC4',   // sky
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.separator,
     alignItems: 'center',
     paddingTop: 28,
     paddingBottom: 32,
@@ -383,25 +386,24 @@ const styles = StyleSheet.create({
   },
   avatarInitials: {
     fontSize: 28,
-    fontFamily: 'Nunito-Bold',
-    color: '#2D3436',
+    fontFamily: FontFamily.caption,
+    color: '#FFFFFF',
   },
   displayName: {
     fontSize: 22,
-    fontFamily: 'Nunito-ExtraBold',
-    color: '#FFFFFF',
+    fontFamily: FontFamily.display,
+    color: Colors.label,
     marginBottom: 2,
     textAlign: 'center',
   },
   username: {
     fontSize: 14,
-    fontFamily: 'Nunito-Regular',
-    color: '#FFFFFF',
-    opacity: 0.8,
+    fontFamily: FontFamily.body,
+    color: Colors.label3,
     marginBottom: 6,
   },
   businessBadge: {
-    backgroundColor: '#FFE66D',   // sun
+    backgroundColor: Colors.accentLight,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 3,
@@ -409,33 +411,29 @@ const styles = StyleSheet.create({
   },
   businessBadgeText: {
     fontSize: 12,
-    fontFamily: 'Nunito-Bold',
-    color: '#2D3436',
+    fontFamily: FontFamily.bodyStrong,
+    color: Colors.accentTagText,
   },
   memberSince: {
     fontSize: 13,
-    fontFamily: 'Nunito-Regular',
-    color: '#FFFFFF',
-    opacity: 0.75,
+    fontFamily: FontFamily.body,
+    color: Colors.label3,
   },
 
   // ---- Generic card ----
   card: {
-    backgroundColor: '#FFF9F0',   // sand
-    borderRadius: 16,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.section,
+    borderWidth: 1,
+    borderColor: Colors.separator,
     padding: 16,
     marginHorizontal: 16,
     marginTop: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
   },
   sectionLabel: {
     fontSize: 11,
-    fontFamily: 'Nunito-Bold',
-    color: '#636E72',
+    fontFamily: FontFamily.caption,
+    color: Colors.label3,
     letterSpacing: 0.8,
     marginHorizontal: 16,
     marginTop: 20,
@@ -443,67 +441,64 @@ const styles = StyleSheet.create({
   },
   bioText: {
     fontSize: 15,
-    fontFamily: 'Nunito-Regular',
-    color: '#2D3436',
+    fontFamily: FontFamily.body,
+    color: Colors.label2,
     lineHeight: 22,
   },
 
   // ---- Reviews section ----
   privateReviewsText: {
     fontSize: 14,
-    fontFamily: 'Nunito-Regular',
-    color: '#636E72',
+    fontFamily: FontFamily.body,
+    color: Colors.label2,
     textAlign: 'center',
     lineHeight: 20,
   },
   emptyText: {
     fontSize: 14,
-    fontFamily: 'Nunito-Regular',
-    color: '#636E72',
+    fontFamily: FontFamily.body,
+    color: Colors.label2,
     textAlign: 'center',
   },
 
   // ---- Individual review card ----
   reviewCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.section,
+    borderWidth: 1,
+    borderColor: Colors.separator,
     padding: 16,
     marginHorizontal: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
   },
   reviewVenueName: {
     fontSize: 13,
-    fontFamily: 'Nunito-Bold',
-    color: '#2D3436',
+    fontFamily: FontFamily.bodyStrong,
+    color: Colors.label,
     marginBottom: 4,
   },
   reviewStars: {
     fontSize: 16,
-    color: '#FF6B6B',   // coral
+    color: Colors.star,
     letterSpacing: 1,
     marginBottom: 6,
   },
   reviewTitle: {
     fontSize: 15,
-    fontFamily: 'Nunito-Bold',
-    color: '#2D3436',
+    fontFamily: FontFamily.bodyStrong,
+    color: Colors.label,
     marginBottom: 4,
   },
   reviewBody: {
     fontSize: 14,
-    fontFamily: 'Nunito-Regular',
-    color: '#2D3436',
+    fontFamily: FontFamily.body,
+    color: Colors.label2,
     lineHeight: 20,
   },
   reviewDate: {
     fontSize: 12,
-    fontFamily: 'Nunito-Regular',
-    color: '#636E72',
+    fontFamily: FontFamily.body,
+    color: Colors.label3,
     marginTop: 8,
   },
 });

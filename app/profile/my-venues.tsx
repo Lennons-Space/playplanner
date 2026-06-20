@@ -22,6 +22,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useMyVenues } from '@/hooks/useDataRights';
 import { ModerationBadge } from '@/components/profile/ModerationBadge';
 import type { ModerationStatus } from '@/types';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -52,7 +53,7 @@ export default function MyVenuesScreen() {
         {/* Loading */}
         {isLoading && (
           <View style={styles.centred}>
-            <ActivityIndicator color="#FF6B6B" size="large" />
+            <ActivityIndicator color={Colors.accent} size="large" />
           </View>
         )}
 
@@ -124,7 +125,7 @@ export default function MyVenuesScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFF9F0',
+    backgroundColor: Colors.bg,
   },
   centred: {
     flex: 1,
@@ -133,9 +134,9 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#636E72',
+    color: Colors.label2,
     textAlign: 'center',
   },
   scrollContent: {
@@ -148,50 +149,46 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyHeading: {
-    fontFamily: 'Nunito-Medium',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#636E72',
+    color: Colors.label2,
     textAlign: 'center',
   },
   emptyLink: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: '#FF6B6B',
+    color: Colors.accent,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.section,
+    borderWidth: 1,
+    borderColor: Colors.separator,
     padding: 16,
     marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    // Shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
   },
   cardLeft: {
     flex: 1,
     marginRight: 12,
   },
   venueName: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: '#2D3436',
+    color: Colors.label,
     marginBottom: 2,
   },
   venueCity: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#636E72',
+    color: Colors.label2,
   },
   submittedDate: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#B2BEC3',
+    color: Colors.label3,
     marginTop: 2,
   },
 });

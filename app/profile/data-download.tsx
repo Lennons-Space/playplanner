@@ -36,6 +36,7 @@ import { shareAsync } from 'expo-sharing';
 import { format } from 'date-fns';
 import { useAuthStore } from '@/store/authStore';
 import { buildDataExport } from '@/hooks/useDataRights';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
 const STORAGE_KEY   = 'playplanner.last_data_export';
 const COOLDOWN_MS   = 86_400_000; // 24 hours
@@ -205,44 +206,46 @@ export default function DataDownloadScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFF9F0',
+    backgroundColor: Colors.bg,
   },
   scrollContent: {
     padding: 16,
     paddingBottom: 40,
   },
   infoBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.section,
+    borderWidth: 1,
+    borderColor: Colors.separator,
     padding: 16,
     marginBottom: 24,
   },
   infoHeading: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.heading,
     fontSize: 15,
-    color: '#2D3436',
+    color: Colors.label,
     marginBottom: 8,
   },
   infoBody: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#636E72',
+    color: Colors.label2,
     lineHeight: 20,
   },
   cooldownBox: {
-    backgroundColor: '#FFF3CD',
-    borderRadius: 12,
+    backgroundColor: 'rgba(253,203,110,0.14)',
+    borderRadius: BorderRadius.section,
     padding: 12,
     marginBottom: 16,
   },
   cooldownText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#856404',
+    color: '#FDCB6E',
     lineHeight: 20,
   },
   button: {
-    backgroundColor: '#FF6B6B',
+    backgroundColor: Colors.accent,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
@@ -252,32 +255,32 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   buttonText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 16,
     color: '#FFFFFF',
   },
   successBox: {
-    backgroundColor: '#D4EDDA',
-    borderRadius: 12,
+    backgroundColor: 'rgba(0,184,148,0.14)',
+    borderRadius: BorderRadius.section,
     padding: 12,
     marginTop: 16,
   },
   successText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#155724',
+    color: '#3CD9A0',
     lineHeight: 20,
   },
   errorBox: {
-    backgroundColor: '#F8D7DA',
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,107,107,0.14)',
+    borderRadius: BorderRadius.section,
     padding: 12,
     marginTop: 16,
   },
   errorText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#721C24',
+    color: Colors.coral,
     lineHeight: 20,
   },
 });

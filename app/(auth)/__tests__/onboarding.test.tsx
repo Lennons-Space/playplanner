@@ -67,10 +67,9 @@ jest.mock('@/components/ui', () => ({
   Icon: () => null,
 }));
 
-// constants/theme — only Colors.slate is used in index.tsx
-jest.mock('@/constants/theme', () => ({
-  Colors: { slate: '#FBF6EC' },
-}));
+// constants/theme — use the real (pure) token module so all tokens resolve
+// (the welcome/onboarding screens read Colors, FontFamily and BorderRadius).
+jest.mock('@/constants/theme', () => jest.requireActual('@/constants/theme'));
 
 // ---------------------------------------------------------------------------
 // Shared reset

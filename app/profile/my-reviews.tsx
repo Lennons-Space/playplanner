@@ -20,6 +20,7 @@ import { format } from 'date-fns';
 import { useAuthStore } from '@/store/authStore';
 import { useMyReviews, useDeleteReview } from '@/hooks/useDataRights';
 import { ModerationBadge } from '@/components/profile/ModerationBadge';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
 // ---------------------------------------------------------------------------
 // Star rating helper
@@ -33,7 +34,7 @@ function StarRating({ rating }: { rating: number }) {
           key={star}
           style={[
             styles.star,
-            { color: star <= rating ? '#FF6B6B' : '#B2BEC3' },
+            { color: star <= rating ? Colors.star : Colors.label4 },
           ]}
         >
           {star <= rating ? '★' : '☆'}
@@ -78,7 +79,7 @@ export default function MyReviewsScreen() {
         {/* Loading */}
         {isLoading && (
           <View style={styles.centred}>
-            <ActivityIndicator color="#FF6B6B" size="large" />
+            <ActivityIndicator color={Colors.accent} size="large" />
           </View>
         )}
 
@@ -177,7 +178,7 @@ export default function MyReviewsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFF9F0',
+    backgroundColor: Colors.bg,
   },
   centred: {
     flex: 1,
@@ -186,9 +187,9 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#636E72',
+    color: Colors.label2,
     textAlign: 'center',
   },
   scrollContent: {
@@ -201,27 +202,23 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyHeading: {
-    fontFamily: 'Nunito-Medium',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#636E72',
+    color: Colors.label2,
     textAlign: 'center',
   },
   emptyLink: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: '#FF6B6B',
+    color: Colors.accent,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.section,
+    borderWidth: 1,
+    borderColor: Colors.separator,
     padding: 16,
     marginBottom: 12,
-    // Shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
   },
   badgeDateRow: {
     flexDirection: 'row',
@@ -230,9 +227,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   dateText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#636E72',
+    color: Colors.label3,
   },
   starsRow: {
     flexDirection: 'row',
@@ -243,15 +240,15 @@ const styles = StyleSheet.create({
     marginRight: 1,
   },
   venueName: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: '#2D3436',
+    color: Colors.label,
     marginBottom: 4,
   },
   reviewBody: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#636E72',
+    color: Colors.label2,
     lineHeight: 19,
     marginBottom: 8,
   },
@@ -261,30 +258,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   deleteText: {
-    fontFamily: 'Nunito-Medium',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 12,
-    color: '#D63031',
+    color: Colors.coral,
   },
   rejectionNote: {
-    backgroundColor: '#FFF3CD',
+    backgroundColor: 'rgba(255,107,107,0.12)',
     borderRadius: 8,
     padding: 10,
     marginBottom: 8,
     borderLeftWidth: 3,
-    borderLeftColor: '#D63031',
+    borderLeftColor: Colors.coral,
   },
   rejectionLabel: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 11,
-    color: '#D63031',
+    color: Colors.coral,
     marginBottom: 3,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   rejectionText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#2D3436',
+    color: Colors.label2,
     lineHeight: 18,
   },
 });

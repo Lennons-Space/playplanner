@@ -34,7 +34,7 @@ import { useUser } from '@/hooks/useAuth';
 import { Themes, ocean, FontFamily } from '@/constants/theme';
 import { WeatherBackground } from '@/components/weather/WeatherBackground';
 
-const t = Themes.light;
+const t = Themes.dark;
 
 // Shared rounded input (opaque surface — safe with elevation on Android).
 const inputStyle: TextStyle = {
@@ -144,8 +144,8 @@ export default function LoginScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.warm }}>
-      {/* Ambient weather wash — matches the rest of the app, decorative only. */}
-      <WeatherBackground />
+      {/* Immersive dark weather wash — matches the dark tabs, decorative only. */}
+      <WeatherBackground mode="immersive" paletteMode="dark" />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -274,9 +274,9 @@ export default function LoginScreen() {
                 flexDirection: 'row',
                 alignItems: 'flex-start',
                 gap: 10,
-                backgroundColor: 'rgba(255,255,255,0.62)',
+                backgroundColor: t.surface2,
                 borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.55)',
+                borderColor: t.separator,
                 borderRadius: 18,
                 paddingHorizontal: 16,
                 paddingVertical: 14,
