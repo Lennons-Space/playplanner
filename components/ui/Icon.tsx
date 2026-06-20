@@ -13,6 +13,7 @@
 
 import React from 'react';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import { Colors } from '@/constants/theme';
 
 // All icon names available in the design system.
 // Keeping this as a union type means TypeScript will flag typos at call sites.
@@ -61,7 +62,7 @@ export interface IconProps {
   name: IconName;
   /** Rendered size in logical pixels (width and height). Default 20. */
   size?: number;
-  /** Stroke/fill colour. Default '#1D2630' (pp-ink). */
+  /** Stroke/fill colour. Default `Colors.label` (light on the dark v2 theme). */
   color?: string;
   /** SVG stroke width. Default 1.75. */
   strokeWidth?: number;
@@ -74,7 +75,7 @@ export interface IconProps {
  * `star` and `sparkle` are filled glyphs (no stroke) — consistent with the
  * design file where those two use fill={color} stroke="none".
  */
-export function Icon({ name, size = 20, color = '#1D2630', strokeWidth = 1.75 }: IconProps) {
+export function Icon({ name, size = 20, color = Colors.label, strokeWidth = 1.75 }: IconProps) {
   // Common props shared by every <Svg> wrapper.
   // We set fill="none" globally; individual filled paths override with fill={color}.
   const svg = {

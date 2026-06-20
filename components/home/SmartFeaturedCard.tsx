@@ -27,12 +27,20 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { FontFamily, BorderRadius } from '@/constants/theme';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 import { getCategoryMeta } from '@/constants/categories';
 import { computeIsOpenNow } from '@/lib/venueAttributes';
 import { generateRecommendationReasons } from '@/lib/recommendations/recommendationReasons';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
+import { Icon } from '@/components/ui/Icon';
+import { Stars } from '@/components/ui/Stars';
 import type { Venue } from '@/types';
+
+function formatDistance(km: number | undefined): string | null {
+  if (km == null) return null;
+  if (km < 1) return `${Math.round(km * 1000)}m`;
+  return `${(km * 0.621371).toFixed(1)}mi`;
+}
 
 // ── Price pill text ──────────────────────────────────────────────────────
 // Only rendered when venue.price_range is set — never fabricated.
@@ -85,19 +93,25 @@ export interface SmartFeaturedCardProps {
    * category/rating facts.
    */
   contextReasons?: string[];
+  /** Whether this venue is in the user's saved list (drives the heart icon). */
+  saved?: boolean;
+  /** Called when the save heart is pressed. Omit to hide the heart. */
+  onToggleSave?: () => void;
 }
 
-export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: SmartFeaturedCardProps) {
+export function SmartFeaturedCard({ venue, onPress, contextReasons = [], saved = false, onToggleSave }: SmartFeaturedCardProps) {
   const categorySlug = venue.category?.slug ?? null;
   const meta = getCategoryMeta(categorySlug);
 
   const pricePill = pricePillText(venue);
   const openPill = openUntilText(venue);
-  // ONE honest editorial reason: the top curation/recommendation reason if there
-  // is one, otherwise a neutral category label. Never fabricated — both sources
-  // derive from real venue.category + current weather.
-  const whyReasons = Array.from(new Set([...contextReasons, ...generateRecommendationReasons(venue)]));
-  const heroReason = whyReasons[0] ?? meta.label;
+  const distance = formatDistance(venue.distance_km);
+  const hasRating = (venue.review_count ?? 0) > 0;
+  // Up to 3 honest "why" pills: curation reasons first, then recommendation
+  // reasons (deduped). Never fabricated — all derive from real venue data.
+  const whyReasons = Array.from(
+    new Set([...contextReasons, ...generateRecommendationReasons(venue)]),
+  ).slice(0, 3);
 
   return (
     // Plain, static, in-flow card — NO Animated/reanimated wrapper. The root
@@ -110,10 +124,10 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
       accessibilityRole="button"
       accessibilityLabel={`Open ${venue.name}`}
       style={({ pressed }) => ({
-        height: 460,
+        height: 440,
         width: '100%',
         position: 'relative',
-        borderRadius: 64,
+        borderRadius: BorderRadius.featured,
         overflow: 'hidden',
         // Editorial magazine cover — soft, diffuse shadow only. This is the
         // dominant object on Home, but the lift stays gentle (cream-paper feel).
@@ -134,7 +148,7 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
             0 height (the explicit height didn't hold) and the bottom-anchored
             overlay escaped upward over the headings. The image/placeholder fill
             this layer; the gradient + pills + text overlay it absolutely. */}
-        <View style={{ width: '100%', height: 460 }}>
+        <View style={{ width: '100%', height: 440 }}>
           {venue.cover_photo_url ? (
             <Image
               source={{ uri: venue.cover_photo_url }}
@@ -177,6 +191,31 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
           </View>
         )}
 
+        {/* ── Top-right: save heart (dark glass circle) ── */}
+        {onToggleSave != null && (
+          <Pressable
+            onPress={onToggleSave}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={saved ? 'Remove from saved' : 'Save venue'}
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(20,18,24,0.55)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.12)',
+            }}
+          >
+            <Icon name={saved ? 'heartFill' : 'heart'} size={20} color={saved ? Colors.coral : '#FFFFFF'} />
+          </Pressable>
+        )}
+
         {/* ── Bottom content stack — magazine cover: open pill, big name, one
             honest editorial reason, large soft Explore pill. ── */}
         <View style={{ position: 'absolute', left: 24, right: 24, bottom: 26 }}>
@@ -204,40 +243,62 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
           <Text
             style={{
               fontFamily: FontFamily.display,
-              fontSize: 40,
+              fontSize: 26,
               color: '#FFFFFF',
-              letterSpacing: -0.9,
-              lineHeight: 44,
+              letterSpacing: -0.5,
+              lineHeight: 30,
             }}
             numberOfLines={2}
           >
             {venue.name}
           </Text>
 
-          {/* One honest editorial reason (top curation reason, else neutral
-              category label) — never fabricated. */}
-          <Text
-            style={{ fontFamily: FontFamily.body, fontSize: 15, color: 'rgba(255,255,255,0.9)', marginTop: 6 }}
-            numberOfLines={1}
-          >
-            {heroReason}
-          </Text>
-
-          {/* Large soft Explore pill inside the card */}
-          <View
-            style={{
-              alignSelf: 'flex-start',
-              marginTop: 18,
-              backgroundColor: 'rgba(255,255,255,0.92)',
-              borderRadius: BorderRadius.pill,
-              paddingHorizontal: 22,
-              paddingVertical: 13,
-            }}
-          >
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: '#1C1408' }}>
-              Explore →
+          {/* Rating · type · distance row (real data; pieces hide when absent). */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            {hasRating && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Stars rating={venue.average_rating} size={13} />
+                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14.5, color: '#FFFFFF' }}>
+                  {venue.average_rating.toFixed(1)}
+                </Text>
+              </View>
+            )}
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: 'rgba(255,255,255,0.85)' }}>
+              {meta.label}
             </Text>
+            {distance != null && (
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: 'rgba(255,255,255,0.85)' }}>
+                · {distance}
+              </Text>
+            )}
           </View>
+
+          {/* Up to 3 honest "why" glass pills (with white checkmark). */}
+          {whyReasons.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+              {whyReasons.map((reason) => (
+                <View
+                  key={reason}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    backgroundColor: 'rgba(255,255,255,0.16)',
+                    borderRadius: BorderRadius.pill,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.18)',
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                  }}
+                >
+                  <Icon name="check" size={12} color="#FFFFFF" />
+                  <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: '#FFFFFF' }} numberOfLines={1}>
+                    {reason}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       </Pressable>
   );

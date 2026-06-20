@@ -1,9 +1,19 @@
 /**
- * Profile tab — user account, settings, subscription.
+ * Profile tab — Play Planner v2 (Parent experience).
+ *
+ * Rebuilt to the v2 design (pp2-profile.jsx / screens/05-profile-dark.png):
+ * brand splash (mark + wordmark) → user row (avatar, name, location · member
+ * since, Edit) → stats row → grouped settings sections → sign out → delete.
+ *
+ * Per launch decision: the Parent/Business toggle and all business-owner flows
+ * (claim listing, analytics, edit listing) are intentionally NOT rendered — they
+ * were deferred/removed for launch. This screen shows only real, existing
+ * functionality.
  *
  * GDPR Art.17 (right to erasure): "Delete account" calls delete_own_account()
  * server-side — never the auth API directly. The function handles cascading
- * deletion and writes a GDPR audit log before removing the row.
+ * deletion and writes a GDPR audit log before removing the row. The sign-out and
+ * delete logic below is preserved verbatim from the previous version.
  */
 import { useState } from 'react';
 import {
@@ -17,81 +27,51 @@ import {
   Linking,
 } from 'react-native';
 import { router, Redirect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useQueryClient } from '@tanstack/react-query';
-import { useProfile } from '@/hooks/useAuth';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useProfile, useUser } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
+import { useSavedVenueIds } from '@/hooks/useFavourites';
 import { supabase } from '@/lib/supabase';
-import { Icon } from '@/components/ui';
+import { Icon, PPBrandMark } from '@/components/ui';
+import type { IconName } from '@/components/ui/Icon';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
-// ─── SectionLabel ────────────────────────────────────────────────────────────
-function SectionLabel({ label }: { label: string }) {
-  return (
-    <Text style={styles.sectionLabel}>
-      {label.toUpperCase()}
-    </Text>
-  );
-}
-
-// ─── MenuItem ────────────────────────────────────────────────────────────────
-interface MenuItemProps {
-  icon: React.ComponentProps<typeof Icon>['name'];
+// ─── Settings row + section ──────────────────────────────────────────────────
+interface RowProps {
+  icon: IconName;
   label: string;
+  sub?: string;
   onPress: () => void;
-  badge?: string;
-  detail?: string;
-  iconBg?: string;
-  iconColor?: string;
   last?: boolean;
 }
 
-function MenuItem({
-  icon,
-  label,
-  onPress,
-  badge,
-  detail,
-  iconBg = '#EEF9F8',
-  iconColor = '#1B8A85',
-  last = false,
-}: MenuItemProps) {
+function SettingsRow({ icon, label, sub, onPress, last = false }: RowProps) {
   return (
     <TouchableOpacity
-      style={[styles.menuItem, last ? styles.menuItemLast : styles.menuItemBorder]}
+      style={[styles.row, !last && styles.rowBorder]}
       onPress={onPress}
       activeOpacity={0.7}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      {/* Icon box */}
-      <View style={[styles.menuIconBox, { backgroundColor: iconBg }]}>
-        <Icon name={icon} size={18} color={iconColor} />
+      <View style={styles.rowIcon}>
+        <Icon name={icon} size={18} color={Colors.accent} strokeWidth={1.8} />
       </View>
-
-      <Text style={styles.menuLabel}>{label}</Text>
-
-      {detail && !badge && (
-        <Text style={styles.menuDetail}>{detail}</Text>
-      )}
-
-      {badge && (
-        <View style={styles.menuBadge}>
-          <Text style={styles.menuBadgeText}>{badge}</Text>
-        </View>
-      )}
-
-      <Icon name="chevR" size={16} color="#7B8794" />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        {sub ? <Text style={styles.rowSub}>{sub}</Text> : null}
+      </View>
+      <Icon name="chevR" size={16} color={Colors.label4} />
     </TouchableOpacity>
   );
 }
 
-// ─── MenuGroup ───────────────────────────────────────────────────────────────
-// Wraps a group of MenuItems in a card with rounded corners.
-function MenuGroup({ children }: { children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={styles.menuGroup}>
-      {children}
+    <View style={{ marginBottom: 22 }}>
+      <Text style={styles.sectionLabel}>{title.toUpperCase()}</Text>
+      <View style={styles.sectionCard}>{children}</View>
     </View>
   );
 }
@@ -100,9 +80,40 @@ function MenuGroup({ children }: { children: React.ReactNode }) {
 export default function ProfileScreen() {
   const profile = useProfile();
   const user = useAuthStore((s) => s.user);
+  const authUser = useUser();
   const signOut = useAuthStore((s) => s.signOut);
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [deleting, setDeleting] = useState(false);
+
+  // ── Real stats (failure-safe: a count error simply shows "—") ──────────────
+  const { savedIds } = useSavedVenueIds();
+  const { data: reviewCount } = useQuery({
+    queryKey: ['profileStats', 'reviews', authUser?.id],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('reviews')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', authUser!.id);
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: !!authUser,
+    staleTime: 1000 * 60 * 2,
+  });
+  const { data: submittedCount } = useQuery({
+    queryKey: ['profileStats', 'submitted', authUser?.id],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('venues')
+        .select('id', { count: 'exact', head: true })
+        .eq('submitted_by', authUser!.id);
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: !!authUser,
+    staleTime: 1000 * 60 * 2,
+  });
 
   function confirmSignOut() {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
@@ -111,10 +122,6 @@ export default function ProfileScreen() {
         text: 'Sign out',
         style: 'destructive',
         onPress: async () => {
-          // Await signOut so the Supabase token is invalidated before we
-          // clear the React Query cache. If signOut throws (e.g. offline),
-          // local state is still wiped — the session token is useless on
-          // a device that has lost connectivity anyway.
           try { await signOut(); } catch { /* local state cleared regardless */ }
           queryClient.clear();
           router.replace('/(auth)/welcome');
@@ -124,26 +131,10 @@ export default function ProfileScreen() {
   }
 
   /**
-   * GDPR Art.17 — right to erasure.
-   *
-   * Order matters here and is privacy-load-bearing:
-   *   1. Remove this user's UNAPPROVED (pending/rejected) photo files from
-   *      Storage first. Supabase Storage objects live outside Postgres, so
-   *      a SQL-only deletion can't reach them — the RPC below deletes the
-   *      DB rows, but the blobs would be orphaned without this step.
-   *      Best-effort: a storage error must NEVER block account deletion —
-   *      the DB rows (the source of truth for "is this still personal
-   *      data?") are removed by the RPC regardless.
-   *   2. Call delete_own_account(), which:
-   *        a. Writes a GDPR audit log entry (Art.5(2) accountability).
-   *        b. Deletes this user's unapproved photo ROWS (status <> 'approved').
-   *        c. Deletes the auth.users row, cascading to profiles and all
-   *           ON DELETE CASCADE tables, and ANONYMISING (uploaded_by/
-   *           moderated_by → NULL) any APPROVED photos this user uploaded
-   *           or moderated — they are kept as anonymous venue content.
-   *
-   * Approved photos' files are intentionally left in Storage — their DB
-   * rows survive (now anonymised), so the files are still in active use.
+   * GDPR Art.17 — right to erasure. (Logic preserved verbatim.)
+   * 1. Best-effort removal of this user's UNAPPROVED photo files from Storage.
+   * 2. delete_own_account() RPC: audit log → delete unapproved photo rows →
+   *    delete auth.users (cascades), anonymising approved photos.
    */
   function confirmDeleteAccount() {
     Alert.alert(
@@ -157,12 +148,6 @@ export default function ProfileScreen() {
           onPress: async () => {
             setDeleting(true);
 
-            // Step 1 — best-effort cleanup of this user's own unapproved
-            // photo files. Scoped to `uploaded_by = user.id` so we can never
-            // touch another user's or an admin's storage objects. We never
-            // log the storage paths or any photo/user identifiers — only
-            // generic error metadata (code/message), per the "no sensitive
-            // logs" rule, since paths are a (weak) link back to the user.
             if (user) {
               try {
                 const { data: ownPhotos, error: fetchError } = await supabase
@@ -188,28 +173,18 @@ export default function ProfileScreen() {
                   }
                 }
               } catch (e) {
-                // Never let a storage hiccup prevent account deletion — the
-                // RPC is the authoritative deletion path for the DB rows.
                 console.error('[deleteAccount] Unexpected error during storage cleanup (non-blocking):', e instanceof Error ? e.message : 'unknown');
               }
             }
 
-            // Step 2 — the authoritative deletion. Removes unapproved photo
-            // rows, deletes the account, and anonymises any approved photos.
             const { error } = await supabase.rpc('delete_own_account');
             if (error) {
-              // Only re-enable the button on failure. On success we leave
-              // deleting=true — the screen is replaced immediately so the
-              // state never resets, and this prevents the button briefly
-              // re-enabling between the RPC resolving and navigation firing.
               setDeleting(false);
               Alert.alert('Error', 'Could not delete account. Please try again.');
               return;
             }
 
             queryClient.clear();
-            // signOut is best-effort — the DB row is gone so the session is
-            // invalid regardless. We clear local state but don't block on failure.
             try {
               await signOut();
             } catch (e) {
@@ -222,449 +197,358 @@ export default function ProfileScreen() {
     );
   }
 
-  // ── Auth guard — must come after all hooks (Rules of Hooks) ─────────────
-  // If there is no authenticated user, redirect to the welcome screen rather
-  // than showing a skeleton that will never resolve.
+  // ── Auth guard — after all hooks (Rules of Hooks) ──────────────────────────
   if (!user) return <Redirect href="/(auth)/welcome" />;
 
-  // isPremium intentionally not used — subscription tier is not surfaced in UI
-  // until the Pass product re-launches. Keeping the data read here means we
-  // don't need a migration when we restore the badge.
-  const isPremium = false;
-
-  // ── Loading skeleton ──────────────────────────────────────────────────────
+  // ── Loading skeleton ───────────────────────────────────────────────────────
   if (!profile) {
     return (
-      <SafeAreaView style={styles.skeletonRoot} edges={['top']}>
-        <View style={styles.skeletonHero} />
-        <View style={styles.skeletonBlock1} />
-        <View style={styles.skeletonBlock2} />
-      </SafeAreaView>
+      <View style={styles.root}>
+        <View style={[styles.brandSplash, { paddingTop: insets.top + 14 }]}>
+          <View style={{ height: 200 }} />
+        </View>
+      </View>
     );
   }
 
-  // ── Derive initials for avatar ────────────────────────────────────────────
-  const initials = profile.full_name
-    ?.trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w: string) => w[0]?.toUpperCase() ?? '')
-    .join('') ?? '';
+  // Single-initial avatar (matches v2).
+  const initial = profile.full_name?.trim()?.[0]?.toUpperCase() ?? '';
+
+  // Location · member-since line (real data only; pieces hide when absent).
+  const memberSinceYear = profile.created_at ? new Date(profile.created_at).getFullYear() : null;
+  const locationBits = [profile.postcode?.trim() || null, memberSinceYear ? `Member since ${memberSinceYear}` : null].filter(Boolean);
+  const subline = locationBits.join(' · ');
+
+  const stat = (n: number | undefined) => (n == null ? '—' : String(n));
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+    <View style={styles.root}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
 
-        {/* ── Hero card ─────────────────────────────────────────────────── */}
-        <LinearGradient
-          colors={['#D4F0EE', '#EEF9F8', '#FFF1C7']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
-        >
-          {/* Top row: avatar + settings button */}
-          <View style={styles.heroTopRow}>
-            {/* Avatar */}
+        {/* ── Brand splash + user row + stats ─────────────────────────────── */}
+        <View style={[styles.brandSplash, { paddingTop: insets.top + 14 }]}>
+          <View style={styles.brandRow}>
+            <PPBrandMark size={36} />
+            <Text style={styles.wordmark}>Play Planner</Text>
+          </View>
+
+          {/* User row */}
+          <View style={styles.userRow}>
             <View style={styles.avatar}>
-              {initials.length > 0 ? (
-                <Text style={styles.avatarInitials}>{initials}</Text>
+              {initial ? (
+                <Text style={styles.avatarInitial}>{initial}</Text>
               ) : (
-                <Icon name="user" size={28} color="#FFFFFF" />
+                <Icon name="user" size={26} color="#FFFFFF" />
               )}
             </View>
-
-            {/* Settings button */}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.userName} numberOfLines={1}>{profile.full_name ?? 'Parent'}</Text>
+              {subline ? <Text style={styles.userSub} numberOfLines={1}>{subline}</Text> : null}
+            </View>
             <TouchableOpacity
-              style={styles.heroSettingsBtn}
+              style={styles.editBtn}
               onPress={() => router.push('/profile/edit')}
               accessibilityRole="button"
-              accessibilityLabel="Edit profile settings"
-              activeOpacity={0.7}
+              accessibilityLabel="Edit profile"
             >
-              <Icon name="settings" size={20} color="#4A5560" />
+              <Text style={styles.editBtnText}>Edit</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Name */}
-          <Text style={styles.heroName}>
-            {profile.full_name ?? 'Parent'}
-          </Text>
-
-          {/* Username */}
-          {profile.username ? (
-            <Text style={styles.heroUsername}>@{profile.username}</Text>
-          ) : null}
-
-          {/* Premium badge placeholder — hidden until Pass relaunches */}
-        </LinearGradient>
-
-        {/* ── Account ───────────────────────────────────────────────────── */}
-        <SectionLabel label="Account" />
-        <MenuGroup>
-          <MenuItem
-            icon="user"
-            label="Personal details"
-            onPress={() => router.push('/profile/edit')}
-          />
-          <MenuItem
-            icon="bell"
-            label="Notifications"
-            onPress={() => router.push('/profile/notifications')}
-          />
-          <MenuItem
-            icon="shield"
-            label="Privacy & data"
-            onPress={() => router.push('/profile/privacy-settings')}
-          />
-          <MenuItem
-            icon="info"
-            label="Download my data"
-            onPress={() => router.push('/profile/data-download')}
-            last
-          />
-        </MenuGroup>
-
-        {/* ── My Activity ───────────────────────────────────────────────── */}
-        <SectionLabel label="My activity" />
-        <MenuGroup>
-          <MenuItem
-            icon="star"
-            label="My reviews"
-            onPress={() => router.push('/profile/my-reviews')}
-          />
-          <MenuItem
-            icon="pin"
-            label="My submitted venues"
-            onPress={() => router.push('/profile/my-venues')}
-            last
-          />
-        </MenuGroup>
-
-        {/* Subscription / upsell section intentionally removed.
-            PlayPlanner is free to use at launch. The Pass will be
-            reintroduced in a future release once payment infrastructure
-            is fully hardened. Remove this comment when reinstating. */}
-
-        {/* ── Community ─────────────────────────────────────────────────── */}
-        <SectionLabel label="Community" />
-        <MenuGroup>
-          <MenuItem
-            icon="plus"
-            label="Add a venue"
-            onPress={() => router.push('/venue/add')}
-            last
-          />
-        </MenuGroup>
-
-        {/* "Own a venue?" claim card intentionally removed.
-            The claim flow is being redesigned for security before re-launch.
-            Edge functions send-otp / verify-otp remain deployed server-side.
-            Remove this comment and restore the card when the flow is ready. */}
-
-        {/* ── Support ───────────────────────────────────────────────────── */}
-        <SectionLabel label="Support" />
-        <MenuGroup>
-          <MenuItem
-            icon="info"
-            label="Help & FAQ"
-            onPress={() => Alert.alert('Help', 'For help, email support@playplanner.app')}
-          />
-          <MenuItem
-            icon="msg"
-            label="Contact us"
-            onPress={() => Linking.openURL('mailto:support@playplanner.app')}
-          />
-          <MenuItem
-            icon="shield"
-            label="Privacy policy"
-            onPress={() => router.push('/(auth)/privacy')}
-            last
-          />
-        </MenuGroup>
-
-        {/* ── Admin panel — only visible to admins ──────────────────────── */}
-        {profile?.is_admin === true && (
-          <>
-            <SectionLabel label="Admin" />
-            <MenuGroup>
-              <MenuItem
-                icon="shield"
-                label="Moderation panel"
-                onPress={() => router.push('/admin/moderation')}
-                iconBg="#FFF1C7"
-                iconColor="#8A6100"
-                last
-              />
-            </MenuGroup>
-          </>
-        )}
-
-        {/* ── Footer ────────────────────────────────────────────────────── */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>PlayPlanner · v1.0.0</Text>
+          {/* Stats row — real counts, each tappable to its screen */}
+          <View style={styles.statsRow}>
+            <TouchableOpacity style={styles.statCell} onPress={() => router.push('/(tabs)/favourites')} accessibilityRole="button" accessibilityLabel={`${savedIds.size} saved`}>
+              <Text style={styles.statValue}>{savedIds.size}</Text>
+              <Text style={styles.statLabel}>Saved</Text>
+            </TouchableOpacity>
+            <View style={styles.statDivider} />
+            <TouchableOpacity style={styles.statCell} onPress={() => router.push('/profile/my-reviews')} accessibilityRole="button" accessibilityLabel={`${stat(reviewCount)} reviews`}>
+              <Text style={styles.statValue}>{stat(reviewCount)}</Text>
+              <Text style={styles.statLabel}>Reviews</Text>
+            </TouchableOpacity>
+            <View style={styles.statDivider} />
+            <TouchableOpacity style={styles.statCell} onPress={() => router.push('/profile/my-venues')} accessibilityRole="button" accessibilityLabel={`${stat(submittedCount)} submitted`}>
+              <Text style={styles.statValue}>{stat(submittedCount)}</Text>
+              <Text style={styles.statLabel}>Submitted</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* ── Sign out ──────────────────────────────────────────────────── */}
-        <TouchableOpacity
-          style={styles.signOutBtn}
-          onPress={confirmSignOut}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out of your account"
-        >
-          <Text style={styles.signOutText}>Sign out</Text>
-        </TouchableOpacity>
+        {/* ── Settings sections (Parent only) ─────────────────────────────── */}
+        <View style={{ paddingTop: 18 }}>
+          <Section title="Account">
+            <SettingsRow icon="user" label="Personal details" sub="Name, username, postcode" onPress={() => router.push('/profile/edit')} />
+            <SettingsRow icon="bell" label="Notifications" sub="Nearby events & updates" onPress={() => router.push('/profile/notifications')} />
+            <SettingsRow icon="shield" label="Privacy & safety" sub="Location, data settings" onPress={() => router.push('/profile/privacy-settings')} />
+            <SettingsRow icon="info" label="Download my data" sub="Export a copy of your data" onPress={() => router.push('/profile/data-download')} last />
+          </Section>
 
-        {/* ── Delete account — GDPR Art.17 ──────────────────────────────── */}
-        <View style={styles.deleteWrapper}>
-          <TouchableOpacity
-            style={styles.deleteBtn}
-            onPress={confirmDeleteAccount}
-            disabled={deleting}
-            accessibilityRole="button"
-            accessibilityLabel="Permanently delete your account and all your data"
-            accessibilityState={{ disabled: deleting }}
-          >
-            {deleting ? (
-              <ActivityIndicator color="#FF6B6B" />
-            ) : (
-              <Text style={styles.deleteBtnText}>Delete account</Text>
-            )}
-          </TouchableOpacity>
-          {/* ICO Children's Code Standard 4 — transparency before destructive action */}
-          <Text style={styles.deleteWarning}>
-            Permanently deletes all your data. Cannot be undone.
-          </Text>
+          <Section title="My activity">
+            <SettingsRow icon="star" label="My reviews" onPress={() => router.push('/profile/my-reviews')} />
+            <SettingsRow icon="pin" label="My submitted venues" onPress={() => router.push('/profile/my-venues')} last />
+          </Section>
+
+          <Section title="Community">
+            <SettingsRow icon="plus" label="Add a venue" sub="Suggest a family-friendly place" onPress={() => router.push('/venue/add')} last />
+          </Section>
+
+          <Section title="Support">
+            <SettingsRow icon="info" label="Help & FAQ" onPress={() => Alert.alert('Help', 'For help, email support@playplanner.app')} />
+            <SettingsRow icon="msg" label="Contact us" sub="We usually reply same day" onPress={() => Linking.openURL('mailto:support@playplanner.app')} />
+            <SettingsRow icon="shield" label="Privacy policy" onPress={() => router.push('/(auth)/privacy')} last />
+          </Section>
+
+          {profile?.is_admin === true && (
+            <Section title="Admin">
+              <SettingsRow icon="shield" label="Moderation panel" onPress={() => router.push('/admin/moderation')} last />
+            </Section>
+          )}
+
+          {/* Sign out */}
+          <View style={{ paddingHorizontal: 16 }}>
+            <TouchableOpacity
+              style={styles.signOutBtn}
+              onPress={confirmSignOut}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out of your account"
+            >
+              <Text style={styles.signOutText}>Sign out</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Delete account — GDPR Art.17 */}
+          <View style={styles.deleteWrapper}>
+            <TouchableOpacity
+              style={styles.deleteBtn}
+              onPress={confirmDeleteAccount}
+              disabled={deleting}
+              accessibilityRole="button"
+              accessibilityLabel="Permanently delete your account and all your data"
+              accessibilityState={{ disabled: deleting }}
+            >
+              {deleting ? (
+                <ActivityIndicator color={Colors.coral} />
+              ) : (
+                <Text style={styles.deleteBtnText}>Delete account</Text>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.deleteWarning}>
+              Permanently deletes all your data. Cannot be undone.
+            </Text>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>PlayPlanner · v1.0.0</Text>
+          </View>
         </View>
-
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  // Root
   root: {
     flex: 1,
-    // Transparent so the global weather layer (app/(tabs)/_layout) shows through.
+    // Transparent so the global weather layer shows through the rounded areas.
     backgroundColor: 'transparent',
   },
-  scrollContent: {
-    paddingBottom: 96,
-  },
 
-  // Skeleton
-  skeletonRoot: {
-    flex: 1,
-    backgroundColor: 'transparent',
+  // ── Brand splash ──
+  brandSplash: {
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.separator,
   },
-  skeletonHero: {
-    margin: 16,
-    height: 140,
-    borderRadius: 24,
-    backgroundColor: '#F1ECE2',
-  },
-  skeletonBlock1: {
-    marginHorizontal: 16,
-    marginTop: 20,
-    height: 200,
-    borderRadius: 16,
-    backgroundColor: '#F1ECE2',
-  },
-  skeletonBlock2: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    height: 100,
-    borderRadius: 16,
-    backgroundColor: '#F1ECE2',
-  },
-
-  // Hero card
-  heroCard: {
-    borderRadius: 24,
-    marginHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 8,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#E6E2DB',
-  },
-  heroTopRow: {
+  brandRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    paddingBottom: 18,
+  },
+  wordmark: {
+    fontFamily: FontFamily.display,
+    fontSize: 18,
+    color: Colors.label,
+    letterSpacing: -0.4,
+  },
+
+  // ── User row ──
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingBottom: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.separator,
   },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#1D2630',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
   },
-  avatarInitials: {
-    fontFamily: 'Nunito-ExtraBold',
+  avatarInitial: {
+    fontFamily: FontFamily.caption,
     fontSize: 22,
     color: '#FFFFFF',
   },
-  heroSettingsBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroName: {
-    fontFamily: 'Nunito-ExtraBold',
+  userName: {
+    fontFamily: FontFamily.display,
     fontSize: 20,
-    color: '#1D2630',
+    color: Colors.label,
     letterSpacing: -0.3,
-    marginTop: 12,
   },
-  heroUsername: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 12,
-    color: '#4A5560',
+  userSub: {
+    fontFamily: FontFamily.body,
+    fontSize: 14,
+    color: Colors.label3,
     marginTop: 2,
   },
-  // SectionLabel
-  sectionLabel: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 11,
-    color: '#7B8794',
-    letterSpacing: 0.6,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 8,
+  editBtn: {
+    backgroundColor: Colors.fill,
+    borderRadius: BorderRadius.iconContainer,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  editBtnText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 13,
+    color: Colors.accent,
   },
 
-  // MenuGroup — warm paper surface + soft Home/Discover-style shadow (was a
-  // pure-white card with a tight, harsh shadow).
-  menuGroup: {
-    marginHorizontal: 20,
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#FBF7EF',
-    shadowColor: '#2A1E0A',
-    shadowOpacity: 0.04,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-
-  // MenuItem
-  menuItem: {
+  // ── Stats ──
+  statsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FBF7EF',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.separator,
   },
-  menuItemBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E6E2DB',
-  },
-  menuItemLast: {
-    borderBottomWidth: 0,
-  },
-  menuIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menuLabel: {
+  statCell: {
     flex: 1,
-    fontFamily: 'Nunito-Bold',
-    fontSize: 14,
-    color: '#1D2630',
-  },
-  menuDetail: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 12,
-    color: '#7B8794',
-    marginRight: 4,
-  },
-  menuBadge: {
-    backgroundColor: '#2FB8B0',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginRight: 4,
-  },
-  menuBadgeText: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 11,
-    color: '#FFFFFF',
-  },
-
-  // Upgrade card styles removed — subscription upsell removed at launch.
-  // Restore when PlayPlanner Pass relaunches.
-
-  // Claim card styles removed — claim flow removed at launch for security.
-
-  // Footer
-  footer: {
     alignItems: 'center',
-    paddingTop: 28,
-    paddingBottom: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
   },
-  footerText: {
-    fontFamily: 'Nunito-Regular',
+  statDivider: {
+    width: 1,
+    backgroundColor: Colors.separator,
+  },
+  statValue: {
+    fontFamily: FontFamily.display,
+    fontSize: 22,
+    color: Colors.accent,
+    letterSpacing: -0.5,
+  },
+  statLabel: {
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#7B8794',
+    color: Colors.label3,
+    marginTop: 2,
   },
 
-  // Sign out
+  // ── Settings sections ──
+  sectionLabel: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 13,
+    color: Colors.label3,
+    letterSpacing: 0.6,
+    marginLeft: 16,
+    marginBottom: 8,
+  },
+  sectionCard: {
+    marginHorizontal: 16,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.section,
+    borderWidth: 1,
+    borderColor: Colors.separator,
+    overflow: 'hidden',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  rowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.separator,
+  },
+  rowIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.iconContainer,
+    backgroundColor: Colors.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowLabel: {
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: Colors.label,
+  },
+  rowSub: {
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: Colors.label3,
+    marginTop: 1,
+  },
+
+  // ── Sign out ──
   signOutBtn: {
-    marginHorizontal: 20,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.separator,
+    borderRadius: BorderRadius.section,
     paddingVertical: 14,
     alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
   },
   signOutText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: '#FF6B6B',
+    color: Colors.coral,
   },
 
-  // Delete account
+  // ── Delete account ──
   deleteWrapper: {
-    marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 48,
-    backgroundColor: '#FFE8E8',
-    borderWidth: 1,
-    borderColor: '#FF6B6B',
-    borderRadius: 16,
-    paddingVertical: 15,
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 8,
     alignItems: 'center',
   },
   deleteBtn: {
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   deleteBtnText: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 15,
-    color: '#FF6B6B',
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 14,
+    color: Colors.coral,
   },
   deleteWarning: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#7B8794',
+    color: Colors.label3,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 4,
     paddingHorizontal: 16,
+  },
+
+  // ── Footer ──
+  footer: {
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingBottom: 12,
+  },
+  footerText: {
+    fontFamily: FontFamily.body,
+    fontSize: 12,
+    color: Colors.label3,
   },
 });

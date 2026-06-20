@@ -214,16 +214,17 @@ function makeWrapper() {
  */
 async function renderExplore() {
   const utils = render(<ExploreScreen />, { wrapper: makeWrapper() });
-  // Wait for the SecureStore check to complete and the toggle pill to appear.
+  // Wait for the SecureStore check to complete and the full-bleed map to appear.
+  // The map-mode list-access control is a stable map-only element.
   await waitFor(() => {
-    expect(utils.getByLabelText('Map view')).toBeTruthy();
+    expect(utils.getByLabelText('Browse full venue list')).toBeTruthy();
   });
 
-  // Switch to list mode so the postcode search bar is rendered.
-  // In map mode the screen shows a feed layout; the search input is only
-  // visible in list mode (rendered absolutely above the venue list).
+  // Switch to list mode so the postcode search bar is rendered. The v2
+  // full-bleed map exposes list mode via the "Browse full venue list" control
+  // (the old Map/List toggle pill now lives in list mode only).
   await act(async () => {
-    fireEvent.press(utils.getByLabelText('List view'));
+    fireEvent.press(utils.getByLabelText('Browse full venue list'));
   });
 
   // Wait for the postcode input to appear before returning.

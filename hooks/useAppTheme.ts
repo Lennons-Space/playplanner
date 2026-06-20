@@ -46,7 +46,13 @@ export interface AppTheme {
  * useColorScheme() here again and resolve mode from it.
  */
 export function useAppTheme(): AppTheme {
-  const mode: 'dark' | 'light' = 'light';
+  // Play Planner v2 reskin: DARK is the canonical launch mode (matches the
+  // design screenshots). The global Colors token set + the shared
+  // WeatherBackground are dark, so the whole (tabs) app is a single dark,
+  // weather-aware environment. OS-driven light switching is deferred to a
+  // later phase (restore by reading useColorScheme() here and using it as
+  // `mode`).
+  const mode: 'dark' | 'light' = 'dark';
 
   return {
     mode,

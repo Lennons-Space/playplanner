@@ -42,8 +42,9 @@ import { IconBtn } from '@/components/ui/IconBtn';
 import { Stars } from '@/components/ui/Stars';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
 import { getCategoryMeta } from '@/constants/categories';
+import { getVenueAttributes } from '@/lib/venueAttributes';
 import { RecommendationExplanation } from '@/components/venues/RecommendationExplanation';
-import { Colors, FontFamily, BorderRadius, Shadow, CardBorder } from '@/constants/theme';
+import { Colors, FontFamily, BorderRadius, CardBorder } from '@/constants/theme';
 
 // ─── Local exception colours ───────────────────────────────────────────────────
 // Phase 6A.1 migrated this screen to the design system (Colors/FontFamily/etc).
@@ -325,6 +326,9 @@ export default function VenueDetailScreen() {
   const openNowState = isOpenNow(venue.opening_hours ?? []);
   const closingTime = getTodayClosingTime(venue.opening_hours ?? []);
 
+  // Indoor/outdoor — only shown when the category reliably implies it (null = unknown → hidden).
+  const indoorState = getVenueAttributes(venue).isIndoor;
+
   // Featured: venue.featured_until is a future ISO timestamp.
   const isFeatured =
     venue.featured_until != null && new Date(venue.featured_until) > new Date();
@@ -363,14 +367,23 @@ export default function VenueDetailScreen() {
             />
           )}
 
-          {/* Sand-fade gradient — transparent at top, sand at bottom */}
+          {/* v2 hero gradient — subtle dark top (for the glass controls) +
+              darker bottom that blends into the dark sheet below. */}
           <LinearGradient
-            colors={['transparent', Colors.warm]}
+            colors={['rgba(0,0,0,0.30)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']}
+            locations={[0, 0.4, 1]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={StyleSheet.absoluteFillObject}
             pointerEvents="none"
           />
+
+          {/* Indoor / outdoor badge — bottom-left, only when category implies it */}
+          {indoorState != null && (
+            <View style={styles.indoorBadge} pointerEvents="none">
+              <Text style={styles.indoorBadgeText}>{indoorState ? '🏠 Indoor' : '🌿 Outdoor'}</Text>
+            </View>
+          )}
 
           {/* Attribution — required by CC licence when showing Wikimedia image */}
           {heroAttribution && (
@@ -382,10 +395,11 @@ export default function VenueDetailScreen() {
           )}
         </View>
 
-        {/* ── Card stack — overlaps hero by 56px ──────────────────────── */}
+        {/* ── Sheet — rounded top, overlaps hero, drag handle (v2) ─────── */}
         <View style={styles.cardStack}>
+          <View style={styles.dragHandle} />
 
-          {/* ── Main info card ──────────────────────────────────────────── */}
+          {/* ── Main info block ─────────────────────────────────────────── */}
           <View style={styles.mainCard}>
 
             {/* 1. Category pill + Featured badge row */}
@@ -402,8 +416,15 @@ export default function VenueDetailScreen() {
               )}
             </View>
 
-            {/* 2. Venue name */}
-            <Text style={styles.venueName}>{venue.name}</Text>
+            {/* 2. Venue name + Verified badge */}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+              <Text style={[styles.venueName, { flex: 1 }]}>{venue.name}</Text>
+              {venue.is_verified && (
+                <View style={styles.verifiedBadge}>
+                  <Text style={styles.verifiedText}>✓ Verified</Text>
+                </View>
+              )}
+            </View>
 
             {/* 3. Rating row */}
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 8 }}>
@@ -597,13 +618,13 @@ export default function VenueDetailScreen() {
       >
         <IconBtn
           size={40}
-          tone={Colors.surface}
+          tone="rgba(0,0,0,0.42)"
           border={false}
           shadow
           onPress={() => router.back()}
           accessibilityLabel="Go back"
         >
-          <Icon name="chevL" size={20} color={Colors.label} />
+          <Icon name="chevL" size={20} color="#FFFFFF" />
         </IconBtn>
       </View>
 
@@ -616,7 +637,7 @@ export default function VenueDetailScreen() {
       >
         <IconBtn
           size={40}
-          tone={Colors.surface}
+          tone="rgba(0,0,0,0.42)"
           border={false}
           shadow
           onPress={async () => {
@@ -638,12 +659,12 @@ export default function VenueDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel={`Share ${venue.name}`}
         >
-          <Icon name="share" size={18} color={Colors.label} />
+          <Icon name="share" size={18} color="#FFFFFF" />
         </IconBtn>
 
         <IconBtn
           size={40}
-          tone={Colors.surface}
+          tone="rgba(0,0,0,0.42)"
           border={false}
           shadow
           onPress={() => toggleFavourite.mutate()}
@@ -654,7 +675,7 @@ export default function VenueDetailScreen() {
           <Icon
             name={isFavourited ? 'heartFill' : 'heart'}
             size={18}
-            color={isFavourited ? Colors.coral : Colors.label}
+            color={isFavourited ? Colors.coral : '#FFFFFF'}
           />
         </IconBtn>
       </View>
@@ -735,22 +756,62 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
 
-  // ── Card stack — overlaps hero ──
+  // ── Sheet — rounded top, overlaps the hero (v2) ──
   cardStack: {
-    marginTop: -56,
-    marginHorizontal: 20,
+    marginTop: -22,
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 10,
     position: 'relative',
+    zIndex: 2,
+  },
+  dragHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.label4,
+    alignSelf: 'center',
+    marginBottom: 8,
   },
 
-  // ── Main info card ──
+  // ── Main info block (flat — sits directly in the sheet) ──
   mainCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.featured,
-    borderWidth: 1,
-    borderColor: Colors.separator,
-    padding: 20,
-    // Elevated card shadow from the design-system token set.
-    ...Shadow.lg,
+    paddingTop: 4,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.separator,
+  },
+
+  // Indoor/outdoor hero badge
+  indoorBadge: {
+    position: 'absolute',
+    bottom: 14,
+    left: 16,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+  },
+  indoorBadgeText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 12,
+    color: '#FFFFFF',
+  },
+
+  // Verified badge (next to venue name)
+  verifiedBadge: {
+    backgroundColor: Colors.accentLight,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 2,
+  },
+  verifiedText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 11,
+    color: Colors.accent,
   },
 
   // Category pill / featured badge

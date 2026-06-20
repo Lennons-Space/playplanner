@@ -25,6 +25,10 @@ import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import ProfileScreen from '../profile';
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
 // ── Mocks (hoisted) ─────────────────────────────────────────────────────────
 
 const mockRemove = jest.fn().mockResolvedValue({ data: null, error: null });
@@ -55,7 +59,16 @@ jest.mock('@/hooks/useAuth', () => ({
     full_name: 'Test Parent',
     avatar_url: null,
     is_premium: false,
+    created_at: '2024-01-01T00:00:00Z',
+    postcode: null,
   })),
+  useUser: jest.fn(() => ({ id: 'user-test-id' })),
+}));
+
+// Stats are surfaced via useSavedVenueIds — mock it so the test stays isolated
+// from the favourites query.
+jest.mock('@/hooks/useFavourites', () => ({
+  useSavedVenueIds: jest.fn(() => ({ savedIds: new Set(), isLoading: false })),
 }));
 
 jest.mock('expo-router', () => ({
@@ -65,6 +78,7 @@ jest.mock('expo-router', () => ({
 
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: 'View',
+  useSafeAreaInsets: () => ({ top: 44, bottom: 34, left: 0, right: 0 }),
 }));
 
 jest.mock('expo-linear-gradient', () => ({
@@ -73,11 +87,8 @@ jest.mock('expo-linear-gradient', () => ({
 
 jest.mock('@/components/ui', () => ({
   Icon: () => null,
+  PPBrandMark: () => null,
 }));
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });

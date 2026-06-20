@@ -1,13 +1,12 @@
 /**
- * Tests for app/(tabs)/index.tsx — the simplified, calm Home.
+ * Tests for app/(tabs)/index.tsx — the Play Planner v2 Browse (Home) screen.
  *
- * Home Final pass: Home is a calm hallway — welcome + ONE editorial collection
- * hero + recently-viewed + a quiet Discover link. No venue hero, no Near You,
- * no mood/intent/age browse chips (all live on Discover). Focus (not over-tested):
- *   1. Greeting + hero heading render.
- *   2. The removed browsing sections are NO LONGER present on Home.
- *   3. The editorial collection hero always renders and opens a collection page.
- *   4. There is no duplicate bottom Discover CTA (the hero owns Explore).
+ * Browse answers "what should we do today?" with: greeting + headline, a search
+ * bar, intent chips ("What do you need today?"), age chips ("Who's coming?"),
+ * the "Good for today" featured pick, and a venue list. We assert the layout
+ * scaffolding renders and that filtering chips + the featured pick are wired to
+ * the (mocked) nearby-venue data. Venue data is mocked so no native location /
+ * Supabase modules are pulled in.
  */
 
 import React from 'react';
@@ -21,27 +20,24 @@ jest.mock('@/hooks/useAuth', () => ({
   useProfile: jest.fn(() => ({ full_name: 'Liam Evanson' })),
 }));
 
-const mockConsent = jest.fn(() => ({ status: 'undecided', grant: jest.fn(), decline: jest.fn() }));
-jest.mock('@/hooks/useLocationConsent', () => ({
-  useLocationConsent: () => mockConsent(),
-}));
-
-// NearbyPreview transitively imports location/weather/venue hooks. Mock them so
-// importing Home never pulls in native location modules, even though the nudge
-// path (undecided) does not mount NearbyPreview.
+// Location: approx coords + area label, both no-prompt. Mock wholesale so the
+// real useApproxCoords (which imports expo-location) is never loaded.
 jest.mock('@/hooks/location', () => ({
-  useLocation: jest.fn(() => ({ coords: null, isLoading: false })),
   useAreaLabel: jest.fn(() => null),
+  useApproxCoords: jest.fn(() => ({ coords: { latitude: 52.8, longitude: -1.5 }, isApprox: true })),
+  useLocation: jest.fn(() => ({ coords: null, isLoading: false })),
 }));
 
-// Recently viewed is local-only; keep it empty here so the row stays hidden.
-jest.mock('@/hooks/useRecentlyViewed', () => ({
-  useRecentlyViewed: jest.fn(() => ({ items: [], loading: false })),
-}));
 jest.mock('@/hooks/useWeather', () => ({ useWeather: jest.fn(() => null) }));
+
+const mockUseNearbyVenues = jest.fn(() => ({ data: [], isLoading: false }));
 jest.mock('@/hooks/useVenues', () => ({
-  useNearbyVenues: jest.fn(() => ({ data: [], isLoading: false, error: null })),
-  useCategories: jest.fn(() => ({ data: [] })),
+  useNearbyVenues: (...args: unknown[]) => mockUseNearbyVenues(...(args as [])),
+}));
+
+jest.mock('@/hooks/useFavourites', () => ({
+  useSavedVenueIds: jest.fn(() => ({ savedIds: new Set(), isLoading: false })),
+  useToggleFavourite: jest.fn(() => ({ mutate: jest.fn() })),
 }));
 
 jest.mock('expo-router', () => ({
@@ -55,10 +51,10 @@ jest.mock('react-native-safe-area-context', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockConsent.mockReturnValue({ status: 'undecided', grant: jest.fn(), decline: jest.fn() });
+  mockUseNearbyVenues.mockReturnValue({ data: [], isLoading: false });
 });
 
-describe('HomeScreen', () => {
+describe('Browse (Home)', () => {
   it('renders the greeting with the user first name', () => {
     const { getByText } = render(<HomeScreen />);
     expect(getByText('Hi Liam 👋')).toBeTruthy();
@@ -69,28 +65,37 @@ describe('HomeScreen', () => {
     expect(getByText("What's the\nplan today?")).toBeTruthy();
   });
 
-  it('no longer renders the mood / need / age browsing sections (moved to Discover)', () => {
-    const { queryByText } = render(<HomeScreen />);
-    expect(queryByText('What are the kids in the mood for?')).toBeNull();
-    expect(queryByText('What do you need today?')).toBeNull();
-    expect(queryByText("Who's coming?")).toBeNull();
+  it('renders the v2 browse sections (search, intents, ages, featured)', () => {
+    const { getByText, getByLabelText } = render(<HomeScreen />);
+    expect(getByLabelText('Search venues')).toBeTruthy();
+    expect(getByText('What do you need today?')).toBeTruthy();
+    expect(getByText("Who's coming?")).toBeTruthy();
+    expect(getByText('Good for today')).toBeTruthy();
   });
 
-  it('always shows an editorial collection hero that opens a Discover collection', () => {
+  it('renders the intent and age chips', () => {
     const { getByLabelText } = render(<HomeScreen />);
-    // The hero is a collection (never a venue) and shows regardless of location
-    // consent — Home no longer reads location for its main content. With weather
-    // mocked null, the weather-aware choice falls to the seasonal collection.
-    fireEvent.press(getByLabelText(/Open collection/));
-    expect((router.push as jest.Mock)).toHaveBeenCalledWith({
-      pathname: '/discover/[collection]',
-      params: { collection: 'seasonal' },
-    });
+    expect(getByLabelText(/Rainy Day/)).toBeTruthy();
+    expect(getByLabelText(/Burn Energy/)).toBeTruthy();
+    expect(getByLabelText('Toddlers')).toBeTruthy();
+    expect(getByLabelText('4–8 yrs')).toBeTruthy();
   });
 
-  it('has no duplicate bottom Discover CTA (the hero owns the Explore action)', () => {
-    const { queryByText, queryByLabelText } = render(<HomeScreen />);
-    expect(queryByText('Need ideas?')).toBeNull();
-    expect(queryByLabelText('Need ideas? Open Discover')).toBeNull();
+  it('opens the search screen from the search bar', () => {
+    const { getByLabelText } = render(<HomeScreen />);
+    fireEvent.press(getByLabelText('Search venues'));
+    expect(router.push as jest.Mock).toHaveBeenCalledWith('/(tabs)/search');
+  });
+
+  it('shows the empty featured state when there are no venues', () => {
+    const { getByText } = render(<HomeScreen />);
+    expect(getByText('No matches right now')).toBeTruthy();
+  });
+
+  it('reveals a Clear control once an intent filter is selected', () => {
+    const { getByLabelText, queryByLabelText } = render(<HomeScreen />);
+    expect(queryByLabelText('Clear filters')).toBeNull();
+    fireEvent.press(getByLabelText(/Rainy Day/));
+    expect(getByLabelText('Clear filters')).toBeTruthy();
   });
 });

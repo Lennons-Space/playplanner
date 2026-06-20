@@ -218,10 +218,13 @@ export const WEATHER_THEMES: Record<Atmosphere, WeatherTheme> = {
 export const WEATHER_PALETTES_BY_MODE: Record<Atmosphere, { dark: WeatherPalette; light: WeatherPalette }> = {
   sunny: {
     dark: {
-      base: ['#15110E', '#0E0E14', '#0C0C11'],
-      tintA: 'rgba(255, 195, 107, 0.18)', // warm amber sun glow on near-black
-      tintB: 'rgba(255, 138, 91, 0.10)', // secondary warm glow (top-right)
-      particle: 'rgba(255, 223, 163, 0.50)', // bokeh motes
+      // Visibility raised for dark mode (the previous tints were near-invisible
+      // on near-black). Still premium/subtle: top stop stays ≤ surface so cards
+      // read above it, and chrome text (label) stays legible.
+      base: ['#1A130B', '#100D13', '#0C0C11'],
+      tintA: 'rgba(255, 195, 107, 0.30)', // warm amber sun glow on near-black
+      tintB: 'rgba(255, 138, 91, 0.18)', // secondary warm glow (top-right)
+      particle: 'rgba(255, 223, 163, 0.62)', // bokeh motes
     },
     light: {
       base: ['#FCEAC6', '#FDF4E5', '#FBFAFC'],
@@ -232,10 +235,11 @@ export const WEATHER_PALETTES_BY_MODE: Record<Atmosphere, { dark: WeatherPalette
   },
   rain: {
     dark: {
-      base: ['#0F1219', '#0E0E14', '#0C0C11'],
-      tintA: 'rgba(91, 143, 199, 0.16)', // cloud blobs / blue cast
-      tintB: 'rgba(90, 115, 150, 0.14)',
-      particle: 'rgba(205, 220, 245, 0.50)', // light rain streaks on navy
+      // Visibility raised for dark mode (see sunny.dark note).
+      base: ['#121726', '#0E0F15', '#0C0C11'],
+      tintA: 'rgba(91, 143, 199, 0.30)', // cloud blobs / blue cast
+      tintB: 'rgba(90, 115, 150, 0.20)',
+      particle: 'rgba(205, 220, 245, 0.66)', // light rain streaks on navy
     },
     light: {
       base: ['#BFCBDA', '#D4DBE6', '#FBFAFC'],
@@ -245,7 +249,18 @@ export const WEATHER_PALETTES_BY_MODE: Record<Atmosphere, { dark: WeatherPalette
     },
   },
   cloudy: {
-    dark: WEATHER_THEMES.cloudy.palette,
+    // True dark overcast: near-black base (same #0E0E14 family as the other
+    // dark atmospheres) with a soft cool-grey cloud cast, so light chrome text
+    // stays readable. The old value reused the LIGHT WEATHER_THEMES.cloudy
+    // palette (#E4E9F2 pale grey-blue), which washed the dark app pale.
+    dark: {
+      // Visibility raised for dark mode — cloudy is the most-seen UK atmosphere
+      // and was the faintest. Soft drifting cloud now reads without washing text.
+      base: ['#141720', '#0F1016', '#0C0C11'],
+      tintA: 'rgba(165, 180, 205, 0.24)', // soft blurred cloud
+      tintB: 'rgba(120, 130, 145, 0.16)',
+      particle: 'rgba(205, 215, 230, 0.52)',
+    },
     // Inlined from components/weather/WeatherLayer.tsx ATMOSPHERE.cloudy —
     // not imported to avoid a circular dependency (WeatherLayer imports the
     // Atmosphere/WeatherPalette TYPES from this module). Keep in sync if the
@@ -258,7 +273,16 @@ export const WEATHER_PALETTES_BY_MODE: Record<Atmosphere, { dark: WeatherPalette
     },
   },
   snow: {
-    dark: WEATHER_THEMES.snow.palette,
+    // True dark snowy night-ish base with white flakes that still read on the
+    // near-black sky. The old value reused the LIGHT WEATHER_THEMES.snow
+    // palette (#EAF2FC icy white), which washed the dark app pale.
+    dark: {
+      // Visibility raised for dark mode (see sunny.dark note).
+      base: ['#121726', '#0E0F15', '#0C0C11'],
+      tintA: 'rgba(200, 220, 245, 0.24)',
+      tintB: 'rgba(150, 170, 190, 0.16)',
+      particle: 'rgba(255, 255, 255, 0.90)',
+    },
     // Inlined from components/weather/WeatherLayer.tsx ATMOSPHERE.snow — see
     // cloudy.light comment above for why this isn't imported.
     light: {

@@ -12,17 +12,11 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Icon } from '@/components/ui';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
 const C = {
-  ink: '#1D2630',
-  mute: '#7B8794',
   coral: '#FF6B6B',
-  coralSoft: '#FFE8E8',
-  // CTA: soft translucent cream pill + dark warm-amber text — a clear but
-  // restrained action (deliberately quieter than Home's solid accent CTA).
-  amber: '#9A5A14',
-  cream: 'rgba(255,252,246,0.82)',
-  creamBorder: 'rgba(28,20,8,0.09)',
+  coralSoft: 'rgba(255,107,107,0.14)',
 } as const;
 
 export function SavedEmptyState() {
@@ -59,16 +53,14 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 18,
   },
-  title: { fontFamily: 'Nunito-ExtraBold', fontSize: 20, color: C.ink, textAlign: 'center' },
-  sub: { fontFamily: 'Nunito-Regular', fontSize: 14, color: C.mute, textAlign: 'center', marginTop: 6, lineHeight: 21 },
+  title: { fontFamily: FontFamily.display, fontSize: 20, color: Colors.label, textAlign: 'center' },
+  sub: { fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3, textAlign: 'center', marginTop: 6, lineHeight: 21 },
   cta: {
     marginTop: 22,
-    backgroundColor: C.cream,
-    borderWidth: 1,
-    borderColor: C.creamBorder,
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    backgroundColor: Colors.accent,
+    borderRadius: BorderRadius.pill,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
   },
-  ctaText: { fontFamily: 'Nunito-Bold', fontSize: 14, color: C.amber },
+  ctaText: { fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' },
 });
