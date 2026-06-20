@@ -33,26 +33,27 @@ import { router } from 'expo-router';
 import { useSubmitReview } from '@/hooks/useReviews';
 import { Icon } from '@/components/ui/Icon';
 import { Stars } from '@/components/ui';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
 // ---------------------------------------------------------------------------
-// Design tokens — PlayPlanner palette (inline StyleSheet, no NativeWind)
+// Design tokens — remapped to dark v2 palette
 // ---------------------------------------------------------------------------
 
 const PP = {
-  ink:       '#1D2630',
-  inkSoft:   '#4A5560',
-  mute:      '#7B8794',
-  line:      '#E6E2DB',
-  lineSoft:  '#F1ECE2',
-  sand:      '#FBF6EC',
-  paper:     '#FFFFFF',
-  sky:       '#2FB8B0',
-  skyDeep:   '#1B8A85',
-  skyWash:   '#EEF9F8',
-  coral:     '#FF6B6B',
-  coralSoft: '#FFE2DE',
-  star:      '#F5A524',
-  leaf:      '#5BC08A',
+  ink:       Colors.label,
+  inkSoft:   Colors.label2,
+  mute:      Colors.label3,
+  line:      Colors.separator,
+  lineSoft:  Colors.fill,
+  sand:      Colors.bg,
+  paper:     Colors.surface,
+  sky:       Colors.accent,
+  skyDeep:   Colors.accent,
+  skyWash:   Colors.accentLight,
+  coral:     Colors.coral,
+  coralSoft: 'rgba(255,107,107,0.14)',
+  star:      Colors.star,
+  leaf:      Colors.success,
 };
 
 // ---------------------------------------------------------------------------
@@ -650,14 +651,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   stepLabel: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 11,
     color: PP.mute,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   stepTitle: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 22,
     color: PP.ink,
     letterSpacing: -0.4,
@@ -697,16 +698,16 @@ const styles = StyleSheet.create({
   },
   footerPrimary: {
     flex: 1.4,
-    backgroundColor: PP.ink,
+    backgroundColor: Colors.accent,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
   },
   footerPrimaryDisabled: {
-    backgroundColor: PP.line,
+    backgroundColor: Colors.surface2,
   },
   footerPrimaryText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
     color: '#fff',
   },
@@ -715,15 +716,15 @@ const styles = StyleSheet.create({
   },
   footerSecondary: {
     flex: 1,
-    backgroundColor: PP.paper,
+    backgroundColor: Colors.surface2,
     borderRadius: 14,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: PP.line,
     paddingVertical: 14,
     alignItems: 'center',
   },
   footerSecondaryText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
     color: PP.ink,
   },
@@ -749,12 +750,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   venueMiniName: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 13,
     color: PP.ink,
   },
   venueMiniLabel: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 11,
     color: PP.mute,
   },
@@ -765,7 +766,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   venueMiniPillText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.caption,
     fontSize: 10,
     color: PP.skyDeep,
   },
@@ -777,13 +778,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ratingCopy: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 16,
     color: PP.ink,
     textAlign: 'center',
   },
   ratingHint: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 13,
     color: PP.mute,
     marginTop: 4,
@@ -809,7 +810,7 @@ const styles = StyleSheet.create({
   },
   trustNoteText: {
     flex: 1,
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 12,
     color: PP.inkSoft,
     lineHeight: 18,
@@ -817,7 +818,7 @@ const styles = StyleSheet.create({
 
   // Step 2 — shared label
   fieldLabel: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 13,
     color: PP.inkSoft,
     marginBottom: 10,
@@ -840,15 +841,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tagChipSelected: {
-    backgroundColor: PP.ink,
-    borderColor: PP.ink,
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
   },
   tagChipUnselected: {
-    backgroundColor: PP.paper,
+    backgroundColor: Colors.surface2,
     borderColor: PP.line,
   },
   tagChipText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
   },
   tagChipTextSelected: {
@@ -868,11 +869,11 @@ const styles = StyleSheet.create({
     minHeight: 110,
   },
   bodyContainerFocused: {
-    borderColor: PP.ink,
+    borderColor: Colors.accent,
   },
   bodyInput: {
     flex: 1,
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 14,
     color: PP.ink,
     lineHeight: 21,
@@ -885,7 +886,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   charCount: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 11,
     color: PP.mute,
   },
@@ -917,16 +918,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   checkboxChecked: {
-    backgroundColor: PP.ink,
-    borderColor: PP.ink,
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
   },
   anonTitle: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 13,
     color: PP.ink,
   },
   anonSub: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 11,
     color: PP.mute,
     marginTop: 2,
@@ -955,7 +956,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   successHeading: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 24,
     color: PP.ink,
     letterSpacing: -0.5,
@@ -963,7 +964,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   successSub: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 14,
     color: PP.inkSoft,
     lineHeight: 21,
@@ -1000,17 +1001,17 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   previewName: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 13,
     color: PP.ink,
   },
   previewTime: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 11,
     color: PP.mute,
   },
   previewBody: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
     color: PP.inkSoft,
     lineHeight: 19.5,
@@ -1029,16 +1030,16 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   previewTagText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 10,
     color: PP.skyDeep,
   },
 
   // Shared error text
   fieldError: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#D63031',
+    color: Colors.error,
     marginTop: 6,
   },
 });

@@ -25,6 +25,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Icon } from '@/components/ui';
+import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -69,7 +70,7 @@ export default function PrivacySettingsScreen() {
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={styles.backBtn}
         >
-          <Icon name="chevL" size={22} color="#1D2630" />
+          <Icon name="chevL" size={22} color={Colors.label} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Privacy & data</Text>
       </View>
@@ -83,8 +84,8 @@ export default function PrivacySettingsScreen() {
         <Text style={styles.sectionLabel}>LOCATION</Text>
         <View style={styles.card}>
           <View style={styles.cardRow}>
-            <View style={[styles.iconBox, { backgroundColor: '#EEF9F8' }]}>
-              <Icon name="pin" size={18} color="#1B8A85" />
+            <View style={[styles.iconBox, { backgroundColor: Colors.accentLight }]}>
+              <Icon name="pin" size={18} color={Colors.accent} />
             </View>
             <View style={styles.cardTextBlock}>
               <Text style={styles.cardRowLabel}>Location access</Text>
@@ -114,20 +115,20 @@ export default function PrivacySettingsScreen() {
             accessibilityLabel="Download my data"
             activeOpacity={0.7}
           >
-            <View style={[styles.iconBox, { backgroundColor: '#EEF9F8' }]}>
-              <Icon name="info" size={18} color="#1B8A85" />
+            <View style={[styles.iconBox, { backgroundColor: Colors.accentLight }]}>
+              <Icon name="info" size={18} color={Colors.accent} />
             </View>
             <View style={styles.cardTextBlock}>
               <Text style={styles.cardRowLabel}>Download my data</Text>
               <Text style={styles.cardRowSub}>Export a copy of your personal data</Text>
             </View>
-            <Icon name="chevR" size={16} color="#7B8794" />
+            <Icon name="chevR" size={16} color={Colors.label3} />
           </TouchableOpacity>
         </View>
 
         {/* ── Privacy note ─────────────────────────────────────────────── */}
         <View style={styles.privacyNote}>
-          <Icon name="shield" size={16} color="#1B8A85" />
+          <Icon name="shield" size={16} color={Colors.accent} />
           <Text style={styles.privacyNoteText}>
             PlayPlanner is built with privacy-first design. Your data is never sold.{' '}
             <Text
@@ -146,13 +147,13 @@ export default function PrivacySettingsScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// Styles — pp- hex tokens only, no Colors import, no Ionicons
+// Styles — dark v2 tokens via Colors + FontFamily + BorderRadius
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FBF6EC',
+    backgroundColor: Colors.bg,
   },
 
   // Header
@@ -163,8 +164,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E6E2DB',
-    backgroundColor: '#FBF6EC',
+    borderBottomColor: Colors.separator,
+    backgroundColor: Colors.bg,
   },
   backBtn: {
     width: 36,
@@ -173,9 +174,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 18,
-    color: '#1D2630',
+    color: Colors.label,
     flex: 1,
   },
 
@@ -188,9 +189,9 @@ const styles = StyleSheet.create({
 
   // Section label
   sectionLabel: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 11,
-    color: '#7B8794',
+    color: Colors.label3,
     letterSpacing: 0.6,
     marginBottom: 8,
     marginTop: 4,
@@ -198,15 +199,12 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.section,
     overflow: 'hidden',
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.separator,
   },
   cardRow: {
     flexDirection: 'row',
@@ -218,7 +216,7 @@ const styles = StyleSheet.create({
   iconBox: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: BorderRadius.iconContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -226,14 +224,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cardRowLabel: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
-    color: '#1D2630',
+    color: Colors.label,
   },
   cardRowSub: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#7B8794',
+    color: Colors.label3,
     marginTop: 2,
     lineHeight: 18,
   },
@@ -242,23 +240,23 @@ const styles = StyleSheet.create({
   statusPill: {
     paddingHorizontal: 10,
     paddingVertical: 3,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
   },
   statusPillOn: {
-    backgroundColor: '#D4F0EE',
+    backgroundColor: Colors.accentLight,
   },
   statusPillOff: {
-    backgroundColor: '#F1ECE2',
+    backgroundColor: Colors.fill,
   },
   statusPillText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 12,
   },
   statusPillTextOn: {
-    color: '#1B8A85',
+    color: Colors.accent,
   },
   statusPillTextOff: {
-    color: '#7B8794',
+    color: Colors.label3,
   },
 
   // Privacy note
@@ -266,20 +264,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    backgroundColor: '#EEF9F8',
-    borderRadius: 12,
+    backgroundColor: Colors.accentLight,
+    borderRadius: BorderRadius.section,
     padding: 14,
     marginTop: 4,
   },
   privacyNoteText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#1D2630',
+    color: Colors.label2,
     flex: 1,
     lineHeight: 20,
   },
   privacyNoteLink: {
-    fontFamily: 'Nunito-Bold',
-    color: '#1B8A85',
+    fontFamily: FontFamily.bodyStrong,
+    color: Colors.accent,
   },
 });
