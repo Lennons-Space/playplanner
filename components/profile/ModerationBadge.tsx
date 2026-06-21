@@ -6,7 +6,6 @@
  */
 import { View, Text, StyleSheet } from 'react-native';
 import type { ModerationStatus } from '@/types';
-import { FontFamily } from '@/constants/theme';
 
 interface ModerationBadgeProps {
   status: ModerationStatus;
@@ -39,7 +38,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   text: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Medium',
     fontSize: 11,
     color: '#FFFFFF',
   },

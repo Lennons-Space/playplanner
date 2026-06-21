@@ -14,21 +14,17 @@
  *   so users understand what is private before they save.
  *
  * No email or password fields here — those are auth flows handled separately.
- *
- * Visual: v2 dark editorial — colours/typography use the shared Colors +
- * FontFamily tokens (layout kept as NativeWind utility classes). Logic unchanged.
  */
 import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Image, StyleSheet,
+  KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Image,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfile, useUser } from '@/hooks/useAuth';
 import { useUpdateProfile, useUploadAvatar } from '@/hooks/useProfile';
-import { Colors, FontFamily } from '@/constants/theme';
 
 const MAX_BIO_LENGTH = 300;
 
@@ -107,7 +103,7 @@ export default function EditProfileScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <Stack.Screen options={{ title: 'Edit Profile' }} />
-      <SafeAreaView className="flex-1" style={{ backgroundColor: Colors.bg }} edges={['bottom']}>
+      <SafeAreaView className="flex-1 bg-slate" edges={['bottom']}>
         <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
 
           {/* Avatar */}
@@ -122,12 +118,11 @@ export default function EditProfileScreen() {
               {profile?.avatar_url ? (
                 <Image
                   source={{ uri: profile.avatar_url }}
-                  className="w-20 h-20 rounded-full"
-                  style={{ backgroundColor: Colors.surface2 }}
+                  className="w-20 h-20 rounded-full bg-greyLighter"
                   accessibilityLabel="Your profile photo"
                 />
               ) : (
-                <View className="w-20 h-20 rounded-full items-center justify-center" style={{ backgroundColor: Colors.surface2 }}>
+                <View className="w-20 h-20 rounded-full bg-greyLighter items-center justify-center">
                   <Text className="text-4xl">👤</Text>
                 </View>
               )}
@@ -135,8 +130,7 @@ export default function EditProfileScreen() {
               {/* Upload spinner overlaid on the avatar while uploading */}
               {isUploading && (
                 <View
-                  className="absolute inset-0 w-20 h-20 rounded-full items-center justify-center"
-                  style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+                  className="absolute inset-0 w-20 h-20 rounded-full bg-black/40 items-center justify-center"
                   accessibilityLabel="Uploading photo"
                 >
                   <ActivityIndicator color="white" />
@@ -150,7 +144,10 @@ export default function EditProfileScreen() {
               accessibilityRole="button"
               accessibilityLabel="Change profile photo"
             >
-              <Text className="text-sm mt-2" style={s.linkText}>
+              <Text
+                className="text-sky text-sm mt-2"
+                style={{ fontFamily: 'Nunito-Medium' }}
+              >
                 {isUploading ? 'Uploading…' : 'Change photo'}
               </Text>
             </TouchableOpacity>
@@ -160,14 +157,19 @@ export default function EditProfileScreen() {
 
             {/* Full name */}
             <View>
-              <Text className="text-sm mb-1" style={s.label}>Full name</Text>
+              <Text
+                className="text-charcoal text-sm mb-1"
+                style={{ fontFamily: 'Nunito-Medium' }}
+              >
+                Full name
+              </Text>
               <TextInput
-                className="rounded-xl px-4 py-3 text-base"
-                style={s.input}
+                className="bg-white rounded-xl px-4 py-3 text-charcoal text-base border border-greyLighter"
+                style={{ fontFamily: 'Nunito-Regular' }}
                 value={fullName}
                 onChangeText={setFullName}
                 placeholder="Your name"
-                placeholderTextColor={Colors.label3}
+                placeholderTextColor="#B0B0B0"
                 accessibilityLabel="Full name"
                 returnKeyType="next"
                 autoCorrect={false}
@@ -176,51 +178,74 @@ export default function EditProfileScreen() {
 
             {/* Username */}
             <View>
-              <Text className="text-sm mb-1" style={s.label}>Username</Text>
-              <View className="flex-row items-center rounded-xl px-4 py-3" style={s.inputWrap}>
-                <Text className="text-base" style={s.prefix}>@</Text>
+              <Text
+                className="text-charcoal text-sm mb-1"
+                style={{ fontFamily: 'Nunito-Medium' }}
+              >
+                Username
+              </Text>
+              <View className="flex-row items-center bg-white rounded-xl px-4 py-3 border border-greyLighter">
+                <Text
+                  className="text-grey text-base"
+                  style={{ fontFamily: 'Nunito-Regular' }}
+                >
+                  @
+                </Text>
                 <TextInput
-                  className="flex-1 text-base ml-0.5"
-                  style={s.inputInline}
+                  className="flex-1 text-charcoal text-base ml-0.5"
+                  style={{ fontFamily: 'Nunito-Regular' }}
                   value={username}
                   onChangeText={(t) => setUsername(t.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                   placeholder="your_username"
-                  placeholderTextColor={Colors.label3}
+                  placeholderTextColor="#B0B0B0"
                   accessibilityLabel="Username"
                   returnKeyType="next"
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
               </View>
-              <Text className="text-xs mt-1" style={s.helper}>Usernames are visible to others</Text>
+              <Text
+                className="text-grey text-xs mt-1"
+                style={{ fontFamily: 'Nunito-Regular' }}
+              >
+                Usernames are visible to others
+              </Text>
             </View>
 
             {/* Bio */}
             <View>
-              <Text className="text-sm mb-1" style={s.label}>Bio</Text>
+              <Text
+                className="text-charcoal text-sm mb-1"
+                style={{ fontFamily: 'Nunito-Medium' }}
+              >
+                Bio
+              </Text>
               <TextInput
-                className="rounded-xl px-4 py-3 text-base"
-                style={[s.input, { minHeight: 80, textAlignVertical: 'top' }]}
+                className="bg-white rounded-xl px-4 py-3 text-charcoal text-base border border-greyLighter"
+                style={{ fontFamily: 'Nunito-Regular', minHeight: 80, textAlignVertical: 'top' }}
                 value={bio}
                 onChangeText={(t) => setBio(t.slice(0, MAX_BIO_LENGTH))}
                 placeholder="Tell other parents a little about yourself..."
-                placeholderTextColor={Colors.label3}
+                placeholderTextColor="#B0B0B0"
                 accessibilityLabel="Bio"
                 multiline
                 maxLength={MAX_BIO_LENGTH}
               />
-              <Text className="text-xs mt-1 text-right" style={s.helper} accessibilityLiveRegion="polite">
+              <Text
+                className="text-grey text-xs mt-1 text-right"
+                style={{ fontFamily: 'Nunito-Regular' }}
+                accessibilityLiveRegion="polite"
+              >
                 {bio.length} / {MAX_BIO_LENGTH}
               </Text>
             </View>
 
             {/* Divider */}
-            <View className="h-px" style={{ backgroundColor: Colors.separator }} />
+            <View className="h-px bg-greyLighter" />
 
             {/* Children's ages — link to dedicated screen */}
             <TouchableOpacity
-              className="flex-row items-center justify-between rounded-xl px-4 py-3"
-              style={s.inputWrap}
+              className="flex-row items-center justify-between bg-white rounded-xl px-4 py-3 border border-greyLighter"
               onPress={() => router.push('/profile/children-ages')}
               accessibilityRole="button"
               accessibilityLabel="Manage children's age ranges"
@@ -229,40 +254,61 @@ export default function EditProfileScreen() {
               <View className="flex-row items-center gap-2">
                 <Text className="text-lg">🔒</Text>
                 <View>
-                  <Text className="text-sm" style={s.rowTitle}>Children's ages</Text>
-                  <Text className="text-xs" style={s.helper}>
+                  <Text
+                    className="text-charcoal text-sm"
+                    style={{ fontFamily: 'Nunito-Bold' }}
+                  >
+                    Children's ages
+                  </Text>
+                  <Text
+                    className="text-grey text-xs"
+                    style={{ fontFamily: 'Nunito-Regular' }}
+                  >
                     {(profile.children_ages ?? []).length > 0
                       ? (profile.children_ages ?? []).join(', ')
                       : 'Not set — only you can see this'}
                   </Text>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.label4} />
+              <Ionicons name="chevron-forward" size={18} color="#B0B0B0" />
             </TouchableOpacity>
 
             {/* Divider */}
-            <View className="h-px" style={{ backgroundColor: Colors.separator }} />
+            <View className="h-px bg-greyLighter" />
 
             {/* Postcode — private section */}
             <View>
               <View className="flex-row items-center gap-2 mb-1">
                 <Text className="text-lg">📍</Text>
-                <Text className="text-sm" style={s.rowTitle}>Your postcode</Text>
-                <Text className="text-xs italic" style={s.privateNote}>Only you can see this</Text>
+                <Text
+                  className="text-charcoal text-sm font-bold"
+                  style={{ fontFamily: 'Nunito-Bold' }}
+                >
+                  Your postcode
+                </Text>
+                <Text
+                  className="text-sky text-xs italic"
+                  style={{ fontFamily: 'Nunito-Regular' }}
+                >
+                  Only you can see this
+                </Text>
               </View>
               <TextInput
-                className="rounded-xl px-4 py-3 text-base"
-                style={s.input}
+                className="bg-white rounded-xl px-4 py-3 text-charcoal text-base border border-greyLighter"
+                style={{ fontFamily: 'Nunito-Regular' }}
                 value={postcode}
                 onChangeText={(t) => setPostcode(t.toUpperCase())}
                 placeholder="e.g. SW1A 1AA"
-                placeholderTextColor={Colors.label3}
+                placeholderTextColor="#B0B0B0"
                 accessibilityLabel="Your postcode"
                 autoCapitalize="characters"
                 autoCorrect={false}
                 returnKeyType="done"
               />
-              <Text className="text-xs mt-1" style={s.helper}>
+              <Text
+                className="text-grey text-xs mt-1"
+                style={{ fontFamily: 'Nunito-Regular' }}
+              >
                 Used to show venues near your area. Never shared with other users.
               </Text>
             </View>
@@ -271,10 +317,10 @@ export default function EditProfileScreen() {
         </ScrollView>
 
         {/* Save button — sticky at bottom */}
-        <View className="absolute bottom-0 left-0 right-0 px-4 pb-8 pt-3" style={s.saveBar}>
+        <View className="absolute bottom-0 left-0 right-0 bg-sand px-4 pb-8 pt-3 border-t border-greyLighter">
           <TouchableOpacity
-            className="rounded-2xl items-center justify-center"
-            style={{ height: 56, backgroundColor: Colors.accent }}
+            className="bg-sky rounded-2xl items-center justify-center"
+            style={{ height: 56 }}
             onPress={handleSave}
             disabled={isPending}
             accessibilityRole="button"
@@ -283,7 +329,10 @@ export default function EditProfileScreen() {
             {isPending ? (
               <ActivityIndicator color="white" />
             ) : (
-              <Text className="text-lg" style={{ fontFamily: FontFamily.bodyStrong, color: '#FFFFFF' }}>
+              <Text
+                className="text-white text-lg"
+                style={{ fontFamily: 'Nunito-Bold' }}
+              >
                 Save changes
               </Text>
             )}
@@ -293,30 +342,3 @@ export default function EditProfileScreen() {
     </KeyboardAvoidingView>
   );
 }
-
-const s = StyleSheet.create({
-  linkText: { fontFamily: FontFamily.bodyStrong, color: Colors.accent },
-  label: { fontFamily: FontFamily.bodyStrong, color: Colors.label2 },
-  helper: { fontFamily: FontFamily.body, color: Colors.label3 },
-  rowTitle: { fontFamily: FontFamily.bodyStrong, color: Colors.label },
-  privateNote: { fontFamily: FontFamily.body, color: Colors.accent },
-  prefix: { fontFamily: FontFamily.body, color: Colors.label3 },
-  input: {
-    fontFamily: FontFamily.body,
-    color: Colors.label,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.separator,
-  },
-  inputInline: { fontFamily: FontFamily.body, color: Colors.label },
-  inputWrap: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.separator,
-  },
-  saveBar: {
-    backgroundColor: Colors.bg,
-    borderTopWidth: 1,
-    borderTopColor: Colors.separator,
-  },
-});

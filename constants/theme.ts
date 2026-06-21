@@ -1,38 +1,33 @@
 // ============================================================
 // Play Planner — Design system constants v2
 //
-// Reskin direction: Claude Design "Play Planner v2" handoff (June 2026)
-// DARK MODE is the canonical default for launch (matches the v2 design
-// screenshots). The light token values are preserved below in comments and in
-// the `Themes.light` set further down, for a possible future light-mode pass.
-//
-// This `Colors` object is the single point the whole app reads from, so the
-// dark flip happens HERE (one file) rather than editing the ~340 call sites.
+// Reskin direction: Claude Design handoff (June 2026)
+// Light mode only for launch. Dark mode values in comments.
 // ============================================================
 
 import { StyleSheet } from 'react-native';
 
-// ── Colour palette (DARK — Play Planner v2) ─────────────────
+// ── Colour palette ──────────────────────────────────────────
 
 export const Colors = {
 
   // ── Screen backgrounds ──────────────────────────────────
-  bg:        '#0C0C11',   // light: '#F6F1E6'
-  warm:      '#0E0E14',   // light: '#FBF6EC' — home screen base
+  bg:        '#F6F1E6',   // dark: '#0C0C11'
+  warm:      '#FBF6EC',   // dark: '#0E0E14' — home screen base
 
   // ── Surface / card backgrounds ──────────────────────────
-  surface:   '#17171F',   // light: '#FFFFFF'
-  surface2:  '#1F1F29',   // light: '#F2EBDD' — elevated panels
+  surface:   '#FFFFFF',   // dark: '#17171F'
+  surface2:  '#F2EBDD',   // dark: '#1F1F29' — elevated panels
 
   // ── Text ────────────────────────────────────────────────
-  label:     '#F4F4F6',                      // light: '#16151A'
-  label2:    'rgba(235,235,245,0.76)',       // light: 'rgba(20,18,28,0.74)'
-  label3:    'rgba(235,235,245,0.44)',       // light: 'rgba(20,18,28,0.48)'
-  label4:    'rgba(235,235,245,0.22)',       // light: 'rgba(20,18,28,0.26)'
+  label:     '#16151A',                      // dark: '#F4F4F6'
+  label2:    'rgba(20,18,28,0.74)',          // dark: 'rgba(235,235,245,0.76)'
+  label3:    'rgba(20,18,28,0.48)',          // dark: 'rgba(235,235,245,0.44)'
+  label4:    'rgba(20,18,28,0.26)',          // dark: 'rgba(235,235,245,0.22)'
 
   // ── Borders / fills ─────────────────────────────────────
-  separator: 'rgba(255,255,255,0.08)',       // light: 'rgba(20,18,28,0.10)'
-  fill:      'rgba(255,255,255,0.07)',       // light: 'rgba(20,18,28,0.05)'
+  separator: 'rgba(20,18,28,0.10)',         // dark: 'rgba(255,255,255,0.08)'
+  fill:      'rgba(20,18,28,0.05)',         // dark: 'rgba(255,255,255,0.07)'
 
   // ── Accent — Ocean (default) ─────────────────────────────
   accent:         '#4C8DF6',
@@ -40,7 +35,7 @@ export const Colors = {
   accentTagText:  '#82AEFA',
 
   // ── Status ──────────────────────────────────────────────
-  star:      '#FFB23E',   // light: '#FF9F0A'
+  star:      '#FF9F0A',   // dark: '#FFB23E'
   coral:     '#FF6B6B',   // errors, destructive actions, stars (keep)
   success:   '#00B894',
   warning:   '#FDCB6E',
@@ -55,19 +50,16 @@ export const Colors = {
   intentToddler: '#E07FA8',
   intentParent:  '#B08A6A',
 
-  // ── Deprecated aliases — remapped to DARK equivalents ────
-  // These are only still used by the Phase-7 secondary screens (add-venue,
-  // FilterSheet, notifications). They are remapped so those screens read as
-  // light-text-on-dark until they are migrated to the semantic tokens above.
-  /** @deprecated use bg */ slate:       '#0C0C11',
-  /** @deprecated use warm */ slateDark:   '#0E0E14',
-  /** @deprecated use surface */ sand:   '#17171F',
-  /** @deprecated use surface2 */ sandDark: '#1F1F29',
-  /** @deprecated keep for on-accent text/thumbs */ white:  '#FFFFFF',
-  /** @deprecated use label */ charcoal: '#F4F4F6',
-  /** @deprecated use label2 */ grey:    'rgba(235,235,245,0.76)',
-  /** @deprecated use label3 */ greyLight:  'rgba(235,235,245,0.44)',
-  /** @deprecated use separator */ greyLighter: 'rgba(255,255,255,0.08)',
+  // ── Deprecated aliases — remove after components updated ─
+  /** @deprecated use bg */ slate:       '#F1F0F4',
+  /** @deprecated use bg */ slateDark:   '#E0F0EF',
+  /** @deprecated use surface */ sand:   '#FFFFFF',
+  /** @deprecated use surface */ sandDark: '#F5F4F8',
+  /** @deprecated use surface */ white:  '#FFFFFF',
+  /** @deprecated use label */ charcoal: '#16151A',
+  /** @deprecated use label2 */ grey:    'rgba(20,18,28,0.74)',
+  /** @deprecated use label3 */ greyLight:  'rgba(20,18,28,0.48)',
+  /** @deprecated use separator */ greyLighter: 'rgba(20,18,28,0.10)',
   /** @deprecated use accent */ sky:     '#4C8DF6',
   /** @deprecated use accent */ skyLight: '#82AEFA',
   /** @deprecated use accent */ skyDark:  '#2E72E0',

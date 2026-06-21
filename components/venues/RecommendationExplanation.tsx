@@ -17,7 +17,12 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
 import type { Venue } from '@/types';
 import { generateRecommendationExplanation } from '@/lib/recommendations/recommendationExplanation';
-import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
+import { Colors, FontFamily, BorderRadius, Shadow } from '@/constants/theme';
+
+// Green tick that signals a positive, verified-fit reason. Retained as a local
+// exception (no design-system token) — mirrors the green open indicator kept on
+// app/venue/[id].tsx in Phase 6A.1.
+const POSITIVE_GREEN = '#5BC08A';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -43,38 +48,35 @@ export function RecommendationExplanation({ venue }: Props) {
   const { title, reasons } = explanation;
 
   return (
-    <View style={styles.card} accessible={false}>
-      {/* Top accent bar (v2) */}
-      <View style={styles.accentBar} />
+    <View
+      style={styles.card}
+      accessible={false}
+    >
+      {/* Title row: star icon + bold title */}
+      <View style={styles.titleRow}>
+        <Icon name="star" size={16} color={Colors.star} />
+        <Text style={styles.title} accessibilityRole="header">
+          {title}
+        </Text>
+      </View>
 
-      <View style={styles.inner}>
-        {/* Header: sparkle + uppercase overline */}
-        <View style={styles.headerRow}>
-          <Icon name="sparkle" size={14} color={Colors.accent} />
-          <Text style={styles.overline} accessibilityRole="header">
-            Why we recommended this
-          </Text>
-        </View>
+      {/* Subheading */}
+      <Text style={styles.subheading}>Why we recommended this</Text>
 
-        {/* Context headline (the engine's title) */}
-        <Text style={styles.headline}>{title}</Text>
-
-        {/* Reasons list — accent circle + white check */}
-        <View style={styles.reasonsList}>
-          {reasons.map((reason) => (
-            <View
-              key={reason}
-              style={styles.reasonRow}
-              accessible={true}
-              accessibilityLabel={reason}
-            >
-              <View style={styles.checkCircle}>
-                <Icon name="check" size={9} color="#FFFFFF" strokeWidth={3} />
-              </View>
-              <Text style={styles.reasonText}>{reason}</Text>
-            </View>
-          ))}
-        </View>
+      {/* Reasons list */}
+      <View style={styles.reasonsList}>
+        {reasons.map((reason) => (
+          <View
+            key={reason}
+            style={styles.reasonRow}
+            accessible={true}
+            accessibilityLabel={reason}
+          >
+            {/* Check icon in leaf/green to signal a positive attribute */}
+            <Icon name="check" size={14} color={POSITIVE_GREEN} strokeWidth={2.5} />
+            <Text style={styles.reasonText}>{reason}</Text>
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -83,67 +85,53 @@ export function RecommendationExplanation({ venue }: Props) {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  // Accent-tinted card (accent at ~16%) with a clipped top accent bar.
   card: {
-    backgroundColor: Colors.accentLight,
-    borderRadius: BorderRadius.section,
-    overflow: 'hidden',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.card,
+    borderWidth: 1,
+    borderColor: Colors.separator,
+    padding: 18,
     marginTop: 22,
-  },
-  accentBar: {
-    height: 3,
-    backgroundColor: 'rgba(76,141,246,0.55)',
-  },
-  inner: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 15,
+    // Elevated card shadow from the design-system token set.
+    ...Shadow.md,
   },
 
-  headerRow: {
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    marginBottom: 8,
-  },
-  overline: {
-    fontFamily: FontFamily.caption,
-    fontSize: 11,
-    color: Colors.accent,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    marginBottom: 3,
   },
 
-  headline: {
+  title: {
+    fontFamily: FontFamily.heading,
+    fontSize: 17,
+    color: Colors.label,
+    letterSpacing: -0.2,
+  },
+
+  subheading: {
     fontFamily: FontFamily.body,
-    fontSize: 14.5,
-    color: Colors.label2,
-    lineHeight: 21,
-    marginBottom: 11,
+    fontSize: 12,
+    color: Colors.label3,
+    marginBottom: 14,
+    marginLeft: 23, // aligns with text in titleRow (icon width 16 + gap 7)
   },
 
   reasonsList: {
-    gap: 8,
+    gap: 10,
   },
+
   reasonRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 9,
   },
-  checkCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
-  },
+
   reasonText: {
     fontFamily: FontFamily.body,
     fontSize: 14,
     color: Colors.label2,
     flexShrink: 1,
-    lineHeight: 20,
   },
 });

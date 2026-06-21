@@ -333,14 +333,14 @@ describe('ExploreScreen — consent gate', () => {
   // If SecureStore.getItemAsync were never checked, the prompt would flash on every
   // app open, annoying users who already said yes and breaking GDPR Art.7(3)
   // (consent should not be re-requested when already given).
-  it('skips the consent prompt and shows the map when consent is already stored', async () => {
-    const { getByLabelText, queryByLabelText, queryByTestId } = await renderAndWaitForConsent({
+  it('skips the consent prompt and shows the toggle when consent is already stored', async () => {
+    const { getByLabelText, queryByLabelText } = await renderAndWaitForConsent({
       consentStored: true,
     });
 
-    // The full-bleed map (and its list-access control) must be visible.
-    expect(queryByTestId('cluster-map-view')).toBeTruthy();
-    expect(getByLabelText('Browse full venue list')).toBeTruthy();
+    // The toggle must be visible.
+    expect(getByLabelText('Map view')).toBeTruthy();
+    expect(getByLabelText('List view')).toBeTruthy();
 
     // The consent prompt must NOT appear.
     expect(queryByLabelText('Allow location access')).toBeNull();
@@ -357,9 +357,9 @@ describe('ExploreScreen — consent gate', () => {
       fireEvent.press(getByLabelText('Browse without location'));
     });
 
-    // After declining, the map must appear (LocationFallbackMap is shown).
+    // After declining, the toggle must appear (LocationFallbackMap is shown).
     await waitFor(() => {
-      expect(getByLabelText('Browse full venue list')).toBeTruthy();
+      expect(getByLabelText('Map view')).toBeTruthy();
     });
   });
 
@@ -373,7 +373,7 @@ describe('ExploreScreen — consent gate', () => {
     });
 
     await waitFor(() => {
-      expect(getByLabelText('Browse full venue list')).toBeTruthy();
+      expect(getByLabelText('Map view')).toBeTruthy();
     });
   });
 
@@ -414,39 +414,34 @@ describe('ExploreScreen — consent gate', () => {
 // =============================================================================
 // 2. TOGGLE RENDERS
 // =============================================================================
-describe('ExploreScreen — list access + toggle', () => {
+describe('ExploreScreen — toggle pill renders', () => {
 
-  // The v2 full-bleed map starts in map mode and offers a "Browse full venue
-  // list" control. The Map/List toggle pill itself is shown in LIST mode so the
-  // user can switch back. If list access disappeared, users would be stuck on
-  // the map with no way to scan venues as a list.
-  it('shows the map with a list-access control in map mode (no toggle pill)', async () => {
-    const { getByLabelText, queryByLabelText, queryByTestId } = await renderAndWaitForConsent({
-      consentStored: true,
-    });
-
-    expect(queryByTestId('cluster-map-view')).toBeTruthy();
-    expect(getByLabelText('Browse full venue list')).toBeTruthy();
-    // The Map/List toggle pill is not shown in the full-bleed map mode.
-    expect(queryByLabelText('Map view')).toBeNull();
-    expect(queryByLabelText('List view')).toBeNull();
-  });
-
-  // In list mode the Map/List toggle appears with List selected and Map not —
-  // screen reader users must hear which mode is active.
-  it('shows the Map/List toggle with correct selected state in list mode', async () => {
+  // The toggle is the primary navigation control on the Explore tab. If it
+  // didn't render, users would be permanently stuck in whichever mode the
+  // component defaulted to — with no way to switch.
+  it('renders both Map and List buttons after consent is confirmed', async () => {
     const { getByLabelText } = await renderAndWaitForConsent({
       consentStored: true,
     });
 
-    await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+    expect(getByLabelText('Map view')).toBeTruthy();
+    expect(getByLabelText('List view')).toBeTruthy();
+  });
+
+  // The component starts in map mode. If accessibilityState.selected were
+  // hard-coded to true on both buttons, screen reader users would hear both
+  // as "selected" — confusing and inaccurate.
+  it('marks Map as selected and List as not selected on initial render', async () => {
+    const { getByLabelText } = await renderAndWaitForConsent({
+      consentStored: true,
     });
 
-    await waitFor(() => {
-      expect(getByLabelText('List view').props.accessibilityState?.selected).toBe(true);
-      expect(getByLabelText('Map view').props.accessibilityState?.selected).toBe(false);
-    });
+    const mapButton = getByLabelText('Map view');
+    const listButton = getByLabelText('List view');
+
+    // accessibilityState.selected reflects viewMode state in the component.
+    expect(mapButton.props.accessibilityState?.selected).toBe(true);
+    expect(listButton.props.accessibilityState?.selected).toBe(false);
   });
 });
 
@@ -466,7 +461,7 @@ describe('ExploreScreen — toggle mode switching', () => {
 
     // Press List.
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     // Map must be gone — ClusterMapView is fully unmounted in list mode.
@@ -490,7 +485,7 @@ describe('ExploreScreen — toggle mode switching', () => {
 
     // Switch to list.
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     await waitFor(() => {
@@ -516,7 +511,7 @@ describe('ExploreScreen — toggle mode switching', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     await waitFor(() => {
@@ -551,7 +546,7 @@ describe('ExploreScreen — list mode renders venues', () => {
 
     // Switch to list mode.
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     // Both venue names must appear in the rendered output.
@@ -579,7 +574,7 @@ describe('ExploreScreen — list mode renders venues', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     await waitFor(() => {
@@ -601,7 +596,7 @@ describe('ExploreScreen — list mode renders venues', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     await waitFor(() => {
@@ -630,7 +625,7 @@ describe('ExploreScreen — list mode renders venues', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     // VenueRow sets accessibilityLabel to "${venue.name}, ${category.name}".
@@ -654,7 +649,7 @@ describe('ExploreScreen — empty state in list mode', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     await waitFor(() => {
@@ -672,7 +667,7 @@ describe('ExploreScreen — empty state in list mode', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     await waitFor(() => {
@@ -697,7 +692,7 @@ describe('ExploreScreen — empty state in list mode', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     await waitFor(() => {
@@ -724,7 +719,7 @@ describe('ExploreScreen — empty state in list mode', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     await waitFor(() => {
@@ -757,7 +752,7 @@ describe('ExploreScreen — Filters button accessibility', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     await waitFor(() => {
@@ -823,7 +818,7 @@ describe('ExploreScreen — GDPR consent audit log is non-blocking', () => {
 
     // Despite the audit failure, the map should still be shown.
     await waitFor(() => {
-      expect(getByLabelText('Browse full venue list')).toBeTruthy();
+      expect(getByLabelText('Map view')).toBeTruthy();
     });
   });
 
@@ -845,7 +840,7 @@ describe('ExploreScreen — GDPR consent audit log is non-blocking', () => {
 
     // Consent should still take effect for this session even if persistence failed.
     await waitFor(() => {
-      expect(getByLabelText('Browse full venue list')).toBeTruthy();
+      expect(getByLabelText('Map view')).toBeTruthy();
     });
   });
 });
@@ -878,7 +873,7 @@ describe('ExploreScreen — ODbL map attribution', () => {
     });
 
     await act(async () => {
-      fireEvent.press(getByLabelText('Browse full venue list'));
+      fireEvent.press(getByLabelText('List view'));
     });
 
     await waitFor(() => {

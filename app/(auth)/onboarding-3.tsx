@@ -12,7 +12,6 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { Icon, IconName } from '@/components/ui';
-import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 import { ONBOARDING_KEY } from '.';
 
 async function markOnboardingSeen() {
@@ -54,14 +53,14 @@ export default function Onboarding3() {
           accessibilityRole="button"
           accessibilityLabel="Go back to previous onboarding screen"
         >
-          <Icon name="chevL" size={24} color={Colors.label} />
+          <Icon name="chevL" size={24} color="#1D2630" />
         </TouchableOpacity>
       </View>
 
       {/* Hero illustration */}
       <View style={styles.heroArea} accessible={false} importantForAccessibility="no-hide-descendants">
         <View style={styles.heroCard}>
-          <Icon name="shield" size={48} color={Colors.accent} />
+          <Icon name="shield" size={48} color="#1B8A85" />
         </View>
       </View>
 
@@ -76,7 +75,7 @@ export default function Onboarding3() {
           {PRIVACY_POINTS.map((point) => (
             <View key={point.icon} style={styles.bulletRow}>
               <View style={styles.bulletIconWrap}>
-                <Icon name={point.icon} size={20} color={Colors.accent} />
+                <Icon name={point.icon} size={20} color="#1B8A85" />
               </View>
               <Text style={styles.bulletText}>{point.text}</Text>
             </View>
@@ -116,7 +115,7 @@ export default function Onboarding3() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.bg,
+    backgroundColor: '#FBF6EC',
     paddingHorizontal: 28,
     paddingBottom: 32,
   },
@@ -136,10 +135,8 @@ const styles = StyleSheet.create({
   heroCard: {
     width: 200,
     height: 200,
-    backgroundColor: Colors.accentLight,
+    backgroundColor: '#DCF4E4',
     borderRadius: 28,
-    borderWidth: 1,
-    borderColor: Colors.separator,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -149,17 +146,16 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   headline: {
-    fontFamily: FontFamily.display,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 30,
-    color: Colors.label,
+    color: '#1D2630',
     lineHeight: 38,
     marginBottom: 10,
-    letterSpacing: -0.5,
   },
   subtitle: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Regular',
     fontSize: 15,
-    color: Colors.label2,
+    color: '#4A5560',
     lineHeight: 22,
     marginBottom: 20,
   },
@@ -179,9 +175,9 @@ const styles = StyleSheet.create({
   },
   bulletText: {
     flex: 1,
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Regular',
     fontSize: 15,
-    color: Colors.label,
+    color: '#1D2630',
     lineHeight: 22,
   },
 
@@ -196,10 +192,10 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.separator,
+    backgroundColor: '#E6E2DB',
   },
   dotActive: {
-    backgroundColor: Colors.accent,
+    backgroundColor: '#2FB8B0',
     width: 22,
     borderRadius: 4,
   },
@@ -211,27 +207,27 @@ const styles = StyleSheet.create({
   },
   backBtn: {
     flex: 1,
-    borderRadius: BorderRadius.pill,
+    borderRadius: 999,
     paddingVertical: 16,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: Colors.separator,
-    backgroundColor: Colors.surface,
+    borderColor: '#E6E2DB',
+    backgroundColor: 'transparent',
   },
   backBtnText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 16,
-    color: Colors.label,
+    color: '#1D2630',
   },
   getStartedBtn: {
     flex: 2,
-    backgroundColor: Colors.accent,
-    borderRadius: BorderRadius.pill,
+    backgroundColor: '#2FB8B0',
+    borderRadius: 999,
     paddingVertical: 16,
     alignItems: 'center',
   },
   getStartedText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 16,
     color: '#FFFFFF',
   },

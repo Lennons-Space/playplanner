@@ -634,8 +634,8 @@ export default function SearchScreen() {
                 paddingVertical: 6,
                 borderRadius: 9999,
                 borderWidth: 1,
-                borderColor: Colors.coral,
-                backgroundColor: 'rgba(255,107,107,0.12)',
+                borderColor: '#FF6B6B',
+                backgroundColor: '#FFF0F0',
               }}
               accessibilityRole="button"
               accessibilityLabel="Remove active filters"

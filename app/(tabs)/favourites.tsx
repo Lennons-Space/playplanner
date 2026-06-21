@@ -1,9 +1,5 @@
 /**
- * Saved tab — Play Planner v2 saved grid.
- *
- * 2-column grid of square image tiles (full-bleed photo, bottom gradient, name
- * overlay, top-right heart toggle), per the v2 design (pp2-venue.jsx SavedScreen
- * / screens/04-saved-dark.png).
+ * Favourites tab — 2-column card grid of saved venues.
  *
  * RLS note: .eq('user_id', user.id) is belt-and-braces — RLS on the
  * `favourites` table is the authoritative security boundary.
@@ -24,18 +20,16 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
 import { useUser, useProfile } from '@/hooks/useAuth';
-import { Icon, CategoryPlaceholder } from '@/components/ui';
+import { Icon, ScreenTitle, CategoryPlaceholder } from '@/components/ui';
 import { SavedEmptyState } from '@/components/favourites/SavedEmptyState';
-import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
+import { getCategoryMeta } from '@/constants/categories';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type FavVenue = {
@@ -51,12 +45,31 @@ type FavVenue = {
   } | null;
 };
 
-const H_PAD = 16;
-const CARD_GAP = 10;
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const C = {
+  ink:      '#1D2630',
+  inkSoft:  '#4A5560',
+  mute:     '#7B8794',
+  line:     '#E6E2DB',
+  lineSoft: '#F1ECE2',
+  sand:     '#FBF6EC',
+  paper:    '#FFFFFF',
+  sky:      '#2FB8B0',
+  skyDeep:  '#1B8A85',
+  coral:    '#FF6B6B',
+  sun:      '#FFD66B',
+  sunSoft:  '#FFF1C7',
+  coralSoft:'#FFE8E8',
+  star:     '#F5A524',
+} as const;
 
-// ─── SavedTile ──────────────────────────────────────────────────────────────
-// Square full-bleed tile: photo → bottom gradient → name → heart toggle.
-function SavedTile({
+const H_PAD    = 20;
+const CARD_GAP = 10;
+const IMG_H    = 104;
+
+// ─── FavCard ──────────────────────────────────────────────────────────────────
+// Each card in the 2-col grid: image area + info area + unsave button overlay.
+function FavCard({
   item,
   onPress,
   onUnsave,
@@ -65,68 +78,95 @@ function SavedTile({
   onPress: () => void;
   onUnsave: () => void;
 }) {
-  // Explicit tile size from window width — avoids the Android collapse where
-  // aspectRatio + flex with only absolutely-positioned children resolves to 0
-  // height. Two tiles + one gap fill the padded row width.
-  const { width } = useWindowDimensions();
-  const size = Math.floor((width - H_PAD * 2 - CARD_GAP) / 2);
-
   const venue = item.venue;
-  // Empty slot keeps grid column alignment when venue data is null.
-  if (!venue) return <View style={{ width: size }} />;
+  // Empty slot to preserve grid column layout when venue data is null.
+  if (!venue) return <View style={styles.cardPlaceholderSlot} />;
 
+  const catMeta  = getCategoryMeta(venue.category?.slug);
   const hasPhoto = !!venue.cover_photo_url;
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.tile, { width: size, height: size, opacity: pressed ? 0.92 : 1 }]}
+    <TouchableOpacity
+      style={styles.card}
       onPress={onPress}
+      activeOpacity={0.88}
       accessibilityRole="button"
       accessibilityLabel={venue.name}
     >
-      {/* Base layer — in-flow child with explicit size so the tile has height. */}
-      {hasPhoto ? (
-        <Image source={{ uri: venue.cover_photo_url! }} style={{ width: size, height: size }} resizeMode="cover" />
-      ) : (
-        <CategoryPlaceholder categorySlug={venue.category?.slug ?? 'other'} size={size} borderRadius={0} />
-      )}
+      {/* ── Image area ─────────────────────────────────────────── */}
+      <View style={styles.imageArea}>
+        {hasPhoto ? (
+          <Image
+            source={{ uri: venue.cover_photo_url! }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+          />
+        ) : (
+          // CategoryPlaceholder expects square dimensions; we stretch it to fill
+          // the image area by wrapping it in an absoluteFill container.
+          <View style={[StyleSheet.absoluteFill, styles.placeholderWrap]}>
+            <CategoryPlaceholder
+              categorySlug={venue.category?.slug ?? 'other'}
+              size={IMG_H}
+              borderRadius={0}
+            />
+          </View>
+        )}
 
-      {/* Bottom gradient for legible name */}
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.55)']}
-        locations={[0.4, 1]}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+        {/* Unsave button — top-right overlay */}
+        <Pressable
+          style={styles.unsaveBtn}
+          onPress={onUnsave}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${venue.name} from favourites`}
+          hitSlop={8}
+        >
+          <Icon name="heartFill" size={14} color={C.coral} />
+        </Pressable>
+      </View>
 
-      <Text style={styles.tileName} numberOfLines={2}>{venue.name}</Text>
+      {/* ── Info area ──────────────────────────────────────────── */}
+      <View style={styles.infoArea}>
+        <Text style={styles.venueName} numberOfLines={2}>{venue.name}</Text>
 
-      {/* Heart toggle — always saved here; tapping removes it */}
-      <Pressable
-        style={styles.heartBtn}
-        onPress={onUnsave}
-        accessibilityRole="button"
-        accessibilityLabel={`Remove ${venue.name} from saved`}
-        hitSlop={8}
-      >
-        <Icon name="heartFill" size={13} color={Colors.coral} />
-      </Pressable>
-    </Pressable>
+        <View style={styles.metaRow}>
+          <Icon name="star" size={10} color={C.star} />
+          <Text style={styles.ratingText}>
+            {Number(venue.average_rating) > 0
+              ? Number(venue.average_rating).toFixed(1)
+              : '–'}
+          </Text>
+          <Text style={styles.distanceText}>· nearby</Text>
+        </View>
+
+        {venue.category && (
+          <View style={[styles.catPill, { backgroundColor: catMeta.soft }]}>
+            <Text style={[styles.catPillText, { color: catMeta.color }]}>
+              {catMeta.label.toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 }
 
-// ─── SavedScreen ─────────────────────────────────────────────────────────────
+// ─── FavouritesScreen ─────────────────────────────────────────────────────────
 export default function FavouritesScreen() {
-  const user = useUser();
-  const profile = useProfile();
-  const queryClient = useQueryClient();
+  const user         = useUser();
+  const profile      = useProfile();
+  const queryClient  = useQueryClient();
 
+  // First name from full_name for the eyebrow — same derivation as before.
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? null;
 
   // ── Data query (preserved verbatim) ────────────────────────────────────────
   const { data: favRows = [], isLoading, isError } = useQuery<FavVenue[]>({
     queryKey: ['favourites', user?.id],
     queryFn: async () => {
+      // Re-check inside queryFn — session may have expired between the enabled
+      // check and when React Query actually fires the fetch (e.g. on a cache miss
+      // triggered by a navigation event after token expiry).
       if (!user?.id) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -150,6 +190,8 @@ export default function FavouritesScreen() {
           venue_photos?: { url: string; is_cover: boolean; sort_order: number; status: string }[];
         }) | null;
 
+        // Resolve cover photo from the joined array — pick the approved cover,
+        // falling back to the first approved photo, then null.
         const approved = (v?.venue_photos ?? []).filter((p) => p.status === 'approved');
         const cover = approved.find((p) => p.is_cover) ?? approved[0] ?? null;
 
@@ -171,14 +213,14 @@ export default function FavouritesScreen() {
     staleTime: 1000 * 60 * 2,
   });
 
-  // ── Unsave mutation (preserved verbatim) ────────────────────────────────────
+  // ── Unsave mutation ─────────────────────────────────────────────────────────
   const unsaveMutation = useMutation({
     mutationFn: async (favouriteId: string) => {
       const { error } = await supabase
         .from('favourites')
         .delete()
         .eq('id', favouriteId)
-        .eq('user_id', user!.id);
+        .eq('user_id', user!.id); // belt-and-braces; RLS is the real boundary
       if (error) throw error;
     },
     onSuccess: () => {
@@ -190,29 +232,28 @@ export default function FavouritesScreen() {
     router.push(`/venue/${venueId}`);
   }, []);
 
+  // ── Derived display state ───────────────────────────────────────────────────
   const showEmpty = favRows.length === 0;
 
-  // ── List header (v2: overline + "Your favourites" + count) ─────────────────
+  // ── List header ─────────────────────────────────────────────────────────────
   const listHeader = (
-    <View style={styles.header}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.overline}>{firstName ? `${firstName}'s saved places` : 'Saved places'}</Text>
-        <Text style={styles.title}>Your favourites</Text>
-      </View>
-      {favRows.length > 0 && (
-        <Text style={styles.count}>{favRows.length} saved</Text>
-      )}
+    <View>
+      <ScreenTitle
+        eyebrow={firstName ? `${firstName}'s` : undefined}
+        title="Saved places"
+      />
     </View>
   );
+
+  // ── List footer ─────────────────────────────────────────────────────────────
+  const listFooter = <View style={styles.bottomPad} />;
 
   // ── Not signed in ─────────────────────────────────────────────────────────
   if (!user) {
     return (
       <SafeAreaView style={styles.root} edges={['top']}>
         <View style={styles.centred}>
-          <View style={styles.heartMedallion}>
-            <Icon name="heartFill" size={30} color={Colors.coral} />
-          </View>
+          <Text style={styles.notSignedInEmoji}>💛</Text>
           <Text style={styles.emptyTitle}>Save your favourite places</Text>
           <Text style={styles.emptySub}>
             Sign in to keep a personal list of venues your family loves.
@@ -242,7 +283,7 @@ export default function FavouritesScreen() {
     return (
       <SafeAreaView style={styles.root} edges={['top']}>
         <View style={styles.centred}>
-          <ActivityIndicator color={Colors.accent} size="large" />
+          <ActivityIndicator color={C.sky} size="large" />
         </View>
       </SafeAreaView>
     );
@@ -253,8 +294,8 @@ export default function FavouritesScreen() {
     return (
       <SafeAreaView style={styles.root} edges={['top']}>
         <View style={styles.centred}>
-          <Icon name="info" size={40} color={Colors.label3} />
-          <Text style={styles.emptyTitle}>Could not load saved places</Text>
+          <Text style={styles.errorEmoji}>⚠️</Text>
+          <Text style={styles.emptyTitle}>Could not load favourites</Text>
           <Text style={styles.emptySub}>Check your connection and try again.</Text>
         </View>
       </SafeAreaView>
@@ -265,11 +306,23 @@ export default function FavouritesScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       {showEmpty ? (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.emptyScrollContent}>
-          {listHeader}
-          <SavedEmptyState />
-          <View style={styles.bottomPad} />
-        </ScrollView>
+        // When the active tab has nothing to show, render header + empty state
+        // in a plain ScrollView (no FlatList needed).
+        <View style={{ flex: 1 }}>
+          {/* Favourites-only soft cream scrim — calms the global sunny weather
+              circles behind the empty state so the content stays the focus.
+              Non-interactive, absolute-fill (no layout impact); keeps the warm
+              ambience rather than removing it. Does NOT touch the weather layer. */}
+          <View pointerEvents="none" style={styles.emptyScrim} />
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.emptyScrollContent}
+          >
+            {listHeader}
+            <SavedEmptyState />
+            <View style={styles.bottomPad} />
+          </ScrollView>
+        </View>
       ) : (
         <FlatList
           data={favRows}
@@ -278,9 +331,9 @@ export default function FavouritesScreen() {
           columnWrapperStyle={styles.columnWrapper}
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={listHeader}
-          ListFooterComponent={<View style={styles.bottomPad} />}
+          ListFooterComponent={listFooter}
           renderItem={({ item }) => (
-            <SavedTile
+            <FavCard
               item={item}
               onPress={() => handlePress(item.venue_id)}
               onUnsave={() => unsaveMutation.mutate(item.id)}
@@ -308,107 +361,134 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
 
-  // ── Header ────────────────────────────────────────────────────────
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingHorizontal: H_PAD,
-    paddingTop: 14,
-    paddingBottom: 14,
+  // ── FlatList layout ───────────────────────────────────────────────
+  listContent: {
+    paddingBottom: 32,
   },
-  overline: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 13,
-    color: Colors.accent,
-  },
-  title: {
-    fontFamily: FontFamily.display,
-    fontSize: 28,
-    color: Colors.label,
-    letterSpacing: -0.5,
-    lineHeight: 32,
-    marginTop: 2,
-  },
-  count: {
-    fontFamily: FontFamily.body,
-    fontSize: 13,
-    color: Colors.label3,
-    marginBottom: 4,
-  },
-
-  // ── Grid layout ───────────────────────────────────────────────────
-  listContent: { paddingBottom: 32 },
   columnWrapper: {
     paddingHorizontal: H_PAD,
     gap: CARD_GAP,
     marginBottom: CARD_GAP,
   },
-  emptyScrollContent: { flexGrow: 1 },
-  bottomPad: { height: 110 },
+  emptyScrollContent: {
+    flexGrow: 1,
+  },
+  // Soft cream wash over the global sunny background — empty state only.
+  emptyScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(251,246,236,0.42)',
+  },
+  bottomPad: {
+    height: 110, // clear tab bar
+  },
 
-  // ── Square tile (explicit size set inline from window width) ──────
-  tile: {
-    borderRadius: 14,
+  // ── Venue card ────────────────────────────────────────────────────
+  card: {
+    flex: 1,
+    backgroundColor: C.paper,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.line,
     overflow: 'hidden',
-    backgroundColor: Colors.surface,
+  },
+  // Zero-width spacer in the grid column when venue data is null,
+  // so the sibling card still occupies its correct column.
+  cardPlaceholderSlot: {
+    flex: 1,
+  },
+  imageArea: {
+    height: IMG_H,
     position: 'relative',
+    overflow: 'hidden',
   },
-  tileName: {
-    position: 'absolute',
-    left: 10,
-    right: 34,
-    bottom: 9,
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 12,
-    color: '#FFFFFF',
-    lineHeight: 15,
+  placeholderWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  heartBtn: {
+  unsaveBtn: {
     position: 'absolute',
     top: 8,
     right: 8,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(0,0,0,0.38)',
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  infoArea: {
+    padding: 10,
+  },
+  venueName: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 13,
+    color: C.ink,
+    lineHeight: 13 * 1.2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  ratingText: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 11,
+    color: C.ink,
+  },
+  distanceText: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 11,
+    color: C.mute,
+  },
+  catPill: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingVertical: 2,
+    paddingHorizontal: 7,
+    borderRadius: 999,
+  },
+  catPillText: {
+    fontFamily: 'Nunito-ExtraBold',
+    fontSize: 9,
+    letterSpacing: 0.3,
   },
 
-  // ── Empty / not-signed-in / error shared ──────────────────────────
-  heartMedallion: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: 'rgba(255,107,107,0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
+  // ── Shared empty/error copy (used by not-signed-in + error states) ──
   emptyTitle: {
-    fontFamily: FontFamily.display,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 20,
-    color: Colors.label,
+    color: C.ink,
     textAlign: 'center',
   },
   emptySub: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Regular',
     fontSize: 14,
-    color: Colors.label3,
+    color: C.mute,
     textAlign: 'center',
     marginTop: 6,
-    lineHeight: 21,
+    lineHeight: 14 * 1.5,
+  },
+
+  // ── Not signed in ─────────────────────────────────────────────────
+  notSignedInEmoji: {
+    fontSize: 56,
+    marginBottom: 16,
+  },
+  errorEmoji: {
+    fontSize: 44,
+    marginBottom: 12,
   },
   primaryBtn: {
-    backgroundColor: Colors.accent,
-    borderRadius: BorderRadius.pill,
+    backgroundColor: C.sky,
+    borderRadius: 999,
     paddingVertical: 14,
     paddingHorizontal: 36,
-    marginTop: 18,
+    marginTop: 8,
   },
   primaryBtnText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Bold',
     fontSize: 15,
     color: '#FFFFFF',
   },
@@ -417,8 +497,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   secondaryBtnText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Bold',
     fontSize: 14,
-    color: Colors.accent,
+    color: C.sky,
   },
 });

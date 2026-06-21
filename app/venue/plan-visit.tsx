@@ -36,29 +36,28 @@ import { Icon } from '@/components/ui/Icon';
 import type { IconName } from '@/components/ui/Icon';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
 import type { Venue } from '@/types';
-import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
-// ─── Design tokens — remapped to dark v2 palette ─────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const pp = {
-  ink:       Colors.label,
-  inkSoft:   Colors.label2,
-  mute:      Colors.label3,
-  line:      Colors.separator,
-  lineSoft:  Colors.fill,
-  sand:      Colors.bg,
-  paper:     Colors.surface,
-  sky:       Colors.accent,
-  skyDeep:   Colors.accent,
-  skySoft:   Colors.accentLight,
-  skyWash:   Colors.accentLight,
-  star:      Colors.star,
-  starSoft:  'rgba(255,178,62,0.14)',
-  coral:     Colors.coral,
-  coralSoft: 'rgba(255,107,107,0.14)',
-  leaf:      Colors.success,
-  leafSoft:  'rgba(0,184,148,0.14)',
-  purple:    '#8E6BD8',
-  purpleSoft:'rgba(142,107,216,0.14)',
+  ink:      '#1D2630',
+  inkSoft:  '#4A5560',
+  mute:     '#7B8794',
+  line:     '#E6E2DB',
+  lineSoft: '#F1ECE2',
+  sand:     '#FBF6EC',
+  paper:    '#FFFFFF',
+  sky:      '#2FB8B0',
+  skyDeep:  '#1B8A85',
+  skySoft:  '#D4F0EE',
+  skyWash:  '#EEF9F8',
+  star:     '#F5A524',
+  starSoft: '#FFF1C7',
+  coral:    '#FF6B6B',
+  coralSoft:'#FFE8E8',
+  leaf:     '#5BC08A',
+  leafSoft: '#DCF4E4',
+  purple:   '#8E6BD8',
+  purpleSoft:'#ECE1FF',
 };
 
 // ─── Opening hours types ──────────────────────────────────────────────────────
@@ -661,7 +660,7 @@ export default function PlanVisitScreen() {
               )}
               <View style={[styles.openBadge, { backgroundColor: openNow ? pp.leafSoft : pp.lineSoft }]}>
                 <View style={[styles.openDot, { backgroundColor: openNow ? pp.leaf : pp.mute }]} />
-                <Text style={[styles.openBadgeText, { color: openNow ? Colors.success : pp.mute }]}>
+                <Text style={[styles.openBadgeText, { color: openNow ? '#2D7A4F' : pp.mute }]}>
                   {openNow
                     ? todayRow?.closes_at ? `Closes ${formatTime(todayRow.closes_at)}` : 'Open now'
                     : todayRow && !todayRow.is_closed && todayRow.opens_at
@@ -780,7 +779,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   errorTitle: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Bold',
     fontSize: 16,
     color: pp.ink,
     textAlign: 'center',
@@ -792,7 +791,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   backBtnText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Bold',
     fontSize: 14,
     color: pp.sky,
   },
@@ -820,13 +819,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontFamily: FontFamily.display,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 20,
     color: pp.ink,
     letterSpacing: -0.3,
   },
   headerSub: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Regular',
     fontSize: 13,
     color: pp.mute,
     marginTop: 1,
@@ -865,13 +864,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   venueName: {
-    fontFamily: FontFamily.heading,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 16,
     color: pp.ink,
     lineHeight: 21,
   },
   venueAddress: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Regular',
     fontSize: 12,
     color: pp.mute,
     lineHeight: 17,
@@ -895,7 +894,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   distancePillText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Bold',
     fontSize: 11,
     color: pp.mute,
   },
@@ -913,7 +912,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   openBadgeText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Bold',
     fontSize: 11,
   },
 
@@ -929,7 +928,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionHeading: {
-    fontFamily: FontFamily.display,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 18,
     color: pp.ink,
     letterSpacing: -0.3,
@@ -966,13 +965,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tipTitle: {
-    fontFamily: FontFamily.heading,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 14,
     color: pp.ink,
     marginBottom: 3,
   },
   tipBody: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Regular',
     fontSize: 13,
     color: pp.inkSoft,
     lineHeight: 19,
@@ -1014,7 +1013,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionLabel: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Bold',
     fontSize: 13,
     color: pp.ink,
     textAlign: 'center',
@@ -1022,7 +1021,7 @@ const styles = StyleSheet.create({
 
   // ── Checklist ──
   checklistSub: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Regular',
     fontSize: 13,
     color: pp.mute,
     marginTop: -8,
@@ -1030,14 +1029,14 @@ const styles = StyleSheet.create({
   },
   packedBadge: {
     backgroundColor: pp.skyWash,
-    borderRadius: BorderRadius.pill,
+    borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderWidth: 1,
     borderColor: pp.skySoft,
   },
   packedBadgeText: {
-    fontFamily: FontFamily.caption,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 11,
     color: pp.skyDeep,
   },
@@ -1075,7 +1074,7 @@ const styles = StyleSheet.create({
     borderColor: pp.sky,
   },
   checkLabel: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-SemiBold',
     fontSize: 15,
     color: pp.ink,
     flex: 1,

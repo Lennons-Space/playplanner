@@ -1,13 +1,11 @@
 // Verifies the optional WeatherTheme "glass" variant on VenueCard (used only on
 // Home for rain/night). The default and light-theme renders must stay the solid
-// surface card (now the dark v2 `Colors.surface`) so every other screen that
-// renders VenueCard is unaffected.
+// white "paper" card so every other screen that renders VenueCard is unaffected.
 
 import React from 'react';
 import { render } from '@testing-library/react-native';
 import { VenueCard } from '@/components/ui/VenueCard';
 import { WEATHER_THEMES, type WeatherTheme } from '@/lib/weatherTheme';
-import { Colors } from '@/constants/theme';
 import type { Venue } from '@/types';
 
 function makeVenue(): Venue {
@@ -37,12 +35,12 @@ function rootStyle(theme?: WeatherTheme): Record<string, unknown> {
 }
 
 describe('VenueCard glass theming', () => {
-  it('is a solid surface card by default (no theme)', () => {
-    expect(rootStyle().backgroundColor).toBe(Colors.surface);
+  it('is a solid white card by default (no theme)', () => {
+    expect(rootStyle().backgroundColor).toBe('#FFFFFF');
   });
 
-  it('stays solid on a LIGHT theme (sunny) — solid surface preserved', () => {
-    expect(rootStyle(WEATHER_THEMES.sunny).backgroundColor).toBe(Colors.surface);
+  it('stays solid on a LIGHT theme (sunny) — paper aesthetic preserved', () => {
+    expect(rootStyle(WEATHER_THEMES.sunny).backgroundColor).toBe('#FFFFFF');
   });
 
   it('becomes a frosted glass card on a DARK theme (rain)', () => {

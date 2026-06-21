@@ -1,5 +1,0 @@
-# Design reference package — hi-fidelity HTML/React prototypes used as the
-# visual source of truth for the Play Planner v2 reskin. These intentionally
-# use browser globals (document, window, React via CDN) and are NOT part of the
-# app bundle, so they must not be linted as app code.
-claudedesign/

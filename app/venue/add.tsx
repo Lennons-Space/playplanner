@@ -281,7 +281,7 @@ export default function AddVenueScreen() {
                     borderRadius: 999,
                     borderWidth: 2,
                     borderColor: categoryId === cat.id ? Colors.sky : Colors.greyLighter,
-                    backgroundColor: categoryId === cat.id ? Colors.sky : Colors.surface2,
+                    backgroundColor: categoryId === cat.id ? Colors.sky : '#fff',
                   }}
                   onPress={() => setCategoryId(cat.id)}
                 >
@@ -454,7 +454,7 @@ const label: object = {
 };
 
 const input: object = {
-  backgroundColor: Colors.surface,
+  backgroundColor: '#fff',
   borderWidth: 1,
   borderColor: Colors.greyLighter,
   borderRadius: 12,

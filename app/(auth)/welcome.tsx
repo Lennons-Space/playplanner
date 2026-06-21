@@ -14,7 +14,22 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Icon } from '@/components/ui';
-import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
+
+// ─── Design tokens (pp- system) ─────────────────────────────────────────────
+const C = {
+  ink: '#1D2630',
+  inkSoft: '#4A5560',
+  line: '#E6E2DB',
+  sand: '#FBF6EC',
+  sky: '#2FB8B0',
+  skyDeep: '#1B8A85',
+  skySoft: '#D4F0EE',
+  skyWash: '#EEF9F8',
+  coral: '#FF6B6B',
+  sun: '#FFD66B',
+  leaf: '#5BC08A',
+  leafSoft: '#DCF4E4',
+} as const;
 
 export default function WelcomeScreen() {
   return (
@@ -23,7 +38,7 @@ export default function WelcomeScreen() {
       {/* ── Hero card ──────────────────────────────────────────────────────── */}
       <View style={styles.heroWrapper} accessible={false} importantForAccessibility="no-hide-descendants">
         <LinearGradient
-          colors={['#16242A', '#12161E', '#0F0F16']}
+          colors={['#D4F0EE', '#FFD66B44', '#FFE8E8']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.heroCard}
@@ -54,7 +69,7 @@ export default function WelcomeScreen() {
 
           {/* Ground strip */}
           <LinearGradient
-            colors={['rgba(91,192,138,0.22)', 'rgba(91,192,138,0.04)']}
+            colors={['#DCF4E4', '#5BC08A55']}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={styles.ground}
@@ -73,7 +88,7 @@ export default function WelcomeScreen() {
 
       {/* ── Privacy strip (ICO Standard 10: location off by default) ─────── */}
       <View style={styles.privacyStrip}>
-        <Icon name="shield" size={18} color={Colors.accent} />
+        <Icon name="shield" size={18} color={C.skyDeep} />
         <Text style={styles.privacyText}>
           Location is{' '}
           <Text style={styles.privacyBold}>off by default</Text>
@@ -137,7 +152,7 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.bg,
+    backgroundColor: '#FBF6EC',
   },
 
   // ── Hero ──────────────────────────────────────────────────────────────────
@@ -146,18 +161,20 @@ const styles = StyleSheet.create({
     minHeight: 140,
     paddingHorizontal: 20,
     paddingTop: 16,
+    // flex:1 lets the hero expand to fill available space above the copy
   },
   heroCard: {
     flex: 1,
-    borderRadius: BorderRadius.card,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: Colors.separator,
+    borderColor: '#E6E2DB',
     overflow: 'hidden',
   },
   cloud: {
     position: 'absolute',
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 999,
+    opacity: 0.9,
   },
   sunGlow: {
     position: 'absolute',
@@ -166,7 +183,7 @@ const styles = StyleSheet.create({
     width: 66,
     height: 66,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,178,62,0.20)',
+    backgroundColor: '#FFD66B33',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -192,6 +209,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Counter-rotate icon so it stays upright inside the pin
   pinLeafInner: {
     transform: [{ rotate: '45deg' }],
     width: 44,
@@ -236,24 +254,24 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   eyebrow: {
-    fontFamily: FontFamily.caption,
+    fontFamily: 'Nunito-Bold',
     fontSize: 12,
     letterSpacing: 1.5,
-    color: Colors.accent,
+    color: '#1B8A85',
     textTransform: 'uppercase',
   },
   headline: {
-    fontFamily: FontFamily.display,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 32,
-    color: Colors.label,
+    color: '#1D2630',
     lineHeight: 38,
     letterSpacing: -0.5,
     marginTop: 8,
   },
   subtitle: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Medium',
     fontSize: 15,
-    color: Colors.label2,
+    color: '#4A5560',
     lineHeight: 22,
     marginTop: 10,
   },
@@ -262,10 +280,10 @@ const styles = StyleSheet.create({
   privacyStrip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.accentLight,
+    backgroundColor: '#EEF9F8',
     borderWidth: 1,
-    borderColor: Colors.separator,
-    borderRadius: BorderRadius.section,
+    borderColor: '#D4F0EE',
+    borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 14,
     marginHorizontal: 24,
@@ -275,14 +293,14 @@ const styles = StyleSheet.create({
   },
   privacyText: {
     flex: 1,
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Medium',
     fontSize: 12,
-    color: Colors.label2,
+    color: '#4A5560',
     lineHeight: 18,
   },
   privacyBold: {
-    fontFamily: FontFamily.bodyStrong,
-    color: Colors.label,
+    fontFamily: 'Nunito-Bold',
+    color: '#4A5560',
   },
 
   // ── CTAs ──────────────────────────────────────────────────────────────────
@@ -292,28 +310,28 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   primaryBtn: {
-    backgroundColor: Colors.accent,
+    backgroundColor: '#1D2630',
     borderRadius: 999,
     paddingVertical: 16,
     alignItems: 'center',
   },
   primaryBtnText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 16,
     color: '#FFFFFF',
   },
   secondaryBtn: {
-    backgroundColor: Colors.surface,
+    backgroundColor: 'transparent',
     borderRadius: 999,
     borderWidth: 1.5,
-    borderColor: Colors.separator,
+    borderColor: '#E6E2DB',
     paddingVertical: 15,
     alignItems: 'center',
   },
   secondaryBtnText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-ExtraBold',
     fontSize: 16,
-    color: Colors.label,
+    color: '#1D2630',
   },
 
   // ── Legal ─────────────────────────────────────────────────────────────────
@@ -323,15 +341,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   legalText: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Regular',
     fontSize: 11,
-    color: Colors.label3,
+    color: '#7B8794',
     textAlign: 'center',
     lineHeight: 16,
   },
   legalLink: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Bold',
     textDecorationLine: 'underline',
-    color: Colors.label2,
+    color: '#4A5560',
   },
 });

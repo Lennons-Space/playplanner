@@ -26,22 +26,21 @@ import { useMyReview } from '@/hooks/useReviews';
 import { useUser } from '@/hooks/useAuth';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { Icon } from '@/components/ui/Icon';
-import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
 
-// ─── Design tokens — remapped to dark v2 palette ─────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const pp = {
-  ink:     Colors.label,
-  inkSoft: Colors.label2,
-  mute:    Colors.label3,
-  sand:    Colors.bg,
-  paper:   Colors.surface,
-  sky:     Colors.accent,
-  skyWash: Colors.accentLight,
-  skyDeep: Colors.accent,
-  coral:   Colors.coral,
-  line:    Colors.separator,
-  leaf:    Colors.success,
-  leafWash: 'rgba(0,184,148,0.12)',
+  ink:     '#1D2630',
+  inkSoft: '#4A5560',
+  mute:    '#7B8794',
+  sand:    '#FBF6EC',
+  paper:   '#FFFFFF',
+  sky:     '#2FB8B0',
+  skyWash: '#EEF9F8',
+  skyDeep: '#1B8A85',
+  coral:   '#FF6B6B',
+  line:    '#E6E2DB',
+  leaf:    '#5BC08A',
+  leafWash:'#EDFAF3',
 };
 
 export default function WriteReviewScreen() {
@@ -199,7 +198,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   gateTitle: {
-    fontFamily: FontFamily.heading,
+    fontFamily: 'Nunito-Bold',
     fontSize: 18,
     color: pp.ink,
     textAlign: 'center',
@@ -207,7 +206,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,  // increased from 8 for better breathing room
   },
   gateSub: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-Regular',
     fontSize: 14,
     color: pp.mute,
     textAlign: 'center',
@@ -220,9 +219,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   btnText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Bold',
     fontSize: 15,
-    color: '#FFFFFF',
+    color: pp.paper,
   },
   btnOutline: {
     borderRadius: 24,
@@ -233,14 +232,14 @@ const styles = StyleSheet.create({
     backgroundColor: pp.paper,
   },
   btnOutlineText: {
-    fontFamily: FontFamily.bodyStrong,
+    fontFamily: 'Nunito-Bold',
     fontSize: 15,
     color: pp.ink,
   },
-  // Approved review — success-tinted info card
+  // Approved review — green-tinted info card
   approvedCard: {
     backgroundColor: pp.leafWash,
-    borderRadius: BorderRadius.section,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: pp.leaf,
     padding: 14,
@@ -248,7 +247,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   approvedCardText: {
-    fontFamily: FontFamily.body,
+    fontFamily: 'Nunito-SemiBold',
     fontSize: 13,
     color: pp.leaf,
     textAlign: 'center',

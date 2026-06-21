@@ -47,27 +47,29 @@ import {
   ActivityIndicator,
   Keyboard,
   Image,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ClusterMapView from 'react-native-map-clustering';
-import { Marker, PROVIDER_GOOGLE, type MapStyleElement } from 'react-native-maps';
+import { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import Svg, { Circle as SvgCircle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useLocation } from '@/hooks/location';
 import { useNearbyVenues } from '@/hooks/useVenues';
 import { useWeather } from '@/hooks/useWeather';
-import { getWeatherBanner, scoreVenueForWeather } from '@/lib/weather';
+import { getWeatherBadge, getWeatherBanner, scoreVenueForWeather } from '@/lib/weather';
 import { useFilterStore } from '@/store/filterStore';
 import { useShallow } from 'zustand/react/shallow';
 import { LocationConsentPrompt } from '@/components/consent';
+import { WeatherBackground } from '@/components/weather/WeatherBackground';
 import FilterSheet from '@/components/filters/FilterSheet';
 import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
-import { Icon, IconBtn, Chip } from '@/components/ui';
+import { VenueCard, Icon, IconBtn, Chip } from '@/components/ui';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { Colors, FontFamily } from '@/constants/theme';
-import { computeIsOpenNow } from '@/lib/venueAttributes';
 import { useMapStore } from '@/store/mapStore';
 import { supabase } from '@/lib/supabase';
 import type { Venue, Coordinates } from '@/types';
@@ -75,25 +77,6 @@ import type { Venue, Coordinates } from '@/types';
 
 // Height of the bottom sheet peek bar (handle + header row).
 const PEEK_HEIGHT = 84;
-
-// ─── Dark map style (Play Planner v2) ───────────────────────────────────────
-// Google Maps JSON style matching the v2 dark map palette (README "Map screen":
-// #14141B base / #1B2A1C green / dark roads). Applied via customMapStyle so the
-// full-bleed map reads as part of the dark app instead of the default light map.
-const DARK_MAP_STYLE: MapStyleElement[] = [
-  { elementType: 'geometry', stylers: [{ color: '#1a1a22' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0c0c11' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#8a8a95' }] },
-  { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1b2a1d' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#26262e' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a1a22' }] },
-  { featureType: 'road', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#2e2e38' }] },
-  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#10131c' }] },
-];
 
 // ─── renderCluster ─────────────────────────────────────────────────────────
 // Layered ring design: outer ring at 30% opacity + solid inner circle.
@@ -293,6 +276,15 @@ const markerStyles = StyleSheet.create({
   icon: { fontSize: 15 },
 });
 
+// ─── Greeting helper ───────────────────────────────────────────────────────
+// "Morning / Afternoon / Evening" based on the current local hour.
+function getGreetingWord(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Morning';
+  if (h < 18) return 'Afternoon';
+  return 'Evening';
+}
+
 // ─── MapScreen ─────────────────────────────────────────────────────────────
 // Shared rendering component used by both MapWithLocation and LocationFallbackMap.
 // Phase 2 re-skin: map mode now renders a sand-background scrollable feed
@@ -353,6 +345,15 @@ function MapScreen({
       if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current);
     };
   }, []);
+
+  // Derive a display location label.
+  // We avoid reverse-geocoding live coordinates — that would process location
+  // data beyond what is needed (GDPR Art.5(1)(c) data minimisation).
+  // The location label shown is the radius setting only, which is non-personal.
+  const locationLabel = useMemo(() => {
+    if (trackLocation && locLoading) return null; // show "Getting location…" spinner state
+    return null; // no postcode label without profile access in this phase
+  }, [trackLocation, locLoading]);
 
   // Single subscription instead of two — avoids a redundant re-render when filters change.
   const { filters, activeFilterCount } = useFilterStore(
@@ -419,7 +420,7 @@ function MapScreen({
 
   // Pass enabled=false while GPS is still loading — prevents a wasted London
   // fallback request that would flash pins before real results arrive.
-  const { data: venues = [], isLoading: venuesLoading, isFetching: venuesFetching } = useNearbyVenues(
+  const { data: venues = [], isLoading: venuesLoading, isFetching: venuesFetching, error: venuesError } = useNearbyVenues(
     mapCenter,
     filters,
     trackLocation ? !locLoading : true,
@@ -695,9 +696,8 @@ function MapScreen({
       pointerEvents="box-none"
     >
       <View style={{
-        flexDirection: 'row', backgroundColor: Colors.surface2, borderRadius: 999, padding: 3,
-        borderWidth: 1, borderColor: Colors.separator,
-        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8,
+        flexDirection: 'row', backgroundColor: '#fff', borderRadius: 999, padding: 3,
+        shadowColor: '#000', shadowOpacity: 0.13, shadowRadius: 8,
         shadowOffset: { width: 0, height: 2 }, elevation: 6,
       }}>
         <TouchableOpacity
@@ -788,10 +788,9 @@ function MapScreen({
       pointerEvents="box-none"
     >
       <View style={{
-        flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface2,
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
         borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9,
-        borderWidth: 1, borderColor: Colors.separator,
-        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8,
+        shadowColor: '#000', shadowOpacity: 0.13, shadowRadius: 8,
         shadowOffset: { width: 0, height: 2 }, elevation: 5, gap: 8,
       }} pointerEvents="auto">
         {geocoding ? (
@@ -833,6 +832,21 @@ function MapScreen({
     </View>
   );
 
+  // Must be above the list-mode early return — Rules of Hooks require all hooks
+  // to be called unconditionally on every render path.
+  const openVenueCount = useMemo(() => filteredVenues.filter((v) => {
+    if (!v.opening_hours || v.opening_hours.length === 0) return false;
+    const now = new Date();
+    const todayRow = v.opening_hours.find((h) => h.day_of_week === now.getDay());
+    if (!todayRow || todayRow.is_closed || !todayRow.opens_at || !todayRow.closes_at) return false;
+    const toMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    const nowMins   = now.getHours() * 60 + now.getMinutes();
+    const openMins  = toMins(todayRow.opens_at);
+    const closeMins = toMins(todayRow.closes_at);
+    if (closeMins < openMins) return nowMins >= openMins || nowMins < closeMins;
+    return nowMins >= openMins && nowMins < closeMins;
+  }).length, [filteredVenues]);
+
   // ── Weather (progressive enhancement) ──────────────────────────────────
   // Non-blocking: if the fetch fails or coords aren't ready, weather is null
   // and all weather-dependent UI is simply hidden. The key uses 2-decimal
@@ -843,6 +857,17 @@ function MapScreen({
     () => (weather ? getWeatherBanner(weather, viewMode) : null),
     [weather, viewMode],
   );
+
+  // Per-venue badge labels — keyed by venue.id for O(1) lookup in render.
+  const weatherBadgeMap = useMemo(() => {
+    if (!weather) return new Map<string, string>();
+    const map = new Map<string, string>();
+    for (const v of filteredVenues) {
+      const badge = getWeatherBadge(v.category?.slug ?? null, weather.condition);
+      if (badge) map.set(v.id, badge);
+    }
+    return map;
+  }, [filteredVenues, weather]);
 
   // In list mode, weather-boosted sort moves appropriate venues to the top.
   // We sort a copy (stable sort) so distance ordering within the same score
@@ -860,7 +885,7 @@ function MapScreen({
   // sheet, FAB, preview card, and ODbL attribution are all excluded.
   if (viewMode === 'list') {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <View style={{ flex: 1, backgroundColor: '#fff' }}>
         <View style={{
           paddingTop: insets.top + 52, paddingHorizontal: 16, paddingBottom: 10,
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -929,291 +954,383 @@ function MapScreen({
   }
 
 
-  // ── Map mode — Play Planner v2 full-bleed map ──────────────────────────
-  // Full-screen dark map with floating glass overlays: a search/postcode pill
-  // (top), horizontal filter chips, recenter/list controls, and a slide-up
-  // venue card on pin tap. All the underlying logic (consent gate, clustering,
-  // postcode geocoding, weather, viewport fetching, pin-tap) is unchanged —
-  // only the presentation moved from the old feed to this full-bleed layout.
+  // ── Map mode — Phase 2 feed layout ─────────────────────────────────────
+  // Sand-background ScrollView with: header → search pill → location row
+  // → 240px mini-map → category chips → "Open right now" section → VenueCards.
+  // The toggle pill still floats over the top via absolute positioning.
 
-  const selectedOpen = selectedVenue ? computeIsOpenNow(selectedVenue) : null;
-  const selectedColor = selectedVenue?.category?.color ?? Colors.accent;
+  const radiusMiles = Math.round(filters.maxDistanceKm * 0.621371);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      {/* Full-bleed dark map (same ClusterMapView + markers as before). */}
-      <ClusterMapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={StyleSheet.absoluteFillObject}
-        customMapStyle={DARK_MAP_STYLE}
-        // Dark loading state so the map never flashes Google's default light
-        // tile background before the dark tiles/style render.
-        loadingEnabled
-        loadingBackgroundColor={Colors.bg}
-        loadingIndicatorColor={Colors.accent}
-        initialRegion={initialRegion}
-        showsUserLocation={trackLocation}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        showsScale={false}
-        renderCluster={renderCluster}
-        radius={72}
-        minPoints={2}
-        maxZoom={16}
-        animationEnabled={false}
-        onRegionChangeComplete={handleRegionChangeComplete}
-        onPress={dismissVenue}
-        mapPadding={{ top: insets.top + 116, right: 8, bottom: selectedVenue ? 196 : 96, left: 8 }}
+      <WeatherBackground condition={weather?.condition} />
+      {/* ── Sand-background scrollable feed ─────────────────────────────── */}
+      <ScrollView
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+        contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
       >
-        {stableVenues.map((venue) => (
-          <VenueMarker
-            key={venue.id}
-            venue={venue}
-            isSelected={selectedVenue?.id === venue.id}
-            onPress={handleMarkerPress}
-          />
-        ))}
-      </ClusterMapView>
+        {/* ── Header: greeting + bell ─────────────────────────────────── */}
+        <View style={{
+          paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14,
+          flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+        }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label3 }}>
+              {getGreetingWord()} 👋
+            </Text>
+            <Text style={{ fontFamily: FontFamily.display, fontSize: 26, color: Colors.label, letterSpacing: -0.5, lineHeight: 30, marginTop: 2 }}>
+              Where to today?
+            </Text>
+          </View>
+          <IconBtn
+            size={40}
+            onPress={() => router.push('/profile/notifications')}
+            accessibilityLabel="Notifications"
+            shadow
+          >
+            <Icon name="bell" size={18} color={Colors.label} />
+          </IconBtn>
+        </View>
 
-      {/* ── Top: glass search / postcode pill ─────────────────────────── */}
-      <View style={{ position: 'absolute', top: insets.top + 8, left: 14, right: 14 }} pointerEvents="box-none">
-        <View
+        {/* ── Search pill: tapping navigates to the Search tab ─────────── */}
+        <Pressable
           style={{
-            flexDirection: 'row', alignItems: 'center', gap: 10,
-            backgroundColor: 'rgba(23,23,31,0.92)', borderRadius: 9999,
-            borderWidth: 1, borderColor: Colors.separator,
+            marginHorizontal: 20, marginBottom: 14,
+            backgroundColor: Colors.surface, borderRadius: 9999,
             paddingHorizontal: 16, paddingVertical: 12,
-          }}
-          pointerEvents="auto"
-        >
-          {geocoding ? (
-            <ActivityIndicator size="small" color={Colors.accent} />
-          ) : (
-            <Icon name="search" size={18} color={Colors.label3} />
-          )}
-          <TextInput
-            style={{ flex: 1, fontFamily: FontFamily.body, fontSize: 15, color: Colors.label, paddingVertical: 0 }}
-            placeholder="Search by postcode…"
-            placeholderTextColor={Colors.label3}
-            value={postcodeInput}
-            onChangeText={setPostcodeInput}
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="characters"
-            onSubmitEditing={handlePostcodeSubmit}
-            accessibilityLabel="Search by postcode"
-            accessibilityRole="search"
-            editable={!geocoding}
-          />
-          {postcodeInput.length > 0 && (
-            <TouchableOpacity
-              onPress={() => { setPostcodeInput(''); setPostcodeError(null); }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Clear postcode search"
-              accessibilityRole="button"
-            >
-              <Icon name="close" size={16} color={Colors.label3} />
-            </TouchableOpacity>
-          )}
-        </View>
-        {postcodeError && (
-          <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.coral, marginTop: 6, marginLeft: 14 }}>
-            {postcodeError}
-          </Text>
-        )}
-      </View>
-
-      {/* ── Filter chips row (Filters + All + categories) ─────────────── */}
-      <View style={{ position: 'absolute', top: insets.top + 64, left: 0, right: 0 }} pointerEvents="box-none">
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 14, gap: 8, alignItems: 'center' }}
-        >
-          {/* Filters → FilterSheet */}
-          <TouchableOpacity
-            onPress={onFiltersPress}
-            accessibilityRole="button"
-            accessibilityLabel={activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : 'Filters'}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              backgroundColor: activeFilterCount > 0 ? Colors.accent : 'rgba(23,23,31,0.92)',
-              borderWidth: 1, borderColor: activeFilterCount > 0 ? 'transparent' : Colors.separator,
-              borderRadius: 9999, paddingHorizontal: 13, paddingVertical: 8,
-            }}
-          >
-            <Icon name="sliders" size={14} color={activeFilterCount > 0 ? '#fff' : Colors.label} />
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: activeFilterCount > 0 ? '#fff' : Colors.label }}>
-              {activeFilterCount > 0 ? `Filters · ${activeFilterCount}` : 'Filters'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* All */}
-          <TouchableOpacity
-            onPress={() => setSelectedCategoryId(null)}
-            accessibilityRole="button"
-            accessibilityLabel="All categories"
-            accessibilityState={{ selected: selectedCategoryId === null }}
-            style={mapChipStyle(selectedCategoryId === null)}
-          >
-            <Text style={mapChipTextStyle(selectedCategoryId === null)}>All</Text>
-          </TouchableOpacity>
-
-          {availableCategories.map((cat) => {
-            const active = selectedCategoryId === cat.id;
-            return (
-              <TouchableOpacity
-                key={cat.id}
-                onPress={() => setSelectedCategoryId(active ? null : cat.id)}
-                accessibilityRole="button"
-                accessibilityLabel={cat.name}
-                accessibilityState={{ selected: active }}
-                style={mapChipStyle(active)}
-              >
-                <Text style={mapChipTextStyle(active)}>
-                  {cat.icon ? `${cat.icon} ${cat.name}` : cat.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* ── Right control: recenter ───────────────────────────────────── */}
-      <View style={{ position: 'absolute', top: insets.top + 112, right: 14 }} pointerEvents="box-none">
-        <IconBtn size={42} shadow onPress={recenter} accessibilityLabel="Recenter map to your location">
-          <Icon name="locate" size={18} color={Colors.label} />
-        </IconBtn>
-      </View>
-
-      {/* ── "View as list" pill — clear, labelled list access (bottom-centre).
-          Hidden while the selected-venue card is open to avoid overlap. ─── */}
-      {!selectedVenue && (
-        <View
-          style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + 16, alignItems: 'center' }}
-          pointerEvents="box-none"
-        >
-          <TouchableOpacity
-            onPress={() => onViewModeChange('list')}
-            accessibilityRole="button"
-            accessibilityLabel="Browse full venue list"
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 7,
-              backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.separator,
-              borderRadius: 9999, paddingHorizontal: 18, paddingVertical: 11,
-              shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 10,
-              shadowOffset: { width: 0, height: 3 }, elevation: 6,
-            }}
-          >
-            <Icon name="map" size={15} color={Colors.accent} />
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: Colors.label }}>
-              View as list
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* ── ODbL attribution (venue data © OpenStreetMap) ─────────────── */}
-      <View
-        style={{ position: 'absolute', left: 14, bottom: selectedVenue ? 204 : insets.bottom + 14 }}
-        pointerEvents="none"
-      >
-        <Text
-          style={{
-            fontFamily: FontFamily.body, fontSize: 9, color: 'rgba(235,235,245,0.7)',
-            backgroundColor: 'rgba(12,12,17,0.7)', paddingHorizontal: 6, paddingVertical: 2,
-            borderRadius: 8, overflow: 'hidden',
-          }}
-          accessibilityLabel="Map data © OpenStreetMap contributors"
-        >
-          © OpenStreetMap contributors
-        </Text>
-      </View>
-
-      {/* ── Slide-up selected venue card ──────────────────────────────── */}
-      {selectedVenue && (
-        <View
-          style={{
-            position: 'absolute', left: 0, right: 0, bottom: 0,
-            backgroundColor: Colors.surface,
-            borderTopLeftRadius: 20, borderTopRightRadius: 20,
+            flexDirection: 'row', alignItems: 'center', gap: 10,
             borderWidth: 1, borderColor: Colors.separator,
-            paddingHorizontal: 16, paddingTop: 16, paddingBottom: insets.bottom + 16,
-            shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
-            shadowOpacity: 0.3, shadowRadius: 16, elevation: 12,
+            shadowColor: Colors.label, shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
           }}
+          onPress={() => router.push('/(tabs)/search')}
+          accessibilityRole="button"
+          accessibilityLabel="Search venues or a postcode"
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            <View style={{ width: 56, height: 56, borderRadius: 14, overflow: 'hidden', flexShrink: 0, backgroundColor: selectedColor + '22', alignItems: 'center', justifyContent: 'center' }}>
-              {selectedVenue.cover_photo_url ? (
-                <Image source={{ uri: selectedVenue.cover_photo_url }} style={{ width: 56, height: 56 }} resizeMode="cover" />
-              ) : (
-                <Text style={{ fontSize: 24 }}>{selectedVenue.category?.icon ?? '📍'}</Text>
-              )}
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontFamily: FontFamily.display, fontSize: 16, color: Colors.label, letterSpacing: -0.2 }} numberOfLines={1}>
-                {selectedVenue.name}
+          <Icon name="search" size={18} color={Colors.label3} />
+          <Text style={{ flex: 1, fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3 }}>
+            Search venues or a postcode…
+          </Text>
+        </Pressable>
+
+        {/* ── Location row ────────────────────────────────────────────── */}
+        <View style={{ paddingHorizontal: 20, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Icon name="pin" size={14} color={Colors.accent} />
+          {trackLocation && locLoading ? (
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label3 }}>
+              Getting location…
+            </Text>
+          ) : locationLabel ? (
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label }}>
+              {locationLabel}{' '}
+              <Text style={{ fontFamily: FontFamily.body, color: Colors.label3 }}>
+                · within {radiusMiles} mile{radiusMiles === 1 ? '' : 's'}
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4 }}>
-                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12.5, color: selectedColor }}>
-                  {selectedVenue.category?.name ?? 'Venue'}
-                </Text>
-                {selectedOpen != null && (
-                  <>
-                    <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: Colors.label4 }} />
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: selectedOpen ? '#34C77B' : Colors.label3 }} />
-                      <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12.5, color: selectedOpen ? '#34C77B' : Colors.label3 }}>
-                        {selectedOpen ? 'Open now' : 'Closed'}
-                      </Text>
-                    </View>
-                  </>
-                )}
-              </View>
-            </View>
-            <TouchableOpacity
+            </Text>
+          ) : (
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label3 }}>
+              Nearby · within {radiusMiles} mile{radiusMiles === 1 ? '' : 's'}
+            </Text>
+          )}
+        </View>
+
+        {/* ── Mini-map preview (240px, rounded-xl) ────────────────────── */}
+        {/* The ClusterMapView is the same component used in full-screen mode,
+            just constrained to 240px height. All markers, clustering, and
+            permissions are fully operational — this is NOT a fake SVG map.
+            Floating controls: locate (top-right), sliders (top-right), See all pill (bottom-right).
+            The map itself still handles onRegionChangeComplete and re-fetches venues
+            as the user pans — the mini-map is interactive. */}
+        <View style={{ marginHorizontal: 20, marginBottom: 18 }}>
+          <View style={{
+            height: 240, borderRadius: 32,
+            overflow: 'hidden',
+            borderWidth: 1, borderColor: Colors.separator,
+            shadowColor: Colors.label, shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
+          }}>
+            <ClusterMapView
+              ref={mapRef}
+              provider={PROVIDER_GOOGLE}
+              style={{ flex: 1 }}
+              initialRegion={initialRegion}
+              showsUserLocation={trackLocation}
+              showsMyLocationButton={false}
+              showsCompass={false}
+              showsScale={false}
+              renderCluster={renderCluster}
+              radius={72}
+              minPoints={2}
+              maxZoom={16}
+              animationEnabled={false}
+              onRegionChangeComplete={handleRegionChangeComplete}
               onPress={dismissVenue}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Close venue card"
-              accessibilityRole="button"
-              style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: Colors.fill, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              mapPadding={{ top: 16, right: 16, bottom: 16, left: 16 }}
             >
-              <Icon name="close" size={13} color={Colors.label3} />
+              {stableVenues.map((venue) => (
+                <VenueMarker
+                  key={venue.id}
+                  venue={venue}
+                  isSelected={selectedVenue?.id === venue.id}
+                  onPress={handleMarkerPress}
+                />
+              ))}
+            </ClusterMapView>
+
+            {/* Fixed radius ring — stays screen-centred as the map pans. */}
+            <View
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              pointerEvents="none"
+            >
+              <Svg width="100%" height={240} pointerEvents="none">
+                <SvgCircle
+                  cx="50%"
+                  cy={120}
+                  r={100}
+                  stroke="rgba(76,141,246,0.65)"
+                  strokeWidth={1.5}
+                  strokeDasharray="6 4"
+                  fill="none"
+                />
+              </Svg>
+              <Text style={{
+                position: 'absolute',
+                top: 16,
+                alignSelf: 'center',
+                fontFamily: FontFamily.caption,
+                fontSize: 10,
+                color: 'rgba(76,141,246,0.95)',
+                backgroundColor: 'rgba(241,240,244,0.88)',
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+                borderRadius: 8,
+              }}>
+                {radiusMiles} miles
+              </Text>
+            </View>
+
+            {/* ODbL attribution — required by OpenStreetMap licence (ODbL 1.0 §4.3).
+                Positioned bottom-centre above the in-map controls, non-interactive. */}
+            <View
+              style={{ position: 'absolute', bottom: 44, left: 0, right: 0, alignItems: 'center' }}
+              pointerEvents="none"
+            >
+              <Text
+                style={{
+                  fontFamily: FontFamily.body,
+                  fontSize: 9,
+                  color: 'rgba(29,38,48,0.80)',
+                  backgroundColor: 'rgba(241,240,244,0.88)',
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                }}
+                accessibilityLabel="Map data © OpenStreetMap contributors"
+              >
+                © OpenStreetMap contributors
+              </Text>
+            </View>
+
+            {/* Top-right floating controls */}
+            <View style={{ position: 'absolute', top: 12, right: 12, gap: 8 }}>
+              <IconBtn
+                size={38}
+                shadow
+                onPress={recenter}
+                accessibilityLabel="Recenter map to your location"
+              >
+                <Icon name="locate" size={16} color={Colors.label} />
+              </IconBtn>
+              <IconBtn
+                size={38}
+                shadow
+                onPress={onFiltersPress}
+                accessibilityLabel="Open filters"
+              >
+                <Icon name="sliders" size={16} color={Colors.label} />
+              </IconBtn>
+            </View>
+
+            {/* Selected venue label — bottom-left of mini-map */}
+            {selectedVenue && (
+              <View style={{
+                position: 'absolute', bottom: 12, left: 12,
+                backgroundColor: Colors.surface, borderRadius: 12,
+                paddingHorizontal: 12, paddingVertical: 8,
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                borderWidth: 1, borderColor: Colors.separator,
+                shadowColor: Colors.label, shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.12, shadowRadius: 8, elevation: 4,
+              }}>
+                <View style={{ width: 8, height: 8, borderRadius: 9999, backgroundColor: selectedVenue.category?.color ?? Colors.accent }} />
+                <View>
+                  <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: Colors.label }} numberOfLines={1}>
+                    {selectedVenue.name}
+                  </Text>
+                  <Text style={{ fontFamily: FontFamily.body, fontSize: 10, color: Colors.label3 }}>
+                    {selectedVenue.category?.name ?? 'Venue'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={dismissVenue}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  accessibilityLabel="Close venue label"
+                >
+                  <Icon name="close" size={14} color={Colors.label3} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* "See all" pill — bottom-right */}
+            {/* Opens the full venue list (list mode). Label updated from "Full map"
+                which was misleading — this button switches to list view, not a map. */}
+            <TouchableOpacity
+              style={{
+                position: 'absolute', bottom: 12, right: 12,
+                backgroundColor: Colors.label, borderRadius: 9999,
+                paddingHorizontal: 12, paddingVertical: 8,
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                shadowColor: Colors.label, shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.25, shadowRadius: 8, elevation: 5,
+              }}
+              onPress={() => onViewModeChange('list')}
+              accessibilityLabel="Browse full venue list"
+              accessibilityRole="button"
+            >
+              <Icon name="map" size={13} color="#fff" />
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: '#fff' }}>
+                See all
+              </Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onPress={() => router.push(`/venue/${selectedVenue.id}`)}
-            accessibilityRole="button"
-            accessibilityLabel={`View ${selectedVenue.name}`}
-            style={{ backgroundColor: Colors.accent, borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}
-          >
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: '#fff' }}>View venue →</Text>
-          </TouchableOpacity>
         </View>
-      )}
+
+        {/* ── Category chips ───────────────────────────────────────────── */}
+        {availableCategories.length > 0 && (
+          <View style={{ marginBottom: 6, opacity: venuesFetching && !venuesLoading ? 0.5 : 1 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 6, gap: 8 }}
+            >
+              <Chip
+                active={selectedCategoryId === null}
+                color={Colors.accent}
+                onPress={() => setSelectedCategoryId(null)}
+                accessibilityLabel="All categories"
+                accessibilityState={{ selected: selectedCategoryId === null }}
+              >
+                All
+              </Chip>
+              {availableCategories.map((cat) => {
+                const active = selectedCategoryId === cat.id;
+                return (
+                  <Chip
+                    key={cat.id}
+                    active={active}
+                    color={cat.color}
+                    onPress={() => setSelectedCategoryId(active ? null : cat.id)}
+                    accessibilityLabel={cat.name}
+                    accessibilityState={{ selected: active }}
+                  >
+                    {cat.icon ? `${cat.icon} ${cat.name}` : cat.name}
+                  </Chip>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* ── Weather banner (only for notable weather) ───────────────── */}
+        {weatherBanner && (
+          <View style={{
+            marginHorizontal: 20, marginBottom: 4,
+            paddingHorizontal: 14, paddingVertical: 10,
+            borderRadius: 14, backgroundColor: weatherBanner.tint,
+          }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: '#1D2630' }}>
+              {weatherBanner.text}
+            </Text>
+          </View>
+        )}
+
+        {/* ── "Open right now" section header ─────────────────────────── */}
+        <View style={{
+          paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8,
+          flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
+        }}>
+          <View>
+            <Text style={{ fontFamily: FontFamily.heading, fontSize: 18, color: Colors.label, letterSpacing: -0.3 }}>
+              Open right now
+            </Text>
+            {!venuesLoading && (
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3, marginTop: 1, opacity: venuesFetching ? 0.5 : 1 }}>
+                {openVenueCount} place{openVenueCount === 1 ? '' : 's'} within {radiusMiles} mile{radiusMiles === 1 ? '' : 's'}
+              </Text>
+            )}
+          </View>
+          {/* Right side: Filters button + See all link */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {filterButton}
+            <TouchableOpacity
+              onPress={() => onViewModeChange('list')}
+              accessibilityRole="button"
+              accessibilityLabel="See all venues"
+            >
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: Colors.accent }}>
+                See all
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── Venue cards / skeleton / empty / error ───────────────────── */}
+        <View style={{ paddingHorizontal: 20, gap: 10 }}>
+          {venuesLoading ? (
+            <>
+              <VenueRowSkeleton />
+              <VenueRowSkeleton />
+              <VenueRowSkeleton />
+            </>
+          ) : venuesError ? (
+            <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+              <Ionicons name="cloud-offline-outline" size={38} color={Colors.separator} />
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: Colors.label, marginTop: 12 }}>
+                Could not load venues
+              </Text>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center' }}>
+                Check your connection and pull down to refresh.
+              </Text>
+            </View>
+          ) : filteredVenues.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+              <Ionicons name="map-outline" size={38} color={Colors.separator} />
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: Colors.label, marginTop: 12, textAlign: 'center' }}>
+                No venues in this area
+              </Text>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center' }}>
+                Pan the map or adjust your filters to explore more.
+              </Text>
+            </View>
+          ) : (
+            filteredVenues.map((venue) => (
+              <VenueCard
+                key={venue.id}
+                venue={venue}
+                onPress={() => router.push(`/venue/${venue.id}`)}
+                weatherBadge={weatherBadgeMap.get(venue.id) ?? null}
+              />
+            ))
+          )}
+        </View>
+      </ScrollView>
+
+      {/* Toggle pill floats over the ScrollView */}
+      {togglePill}
     </View>
   );
-}
-
-// ─── Map filter-chip styles (glass pills over the full-bleed map) ───────────
-function mapChipStyle(active: boolean) {
-  return {
-    backgroundColor: active ? Colors.accent : 'rgba(23,23,31,0.92)',
-    borderWidth: 1,
-    borderColor: active ? 'transparent' : Colors.separator,
-    borderRadius: 9999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  } as const;
-}
-function mapChipTextStyle(active: boolean) {
-  return {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 13,
-    color: active ? '#fff' : Colors.label,
-  } as const;
 }
 
 // ─── Pill styles ───────────────────────────────────────────────────────────

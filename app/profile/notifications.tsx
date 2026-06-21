@@ -166,7 +166,7 @@ export default function NotificationsScreen() {
         {/* Toggle card */}
         <View
           style={{
-            backgroundColor: Colors.surface,
+            backgroundColor: '#fff',
             borderRadius: 16,
             paddingHorizontal: Spacing.lg,
             paddingVertical: 18,
