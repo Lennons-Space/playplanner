@@ -54,3 +54,8 @@ supabase/.temp/
 
 # Accidental shell output files
 set
+
+# Design reference packages (untracked HTML/React prototypes — kept locally as
+# the visual source of truth, never committed or linted as app code)
+claudedesign/
+design_handoff/

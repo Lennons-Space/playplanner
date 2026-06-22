@@ -1,0 +1,6 @@
+# Design reference packages — hi-fidelity HTML/React prototypes used as the
+# visual source of truth. These intentionally use browser globals (document,
+# window, React via CDN) and are NOT part of the app bundle, so they must not
+# be linted as app code.
+claudedesign/
+design_handoff/
