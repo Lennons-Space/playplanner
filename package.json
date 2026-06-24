@@ -13,7 +13,8 @@
     "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit",
     "enrich:dry-run": "tsx scripts/enrich/enrichVenues.ts --dry-run",
-    "enrich:dry-run:single": "tsx scripts/enrich/enrichVenues.ts --dry-run --limit=1"
+    "enrich:dry-run:single": "tsx scripts/enrich/enrichVenues.ts --dry-run --limit=1",
+    "test:db": "node supabase/tests/056_venue_website_enrichment.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/bricolage-grotesque": "^0.4.1",
@@ -63,6 +64,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
+    "@electric-sql/pglite": "^0.5.3",
     "@testing-library/react-native": "^12.6.1",
     "@types/jest": "^29.5.14",
     "@types/node": "^20.0.0",
