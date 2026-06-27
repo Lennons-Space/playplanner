@@ -21,6 +21,7 @@
 -- Step 1: Add the unique constraint FIRST.
 -- Postgres automatically creates a backing unique index for this constraint,
 -- so the osm_id column is continuously indexed and uniqueness-enforced.
+DROP INDEX IF EXISTS venues_osm_id_unique;
 ALTER TABLE venues
   ADD CONSTRAINT venues_osm_id_unique UNIQUE (osm_id);
 
