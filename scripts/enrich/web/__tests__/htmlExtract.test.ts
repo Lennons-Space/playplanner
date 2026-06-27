@@ -3,7 +3,7 @@
 // Fixtures are inline HTML constants — deterministic, no network, no files.
 // =============================================================================
 
-import { extractCandidates } from '../htmlExtract';
+import { extractCandidates, normalizeEmail } from '../htmlExtract';
 import type { FieldCandidate, OpeningWeek, WebField } from '../../../../types/webEnrichment';
 
 const SRC = 'https://willowsactivityfarm.com/';
@@ -151,5 +151,93 @@ describe('robustness', () => {
   it('never throws on malformed JSON-LD or empty input', () => {
     expect(() => extractCandidates('<script type="application/ld+json">{bad</script>', SRC)).not.toThrow();
     expect(extractCandidates('', SRC).candidates).toEqual([]);
+  });
+});
+
+// =============================================================================
+// M1 — normalizeEmail unit tests (spec requirement A, cases 1–6)
+// =============================================================================
+
+describe('normalizeEmail (M1)', () => {
+  // Case 1: strip lowercase mailto: prefix
+  it('strips a leading mailto: prefix', () => {
+    expect(normalizeEmail('mailto:test@example.com')).toBe('test@example.com');
+  });
+
+  // Case 2: case-insensitive strip; address case preserved as-is
+  it('strips MAILTO: prefix case-insensitively, preserving address case', () => {
+    expect(normalizeEmail('MAILTO:Test@Example.com')).toBe('Test@Example.com');
+  });
+
+  // Case 3: remove query string (mailto: hrefs often carry ?subject=…)
+  it('removes a query string from a mailto: href value', () => {
+    expect(normalizeEmail('mailto:test@example.com?subject=Hello')).toBe('test@example.com');
+  });
+
+  // Case 4: safely percent-decode — %40 is @, so this round-trips to a valid email
+  it('percent-decodes a safely encoded email address', () => {
+    expect(normalizeEmail('mailto:test%40example.com')).toBe('test@example.com');
+  });
+
+  // Case 5: normal business email passes through unchanged
+  it('passes a normal valid business email through unchanged', () => {
+    expect(normalizeEmail('info@playcentre.co.uk')).toBe('info@playcentre.co.uk');
+  });
+
+  // Case 6: invalid value (no @) returns null — no candidate should be added
+  it('returns null for a value that is not a valid email', () => {
+    expect(normalizeEmail('mailto:notanemail')).toBeNull();
+    expect(normalizeEmail('notanemail')).toBeNull();
+    expect(normalizeEmail('')).toBeNull();
+  });
+
+  // Integration: invalid JSON-LD email is not added to candidates
+  it('integration: a JSON-LD email with no @ is not added as a candidate', () => {
+    const html = `<script type="application/ld+json">
+      {"@type":"LocalBusiness","email":"notvalid"}</script>`;
+    const { candidates } = extractCandidates(html, SRC);
+    expect(candidates.find((c) => c.field === 'email')).toBeUndefined();
+  });
+
+  // Integration: a mailto: href with a query string is normalised to just the address
+  it('integration: heuristic mailto: href with query string yields clean email', () => {
+    const html = `<a href="mailto:info@farm.co.uk?subject=Booking">Email us</a>`;
+    const { candidates } = extractCandidates(html, SRC);
+    // The value must be the normalized address (no query string)
+    expect(candidates.find((c) => c.field === 'email')?.value).toBe('info@farm.co.uk');
+  });
+
+  // ── M1 residual fix — decode-before-strip for percent-encoded separators ──────
+
+  // Case 7: uppercase %3F — decoding happens before the query-strip so the
+  // encoded '?' becomes a literal '?' which is then removed.
+  it('strips an uppercase %3F-encoded query separator (decode-before-strip fix)', () => {
+    expect(normalizeEmail('mailto:info@example.com%3Fsubject=hello')).toBe('info@example.com');
+  });
+
+  // Case 8: lowercase %3f — percent-encoding is case-insensitive per RFC 3986.
+  it('strips a lowercase %3f-encoded query separator and handles MAILTO: casing', () => {
+    expect(normalizeEmail('MAILTO:info@example.com%3fsubject=hello')).toBe('info@example.com');
+  });
+
+  // Case 9: encoded '@' (%40) combined with an encoded query separator — the
+  // decode step resolves both before the query is removed and the address validated.
+  it('resolves an encoded @ (%40) combined with an encoded query separator (%3F)', () => {
+    expect(normalizeEmail('mailto:info%40example.com%3Fsubject=hello')).toBe('info@example.com');
+  });
+
+  // Case 10: malformed percent sequence — decodeURIComponent throws, the catch
+  // falls back to the pre-decode string, and the function returns without throwing.
+  it('does not throw on a malformed percent sequence (try/catch guard)', () => {
+    expect(() => normalizeEmail('mailto:info@example.com%')).not.toThrow();
+    const result = normalizeEmail('mailto:info@example.com%');
+    // The permissive fallback returns a string or null; neither is an exception.
+    expect(result === null || typeof result === 'string').toBe(true);
+  });
+
+  // Case 11: ordinary valid email — must pass through both the old and new code
+  // paths unchanged (regression guard: the reorder must not break the happy path).
+  it('leaves an ordinary valid email unchanged (regression guard)', () => {
+    expect(normalizeEmail('info@playcentre.co.uk')).toBe('info@playcentre.co.uk');
   });
 });

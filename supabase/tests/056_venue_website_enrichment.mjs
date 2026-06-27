@@ -505,6 +505,169 @@ async function main() {
     eq(res.rows[0].r.ok, true, 'applies cleanly when unchanged');
   });
 
+  // ── M1 defence-in-depth: invalid email rejected by apply_venue_proposal ──────
+  await test('invalid: malformed email proposal raises invalid_email, venue.email unchanged (M1)', async () => {
+    await asUid(ADMIN);
+    const v = await newVenue({ email: 'existing@example.com' });
+    const run = await newRun(v);
+    // Propose a value that is not a valid email address
+    const id = await propose(run, v, 'email', { v: 'notanemail' });
+    await approve(id);
+    await throws(
+      q(`select apply_venue_proposal($1)`, [id]),
+      /invalid_email/,
+      'apply must raise invalid_email for a non-email value',
+    );
+    // The pre-existing email must be untouched
+    const r = await q(`select email from venues where id=$1`, [v]);
+    eq(r.rows[0].email, 'existing@example.com', 'venue.email unchanged after invalid_email rejection');
+  });
+
+  // ── M3: duplicate day_of_week guard ──────────────────────────────────────────
+  await test('invalid: opening_hours with duplicate day_of_week raises duplicate_day_of_week (M3)', async () => {
+    await asUid(ADMIN);
+    const v = await newVenue();
+    const run = await newRun(v);
+    // 7 elements total but Monday (day_of_week=1) appears twice
+    const dupWeek = {
+      seasonal_notes: null,
+      source_text: 'x',
+      days: [
+        { day_of_week: 0, is_closed: true,  intervals: [] },
+        { day_of_week: 1, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+        { day_of_week: 1, is_closed: false, intervals: [{ opens: '10:00', closes: '18:00' }] }, // duplicate Mon
+        { day_of_week: 2, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+        { day_of_week: 3, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+        { day_of_week: 4, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+        { day_of_week: 5, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+      ],
+    };
+    const id = await propose(run, v, 'opening_hours', dupWeek);
+    await approve(id);
+    await throws(
+      q(`select apply_venue_proposal($1)`, [id]),
+      /duplicate_day_of_week/,
+      'duplicate day_of_week must raise duplicate_day_of_week',
+    );
+  });
+
+  await test('atomicity: duplicate-day failure leaves pre-existing opening_hours rows unchanged (M3)', async () => {
+    await asUid(ADMIN);
+    const v = await newVenue();
+    // Pre-seed one row
+    await q(
+      `insert into opening_hours (venue_id, day_of_week, opens_at, closes_at) values ($1, 2, '09:00', '17:00')`,
+      [v],
+    );
+    const run = await newRun(v);
+    const dupWeek = {
+      seasonal_notes: null,
+      source_text: 'x',
+      days: [
+        { day_of_week: 0, is_closed: true,  intervals: [] },
+        { day_of_week: 1, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+        { day_of_week: 1, is_closed: false, intervals: [{ opens: '10:00', closes: '18:00' }] }, // duplicate Mon
+        { day_of_week: 2, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+        { day_of_week: 3, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+        { day_of_week: 4, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+        { day_of_week: 5, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+      ],
+    };
+    const id = await propose(run, v, 'opening_hours', dupWeek);
+    await approve(id);
+    await throws(
+      q(`select apply_venue_proposal($1)`, [id]),
+      /duplicate_day_of_week/,
+      'should raise',
+    );
+    // The guard fires BEFORE the DELETE so the pre-existing row must be intact
+    const rows = await q(`select count(*)::int as n from opening_hours where venue_id=$1`, [v]);
+    eq(rows.rows[0].n, 1, 'pre-existing opening_hours row untouched after duplicate-day rejection');
+  });
+
+  // ── Behavioural set-role propose_field permission check (not just has_function_privilege) ─
+  await test('auth: set role authenticated then call propose_field → permission denied (M1 behavioural)', async () => {
+    await db.exec('set role authenticated');
+    await throws(
+      q(
+        `select propose_field(gen_random_uuid(),gen_random_uuid(),'phone','{}'::jsonb,'u','e',null,'jsonld','high',false)`,
+      ),
+      /permission denied/i,
+      'authenticated role must not be able to execute propose_field',
+    );
+    await db.exec('reset role');
+  });
+
+  // ── CHECK constraint sizes ────────────────────────────────────────────────────
+  await test('constraints: evidence_snippet > 512 chars rejected by DB CHECK', async () => {
+    await asUid(ADMIN);
+    const v = await newVenue();
+    const run = await newRun(v);
+    const longSnippet = 'x'.repeat(513);
+    await throws(
+      q(
+        `insert into venue_field_proposals
+           (run_id, venue_id, field, proposed_value, current_value_hash,
+            source_url, evidence_snippet, retrieved_at, extraction_method, confidence)
+         values ($1,$2,'phone','{}'::jsonb,'h','u',$3,now(),'jsonld','high')`,
+        [run, v, longSnippet],
+      ),
+      /check/i,
+      'evidence_snippet longer than 512 chars must be rejected by CHECK constraint',
+    );
+  });
+
+  await test('constraints: evidence_raw > 2048 chars rejected by DB CHECK', async () => {
+    await asUid(ADMIN);
+    const v = await newVenue();
+    const run = await newRun(v);
+    const longRaw = 'y'.repeat(2049);
+    await throws(
+      q(
+        `insert into venue_field_proposals
+           (run_id, venue_id, field, proposed_value, current_value_hash,
+            source_url, evidence_snippet, evidence_raw, retrieved_at, extraction_method, confidence)
+         values ($1,$2,'phone','{}'::jsonb,'h','u','ok',$3,now(),'jsonld','high')`,
+        [run, v, longRaw],
+      ),
+      /check/i,
+      'evidence_raw longer than 2048 chars must be rejected by CHECK constraint',
+    );
+  });
+
+  // ── Exact boundary: 512 / 2048 chars must be ACCEPTED ───────────────────────
+  await test('constraints: evidence_snippet of exactly 512 chars is ACCEPTED (boundary)', async () => {
+    await asUid(ADMIN);
+    const v = await newVenue();
+    const run = await newRun(v);
+    const exactSnippet = 'x'.repeat(512);
+    const r = await q(
+      `insert into venue_field_proposals
+         (run_id, venue_id, field, proposed_value, current_value_hash,
+          source_url, evidence_snippet, retrieved_at, extraction_method, confidence)
+       values ($1,$2,'phone','{}'::jsonb,'h','u',$3,now(),'jsonld','high')
+       returning id`,
+      [run, v, exactSnippet],
+    );
+    assert(r.rows[0]?.id, 'insert with exactly 512-char evidence_snippet must succeed');
+  });
+
+  await test('constraints: evidence_raw of exactly 2048 chars is ACCEPTED (boundary)', async () => {
+    await asUid(ADMIN);
+    const v = await newVenue();
+    const run = await newRun(v);
+    const exactRaw = 'y'.repeat(2048);
+    const r = await q(
+      `insert into venue_field_proposals
+         (run_id, venue_id, field, proposed_value, current_value_hash,
+          source_url, evidence_snippet, evidence_raw, retrieved_at, extraction_method, confidence)
+       values ($1,$2,'phone','{}'::jsonb,'h','u','ok',$3,now(),'jsonld','high')
+       returning id`,
+      [run, v, exactRaw],
+    );
+    assert(r.rows[0]?.id, 'insert with exactly 2048-char evidence_raw must succeed');
+  });
+
   await test('rollback: down-migration drops 056 objects, leaves base schema intact', async () => {
     await db.exec(`
       drop function if exists apply_venue_proposal(uuid, text);

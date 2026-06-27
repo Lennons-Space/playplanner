@@ -93,8 +93,14 @@ function proposedSummary(d: ProposalDraft): string {
 }
 
 function csvCell(value: string): string {
-  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
+  let s = String(value ?? '');
+  // Formula-injection neutralisation (M2): a leading trigger character makes
+  // spreadsheet apps (Excel, LibreOffice, Google Sheets) treat the cell as a
+  // formula. Prefix with a single quote to force plain text. The single quote
+  // is visible in formula-bar only and does not appear as a rendered character.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
 }
 
 // =============================================================================

@@ -31,6 +31,43 @@ import {
   normaliseTelHref,
 } from './fields';
 
+// =============================================================================
+// normalizeEmail — pure helper (M1)
+//
+// Steps: trim → strip leading mailto: (case-insensitive) → percent-decode
+// (try/catch, fall back to pre-decode string on throw) → strip query string at
+// first '?' → trim → validate permissive email regex.
+// Returns the cleaned address, or null if the value is not a valid email.
+// Decoding happens BEFORE the query-strip so that a '%3F'-encoded '?' and a
+// '%40'-encoded '@' are resolved before the query is removed.
+// Evidence (what was on the page) is always the original extracted string;
+// callers must pass the raw value as evidenceText.
+// =============================================================================
+export function normalizeEmail(raw: string): string | null {
+  let s = raw.trim();
+  // Strip mailto: prefix (case-insensitive; some sites embed it in JSON-LD).
+  s = s.replace(/^mailto:/i, '');
+  // Percent-decode BEFORE stripping the query string so that an encoded '?'
+  // (%3F/%3f) and an encoded '@' (%40) are resolved first. A bare try/catch is
+  // enough; `decodeURIComponent` throws on malformed sequences (e.g. a lone %
+  // at end of string) — in that case fall back to the pre-decode string.
+  try {
+    s = decodeURIComponent(s);
+  } catch {
+    // Fall back to the pre-decode string — better than dropping the candidate
+    // silently when the address was never encoded at all.
+  }
+  // Remove query string (e.g. ?subject=Hello from mailto: hrefs, or a %3F that
+  // is now a literal '?' after decoding above).
+  const qIdx = s.indexOf('?');
+  if (qIdx !== -1) s = s.slice(0, qIdx);
+  s = s.trim();
+  // Permissive email validation: must not reject normal business addresses.
+  // Does not enforce RFC 5322 fully; just enough to block junk like "notanemail".
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return null;
+  return s;
+}
+
 export function extractCandidates(html: string, sourceUrl: string): ExtractedCandidates {
   const found = new Map<WebField, FieldCandidate>();
 
@@ -92,7 +129,10 @@ function collectFromJsonLd(html: string, add: AddFn): void {
       if (phone) add('phone', phone, 'jsonld', o['telephone'], { keep: phone });
     }
     if (typeof o['email'] === 'string') {
-      add('email', o['email'].trim(), 'jsonld', o['email'], { keep: o['email'].trim() });
+      const normalized = normalizeEmail(o['email']);
+      if (normalized !== null) {
+        add('email', normalized, 'jsonld', o['email'], { keep: normalized });
+      }
     }
     if (typeof o['url'] === 'string' && isSafeUrl(o['url']).safe) {
       add('website', o['url'], 'jsonld', o['url']);
@@ -172,7 +212,10 @@ function collectFromMicrodata(html: string, add: AddFn): void {
     if (phone) add('phone', phone, 'microdata', tel, { keep: phone });
   }
   const email = getItemprop(html, 'email');
-  if (email) add('email', email.trim(), 'microdata', email, { keep: email.trim() });
+  if (email) {
+    const normalized = normalizeEmail(email);
+    if (normalized !== null) add('email', normalized, 'microdata', email, { keep: normalized });
+  }
 
   const price = getItemprop(html, 'priceRange');
   if (price) {
@@ -247,8 +290,11 @@ function collectFromHeuristics(html: string, add: AddFn): void {
   // mailto: links
   const mail = matchFirst(html, /href=["']mailto:([^"'?]+)/i);
   if (mail) {
-    const email = decodeEntities(mail).trim();
-    add('email', email, 'heuristic', `mailto: ${email}`, { keep: email });
+    const rawEmail = decodeEntities(mail).trim(); // evidence reflects the original page value
+    const normalized = normalizeEmail(rawEmail);
+    if (normalized !== null) {
+      add('email', normalized, 'heuristic', `mailto: ${rawEmail}`, { keep: normalized });
+    }
   }
   // booking anchors
   for (const a of iterateAnchors(html)) {

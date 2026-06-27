@@ -294,6 +294,12 @@ begin
 
   elsif p.field in ('website','phone','email') then
     v_val := p.proposed_value ->> 'v';
+    -- M1 defence-in-depth: validate email format before any DB write.
+    -- Permissive POSIX regex mirrors the TypeScript normalizeEmail validator;
+    -- deliberately not stricter (must accept normal business addresses).
+    if p.field = 'email' and (v_val is null or v_val !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$') then
+      raise exception 'invalid_email';
+    end if;
     if p.field = 'website' then
       update venues set website = v_val, updated_at = now() where id = p.venue_id;
     elsif p.field = 'phone' then
@@ -318,6 +324,17 @@ begin
        or jsonb_array_length(p.proposed_value -> 'days') <> 7 then
       raise exception 'incomplete_week';
     end if;
+
+    -- M3: reject duplicate day_of_week values BEFORE the destructive delete so
+    -- pre-existing opening_hours rows are never at risk (no rollback required).
+    -- Checking distinct count vs array length is cheaper than a self-join and
+    -- clearer than catching the UNIQUE constraint violation (23505) later.
+    if (select count(distinct (d ->> 'day_of_week'))
+          from jsonb_array_elements(p.proposed_value -> 'days') d)
+       <> jsonb_array_length(p.proposed_value -> 'days') then
+      raise exception 'duplicate_day_of_week';
+    end if;
+
     v_seasonal := nullif(btrim(coalesce(p.proposed_value ->> 'seasonal_notes', '')), '');
 
     -- Replace-whole-week: delete then insert 7 fresh rows (no partial hybrid).
