@@ -401,10 +401,14 @@ $$;
 -- ── Function grants ──────────────────────────────────────────────────────────
 -- Proposing is a background (service_role) action; applying/rejecting is an
 -- authenticated admin action (self-gated by is_admin()). Snapshot is harmless read.
-revoke all on function snapshot_current_value(uuid, text) from public;
-revoke all on function propose_field(uuid, uuid, text, jsonb, text, text, text, text, text, boolean, timestamptz) from public;
-revoke all on function apply_venue_proposal(uuid, text) from public;
-revoke all on function reject_venue_proposal(uuid, text) from public;
+-- NOTE: Supabase configures ALTER DEFAULT PRIVILEGES that auto-GRANT EXECUTE on
+-- public functions to anon, authenticated AND service_role. `revoke ... from
+-- public` does NOT remove those named-role grants, so we revoke them explicitly
+-- to reach least privilege (verified on a live stack 2026-06-27).
+revoke all on function snapshot_current_value(uuid, text) from public, anon, authenticated;
+revoke all on function propose_field(uuid, uuid, text, jsonb, text, text, text, text, text, boolean, timestamptz) from public, anon, authenticated;
+revoke all on function apply_venue_proposal(uuid, text) from public, anon;
+revoke all on function reject_venue_proposal(uuid, text) from public, anon;
 
 -- snapshot is an internal helper: only the background proposer needs it directly;
 -- apply/reject call it as SECURITY DEFINER (owner privileges), so authenticated

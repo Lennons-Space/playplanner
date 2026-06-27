@@ -26,6 +26,14 @@ const BOOTSTRAP = `
   create role authenticated nologin;
   create role service_role nologin bypassrls;
 
+  -- Reproduce Supabase's hosted default privileges: on real Supabase, schema
+  -- public is configured so EVERY newly-created function auto-grants EXECUTE to
+  -- anon, authenticated AND service_role (see pg_default_acl). Without this line
+  -- pglite would behave unlike production, and the grant tests below would give a
+  -- false green (a revoke ... from public removes PUBLIC but not these named
+  -- roles). Mirroring it here makes the privilege tests exercise the real case.
+  alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
+
   create schema if not exists auth;
   create or replace function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('test.uid', true), '')::uuid
@@ -436,6 +444,47 @@ async function main() {
       'authenticated cannot snapshot',
     );
     await db.exec('reset role');
+  });
+
+  await test('auth: anon cannot execute apply_venue_proposal or reject_venue_proposal', async () => {
+    await db.exec('set role anon');
+    await throws(
+      q(`select apply_venue_proposal(gen_random_uuid())`),
+      /permission denied/i,
+      'anon must not execute apply_venue_proposal',
+    );
+    await throws(
+      q(`select reject_venue_proposal(gen_random_uuid(),'x')`),
+      /permission denied/i,
+      'anon must not execute reject_venue_proposal',
+    );
+    await db.exec('reset role');
+  });
+
+  await test('grants: EXECUTE privilege matrix matches the design (anon/authenticated/service_role)', async () => {
+    const sigs = {
+      snapshot_current_value: 'public.snapshot_current_value(uuid, text)',
+      propose_field: 'public.propose_field(uuid, uuid, text, jsonb, text, text, text, text, text, boolean, timestamptz)',
+      apply_venue_proposal: 'public.apply_venue_proposal(uuid, text)',
+      reject_venue_proposal: 'public.reject_venue_proposal(uuid, text)',
+    };
+    // expected EXECUTE = [anon, authenticated, service_role]
+    const expected = {
+      snapshot_current_value: [false, false, true],
+      propose_field: [false, false, true],
+      apply_venue_proposal: [false, true, true],
+      reject_venue_proposal: [false, true, true],
+    };
+    for (const [fn, sig] of Object.entries(sigs)) {
+      const r = await q(
+        `select has_function_privilege('anon', $1, 'EXECUTE') as anon,
+                has_function_privilege('authenticated', $1, 'EXECUTE') as auth,
+                has_function_privilege('service_role', $1, 'EXECUTE') as svc`,
+        [sig],
+      );
+      const got = [r.rows[0].anon, r.rows[0].auth, r.rows[0].svc];
+      eq(got.join(','), expected[fn].join(','), `privilege matrix for ${fn}`);
+    }
   });
 
   await test('hash is field-specific for null values', async () => {
