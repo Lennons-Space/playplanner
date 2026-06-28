@@ -26,7 +26,7 @@
  */
 
 import React from 'react';
-import { Linking } from 'react-native';
+import { Linking, Alert } from 'react-native';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 import { VenueContactRow, sanitizePhoneForTel } from '../VenueContactRow';
 
@@ -121,8 +121,13 @@ describe('VenueContactRow', () => {
     expect(mockOpenURL).toHaveBeenCalledWith('tel:+442079460958');
   });
 
-  it('does NOT crash when Linking.openURL rejects', () => {
-    // The component attaches .catch(() => {}) so a rejected promise must be swallowed.
+  it('does NOT crash and shows an Alert when Linking.openURL rejects', async () => {
+    // The component attaches a .catch that surfaces an Alert. We must actually
+    // drain the microtask queue so the rejection propagates into the catch —
+    // a purely synchronous assertion would pass even if the .catch were removed
+    // (the rejection would just become an unhandled promise), so it would be a
+    // false green. Asserting the Alert fired proves the catch path executed.
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     mockOpenURL.mockRejectedValueOnce(new Error('tel: not supported'));
 
     render(
@@ -134,6 +139,15 @@ describe('VenueContactRow', () => {
         screen.getByLabelText(`Call ${VENUE_NAME} on 01228829570`)
       );
     }).not.toThrow();
+
+    // Flush the rejected-promise microtasks so the .catch runs.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockOpenURL).toHaveBeenCalledWith('tel:01228829570');
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+
+    alertSpy.mockRestore();
   });
 
   // ── Accessibility ──────────────────────────────────────────────────────────

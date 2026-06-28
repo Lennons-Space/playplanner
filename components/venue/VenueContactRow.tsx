@@ -8,11 +8,12 @@
  * Kept separate from app/venue/[id].tsx so it can be tested in isolation
  * without mounting the full screen and all its hooks.
  *
- * SECURITY NOTE: Linking.openURL failures are swallowed via .catch(() => {})
- * so a device that cannot handle tel: URIs cannot crash the screen.
+ * SECURITY NOTE: Linking.openURL failures are caught so a device that cannot
+ * handle tel: URIs cannot crash the screen; the user gets a brief Alert instead
+ * of a silent dead tap.
  */
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, Linking } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, Linking, Alert } from 'react-native';
 import { Colors, FontFamily } from '@/constants/theme';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -86,17 +87,21 @@ export function VenueContactRow({ phone, venueName }: VenueContactRowProps) {
   if (!dialable || !/\d/.test(dialable)) return null;
 
   const handlePress = () => {
-    // .catch(() => {}) mirrors the existing source_url Linking pattern in [id].tsx
-    // and ensures a rejected or unsupported tel: URI never crashes the screen.
-    Linking.openURL('tel:' + dialable).catch(() => {});
+    // A rejected/unsupported tel: URI must never crash the screen. Mirror the
+    // screen's own Get-Directions pattern: tell the user why nothing happened
+    // (e.g. a Wi-Fi-only tablet with no dialer) instead of a silent dead tap.
+    Linking.openURL('tel:' + dialable).catch(() => {
+      Alert.alert('Cannot start call', 'This device cannot make phone calls.');
+    });
   };
 
   return (
     <TouchableOpacity
       style={styles.row}
       onPress={handlePress}
-      accessibilityRole="button"
+      accessibilityRole="link"
       accessibilityLabel={`Call ${venueName} on ${phone}`}
+      accessibilityHint="Opens your phone app to dial"
     >
       <Text style={styles.callLabel}>Call</Text>
       <Text style={styles.phoneText}>{phone}</Text>
