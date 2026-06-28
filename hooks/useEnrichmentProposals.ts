@@ -126,6 +126,7 @@ export function useResolveProposal() {
   const invalidateAfterResolve = () => {
     queryClient.invalidateQueries({ queryKey: ['enrichment', 'pending-proposals'] });
     queryClient.invalidateQueries({ queryKey: ['venues'] });
+    queryClient.invalidateQueries({ queryKey: ['venue'] }); // singular — covers venue-detail ['venue', id]
   };
 
   // ── approveAndApply ───────────────────────────────────────────────────────
