@@ -31,7 +31,7 @@ import {
   Linking,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { router, Redirect } from 'expo-router';
+import { router, Redirect, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -1024,6 +1024,16 @@ export default function ModerationScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* ── Website Enrichment review link ────────────────────────────────── */}
+      {/* Navigates to the enrichment proposal review screen (enrichment.tsx). */}
+      <TouchableOpacity
+        className="mx-4 mb-3 bg-sandDark rounded-xl px-4 py-2 flex-row justify-between items-center"
+        onPress={() => router.push('/admin/enrichment' as Href)}
+      >
+        <Text className="text-charcoal font-bold text-sm">Website Enrichment review</Text>
+        <Text className="text-coral font-bold">→</Text>
+      </TouchableOpacity>
 
       {/* ══════════════════════════════════════════════════════════════════════
           VENUES TAB — full-featured queue with filter/sort/search/pagination

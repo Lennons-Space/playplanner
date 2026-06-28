@@ -42,6 +42,9 @@ coverage/
 # Import data — may contain PII or large files
 scripts/data/
 
+# Website-enrichment report output (local grading artefacts)
+scripts/enrich/out/
+
 # Supabase local temp (project metadata, not secrets — but local only)
 supabase/.temp/
 

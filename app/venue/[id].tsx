@@ -34,6 +34,7 @@ import { useReportVenue } from '@/hooks/useVenueReport';
 import { supabase } from '@/lib/supabase';
 import { ReviewCard } from '@/components/reviews/ReviewCard';
 import { VenuePhotoUpload } from '@/components/venue/VenuePhotoUpload';
+import { VenueContactRow } from '@/components/venue/VenueContactRow';
 import { FacilityChips } from '@/components/venue/FacilityChips';
 import { Skeleton } from '@/components/ui/SkeletonLoader';
 import { Icon } from '@/components/ui/Icon';
@@ -571,6 +572,7 @@ export default function VenueDetailScreen() {
 
           {/* ── Address + ODbL ────────────────────────────────────────── */}
           <View style={{ marginTop: 12, marginBottom: 8, paddingHorizontal: 4 }}>
+            <VenueContactRow phone={venue.phone} venueName={venue.name} />
             <Text style={styles.addressText}>
               {[venue.address_line1, venue.address_line2, venue.city, venue.postcode]
                 .filter(Boolean)
