@@ -464,6 +464,11 @@ describe('EnrichmentScreen — approve + apply mutation', () => {
     await act(async () => {
       fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`));
     });
+    // The button now opens the confirmation modal — confirm the write.
+    await waitFor(() => expect(getByTestId('confirm-apply-confirm')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-confirm'));
+    });
 
     await waitFor(() => {
       // Use objectContaining — reviewed_at is a dynamic timestamp we cannot predict exactly.
@@ -482,6 +487,10 @@ describe('EnrichmentScreen — approve + apply mutation', () => {
 
     await act(async () => {
       fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`));
+    });
+    await waitFor(() => expect(getByTestId('confirm-apply-confirm')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-confirm'));
     });
 
     await waitFor(() => {
@@ -509,6 +518,11 @@ describe('EnrichmentScreen — approve + apply mutation', () => {
     });
     await act(async () => {
       fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_DESC.id}`));
+    });
+    // Modal opens — confirm the write.
+    await waitFor(() => expect(getByTestId('confirm-apply-confirm')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-confirm'));
     });
 
     await waitFor(() => {
@@ -612,6 +626,11 @@ describe('EnrichmentScreen — RPC error stays visible', () => {
     await act(async () => {
       fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`));
     });
+    // Modal opens — confirm the write (which will then fail at step 2).
+    await waitFor(() => expect(getByTestId('confirm-apply-confirm')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-confirm'));
+    });
 
     await waitFor(() => {
       expect(
@@ -675,6 +694,11 @@ describe('EnrichmentScreen — query invalidation after resolve', () => {
 
     await act(async () => {
       fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`));
+    });
+    // Modal opens — confirm the write.
+    await waitFor(() => expect(getByTestId('confirm-apply-confirm')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-confirm'));
     });
 
     await waitFor(() => {
@@ -924,6 +948,323 @@ describe('EnrichmentScreen — returnToPending mutation', () => {
 
     await waitFor(() => {
       expect(refetchCount).toBeGreaterThan(1);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New test N1 — Tapping Approve & Apply opens modal but performs NO write
+// ---------------------------------------------------------------------------
+
+describe('confirm-apply modal — opens on button press with no write', () => {
+  let updateMock: jest.Mock;
+
+  beforeEach(() => {
+    stubAdmin();
+    // Clear call history so not.toHaveBeenCalled() isn't polluted by earlier describes.
+    mockRpc.mockClear();
+    const builder = makeVenueFieldProposalsFromBuilder(
+      [PROPOSAL_PHONE],
+      { data: [{ id: PROPOSAL_PHONE.id }], error: null }
+    );
+    updateMock = builder._updateMock;
+    mockFrom.mockReturnValue(builder as unknown as ReturnType<typeof supabase.from>);
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+  });
+
+  it('tapping Approve & Apply opens confirm-apply-modal but does NOT call update or rpc', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`)).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`));
+    });
+
+    await waitFor(() => expect(getByTestId('confirm-apply-modal')).toBeTruthy());
+
+    // No DB write must have happened — only the modal opened.
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New test N2 — Cancel closes modal, performs NO write
+// ---------------------------------------------------------------------------
+
+describe('confirm-apply modal — Cancel closes modal with no write', () => {
+  let updateMock: jest.Mock;
+
+  beforeEach(() => {
+    stubAdmin();
+    mockRpc.mockClear();
+    const builder = makeVenueFieldProposalsFromBuilder(
+      [PROPOSAL_PHONE],
+      { data: [{ id: PROPOSAL_PHONE.id }], error: null }
+    );
+    updateMock = builder._updateMock;
+    mockFrom.mockReturnValue(builder as unknown as ReturnType<typeof supabase.from>);
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+  });
+
+  it('pressing Cancel closes the modal and performs NO write', async () => {
+    const { getByTestId, queryByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`)).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`));
+    });
+    await waitFor(() => expect(getByTestId('confirm-apply-cancel')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-cancel'));
+    });
+
+    // Modal should be gone.
+    await waitFor(() => {
+      expect(queryByTestId('confirm-apply-modal')).toBeNull();
+    });
+    // No write at all.
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New test N3 — Confirming runs update then rpc (explicit flow test)
+// ---------------------------------------------------------------------------
+
+describe('confirm-apply modal — confirming runs update then rpc', () => {
+  let updateMock: jest.Mock;
+
+  beforeEach(() => {
+    stubAdmin();
+    const builder = makeVenueFieldProposalsFromBuilder(
+      [PROPOSAL_PHONE],
+      { data: [{ id: PROPOSAL_PHONE.id }], error: null }
+    );
+    updateMock = builder._updateMock;
+    mockFrom.mockReturnValue(builder as unknown as ReturnType<typeof supabase.from>);
+    mockRpc.mockResolvedValue({ data: { ok: true }, error: null } as never);
+  });
+
+  it('pressing Apply live change calls update (step 1) then rpc (step 2)', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`)).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`));
+    });
+    await waitFor(() => expect(getByTestId('confirm-apply-confirm')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-confirm'));
+    });
+
+    await waitFor(() => {
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'approved', reviewed_by: 'admin-user' })
+      );
+      expect(mockRpc).toHaveBeenCalledWith('apply_venue_proposal', {
+        p_proposal_id:  PROPOSAL_PHONE.id,
+        p_applied_text: null,
+      });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New test N4 — Modal displays venue name, field label, current & new values
+// ---------------------------------------------------------------------------
+
+describe('confirm-apply modal — displays correct content', () => {
+  beforeEach(() => {
+    stubAdmin();
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_PHONE],
+        { data: [{ id: PROPOSAL_PHONE.id }], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+  });
+
+  it('shows venue name, field label, current value placeholder, and proposed value', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`)).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`));
+    });
+    await waitFor(() => expect(getByTestId('confirm-apply-modal')).toBeTruthy());
+
+    // Venue name
+    expect(getByTestId('confirm-venue-name').props.children).toBe('Happy Kids Farm');
+    // Field label (phone → 'Phone')
+    expect(getByTestId('confirm-field-label').props.children).toBe('Phone');
+    // Current value — PROPOSAL_PHONE has current_value: null → '(none)'
+    expect(getByTestId('confirm-current-value').props.children).toBe('(none)');
+    // New value — scalarValue({ v: '+44 20 7946 0958' })
+    expect(getByTestId('confirm-new-value').props.children).toBe('+44 20 7946 0958');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New test N5 — Double-tap confirm does not produce duplicate writes
+// ---------------------------------------------------------------------------
+
+describe('confirm-apply modal — double-tap protection', () => {
+  it('pressing confirm-apply-confirm twice only calls update and rpc once each', async () => {
+    stubAdmin();
+
+    // Make update hang indefinitely so pendingApproveId stays set after first press.
+    let resolveUpdate!: (v: unknown) => void;
+    const hangingUpdate = new Promise<unknown>((res) => { resolveUpdate = res; });
+
+    const selectAfterUpdateDouble = jest.fn().mockReturnValue(hangingUpdate);
+    const eqAfterUpdateDouble     = jest.fn().mockReturnValue({ select: selectAfterUpdateDouble });
+    const updateMockDouble        = jest.fn().mockReturnValue({ eq: eqAfterUpdateDouble });
+
+    const limitMockDouble  = jest.fn().mockResolvedValue({ data: [PROPOSAL_PHONE], error: null });
+    const orderMockDouble  = jest.fn().mockReturnValue({ limit: limitMockDouble });
+    const inMockDouble     = jest.fn().mockReturnValue({ order: orderMockDouble });
+    const eqQueryDouble    = jest.fn().mockReturnValue({ order: orderMockDouble });
+    const selectMockDouble = jest.fn().mockReturnValue({ in: inMockDouble, eq: eqQueryDouble });
+
+    mockFrom.mockReturnValue({
+      select: selectMockDouble,
+      update: updateMockDouble,
+    } as unknown as ReturnType<typeof supabase.from>);
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`)).toBeTruthy());
+
+    // Open the modal.
+    await act(async () => {
+      fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_PHONE.id}`));
+    });
+    await waitFor(() => expect(getByTestId('confirm-apply-confirm')).toBeTruthy());
+
+    // First press — starts the mutation (update hangs, pendingApproveId is set).
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-confirm'));
+    });
+
+    // State has now flushed: pendingApproveId === proposal.id, button is disabled.
+    // Second press — early-return guard fires; no duplicate write.
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-confirm'));
+    });
+
+    // Resolve the hanging update so the mutation can clean up.
+    await act(async () => {
+      resolveUpdate({ data: [{ id: PROPOSAL_PHONE.id }], error: null });
+    });
+
+    // update called exactly once; rpc called exactly once (after update resolves).
+    await waitFor(() => {
+      expect(updateMockDouble).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New test N6 — booking_url has no apply path and cannot open the confirm modal
+// ---------------------------------------------------------------------------
+
+describe('confirm-apply modal — booking_url has no apply path', () => {
+  beforeEach(() => {
+    stubAdmin();
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_BOOKING],
+        { data: [{ id: PROPOSAL_BOOKING.id }], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+  });
+
+  it('booking_url has no approve-apply-btn and the confirm modal is never shown', async () => {
+    const { queryByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(queryByTestId(`reject-btn-${PROPOSAL_BOOKING.id}`)).toBeTruthy());
+
+    // No approve-apply button exists for booking_url.
+    expect(queryByTestId(`approve-apply-btn-${PROPOSAL_BOOKING.id}`)).toBeNull();
+    // Confirmation modal is not present (no way to open it for booking_url).
+    expect(queryByTestId('confirm-apply-modal')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New test N7 — Description rewrite validation (modal gate + appliedText)
+// ---------------------------------------------------------------------------
+
+describe('confirm-apply modal — description rewrite validation', () => {
+  beforeEach(() => {
+    stubAdmin();
+    mockRpc.mockClear();
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_DESC],
+        { data: [{ id: PROPOSAL_DESC.id }], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    mockRpc.mockResolvedValue({ data: { ok: true }, error: null } as never);
+  });
+
+  it('approve-apply button is disabled when description input is empty', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`approve-apply-btn-${PROPOSAL_DESC.id}`)).toBeTruthy());
+
+    const btn = getByTestId(`approve-apply-btn-${PROPOSAL_DESC.id}`);
+    expect(btn.props.accessibilityState?.disabled ?? btn.props.disabled).toBeTruthy();
+  });
+
+  it('pressing Approve & Apply after entering text opens the modal without writing', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`description-input-${PROPOSAL_DESC.id}`)).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.changeText(
+        getByTestId(`description-input-${PROPOSAL_DESC.id}`),
+        'A lovely farm for families.'
+      );
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_DESC.id}`));
+    });
+
+    // Modal is open — no write yet.
+    await waitFor(() => expect(getByTestId('confirm-apply-modal')).toBeTruthy());
+    // update and rpc must not have been called.
+    const builderFrom = mockFrom.mock.results[0]?.value as { _updateMock?: jest.Mock } | undefined;
+    if (builderFrom?._updateMock) {
+      expect(builderFrom._updateMock).not.toHaveBeenCalled();
+    }
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('confirming sends the rewritten text as p_applied_text', async () => {
+    const rewrittenText = 'A charming family farm with soft play and animals.';
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`description-input-${PROPOSAL_DESC.id}`)).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.changeText(getByTestId(`description-input-${PROPOSAL_DESC.id}`), rewrittenText);
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_DESC.id}`));
+    });
+    await waitFor(() => expect(getByTestId('confirm-apply-confirm')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-confirm'));
+    });
+
+    await waitFor(() => {
+      expect(mockRpc).toHaveBeenCalledWith('apply_venue_proposal', {
+        p_proposal_id:  PROPOSAL_DESC.id,
+        p_applied_text: rewrittenText,
+      });
     });
   });
 });

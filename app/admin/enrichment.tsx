@@ -166,6 +166,13 @@ export default function EnrichmentScreen() {
   const [pendingReturnId,      setPendingReturnId]      = useState<string | null>(null);
   const [pendingRejectId,      setPendingRejectId]      = useState<string | null>(null);
 
+  // Confirmation modal target — set when the admin presses "Approve & Apply".
+  // No write runs until the admin presses "Apply live change" inside the modal.
+  const [confirmTarget, setConfirmTarget] = useState<{
+    proposal: ProposalRow;
+    appliedText?: string;
+  } | null>(null);
+
   // ── Group proposals by venue ──────────────────────────────────────────────
   const groupedProposals = useMemo((): VenueGroup[] => {
     const groups: Record<string, VenueGroup> = {};
@@ -190,7 +197,26 @@ export default function EnrichmentScreen() {
   const setError = (id: string, err: unknown) =>
     setProposalErrors((prev) => ({ ...prev, [id]: enrichmentErrorMessage(err) }));
 
+  /**
+   * Opens the confirmation modal — NO write happens here.
+   * For description, the appliedText (admin's rewritten text) is captured now
+   * so the modal can display exactly what will be written to the DB.
+   */
   const handleApproveApply = (proposal: ProposalRow, appliedText?: string) => {
+    setConfirmTarget({ proposal, appliedText });
+  };
+
+  /**
+   * Runs the actual two-step mutation (UPDATE status → RPC apply).
+   * Called only from the confirmation modal's "Apply live change" button.
+   * Double-tap guard: early-returns immediately if this proposal's mutation
+   * is already in-flight, preventing duplicate DB writes.
+   */
+  const confirmApplyMutation = () => {
+    if (!confirmTarget) return;
+    if (pendingApproveId === confirmTarget.proposal.id) return;
+
+    const { proposal, appliedText } = confirmTarget;
     setPendingApproveId(proposal.id);
     clearError(proposal.id);
 
@@ -201,11 +227,16 @@ export default function EnrichmentScreen() {
         reviewedBy:  user?.id ?? null,
       },
       {
-        onSettled: () => setPendingApproveId(null),
-        onError:   (err) => setError(proposal.id, err),
+        onSettled: () => {
+          setPendingApproveId(null);
+          setConfirmTarget(null); // close modal regardless of outcome
+        },
+        onError: (err) => setError(proposal.id, err),
       }
     );
   };
+
+  const cancelConfirmModal = () => setConfirmTarget(null);
 
   const handleRetryApply = (proposal: ProposalRow, appliedText?: string) => {
     setPendingRetryId(proposal.id);
@@ -347,6 +378,124 @@ export default function EnrichmentScreen() {
                     >
                       Reject
                     </Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Confirmation modal ───────────────────────────────────────────── */}
+      {/*
+        * Shown whenever the admin presses "Approve & Apply" on any field type.
+        * The actual mutation only runs when the admin presses "Apply live change".
+        * Cancel discards the intent with no write.
+        * "Apply live change" is the destructive/secondary button; Cancel is primary.
+        */}
+      <Modal
+        visible={confirmTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelConfirmModal}
+      >
+        <View className="flex-1 bg-black/50 items-center justify-center px-6">
+          <View testID="confirm-apply-modal" className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <Text className="text-charcoal font-extrabold text-lg mb-4">
+              Confirm live change
+            </Text>
+
+            {/* Venue */}
+            <Text className="text-grey text-xs font-bold uppercase mb-1">Venue</Text>
+            <Text testID="confirm-venue-name" className="text-charcoal font-bold text-sm mb-3">
+              {confirmTarget?.proposal.venues?.name ?? 'Unknown venue'}
+            </Text>
+
+            {/* Field */}
+            <Text className="text-grey text-xs font-bold uppercase mb-1">Field</Text>
+            <Text testID="confirm-field-label" className="text-charcoal text-sm mb-3">
+              {confirmTarget ? fieldLabel(confirmTarget.proposal.field) : ''}
+            </Text>
+
+            {/* Current value — mirrors the ProposalCard current-value display */}
+            <Text className="text-grey text-xs font-bold uppercase mb-1">Current value</Text>
+            <Text testID="confirm-current-value" className="text-charcoal text-sm mb-3">
+              {confirmTarget
+                ? confirmTarget.proposal.current_value != null
+                  ? confirmTarget.proposal.field !== 'opening_hours' &&
+                    confirmTarget.proposal.field !== 'description'
+                    ? scalarValue(confirmTarget.proposal.current_value)
+                    : '(stored — see evidence)'
+                  : '(none)'
+                : ''}
+            </Text>
+
+            {/* New value to be written */}
+            <Text className="text-grey text-xs font-bold uppercase mb-1">New value to apply</Text>
+            <View className="mb-3">
+              {confirmTarget && (
+                <ConfirmModalNewValue
+                  proposal={confirmTarget.proposal}
+                  appliedText={confirmTarget.appliedText}
+                />
+              )}
+            </View>
+
+            {/* Conflict warning */}
+            {confirmTarget?.proposal.conflicts_existing && (
+              <View className="bg-error/10 border border-error rounded-xl px-3 py-2 mb-3">
+                <Text className="text-error text-xs font-bold">
+                  Conflict: this differs from the currently stored value.
+                </Text>
+              </View>
+            )}
+
+            {/* Confidence level */}
+            <Text className="text-grey text-xs mb-3">
+              Confidence:{' '}
+              <Text className="font-bold text-charcoal">
+                {confirmTarget?.proposal.confidence ?? ''}
+              </Text>
+            </Text>
+
+            {/* Explicit production-write warning */}
+            <View className="bg-error/10 rounded-xl px-3 py-2 mb-4">
+              <Text className="text-error text-xs font-bold text-center">
+                This will update live production venue data.
+              </Text>
+            </View>
+
+            {/* Buttons — Cancel is first/prominent; Apply live change is destructive */}
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                testID="confirm-apply-cancel"
+                className="flex-1 bg-sandDark rounded-xl py-3 items-center"
+                onPress={cancelConfirmModal}
+              >
+                <Text className="text-charcoal font-bold">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="confirm-apply-confirm"
+                className={`flex-1 rounded-xl py-3 items-center ${
+                  confirmTarget !== null && pendingApproveId === confirmTarget.proposal.id
+                    ? 'bg-greyLighter'
+                    : 'bg-error'
+                }`}
+                disabled={
+                  confirmTarget !== null &&
+                  pendingApproveId === confirmTarget.proposal.id
+                }
+                accessibilityState={{
+                  disabled:
+                    confirmTarget !== null &&
+                    pendingApproveId === confirmTarget.proposal.id,
+                }}
+                onPress={confirmApplyMutation}
+              >
+                {confirmTarget !== null &&
+                pendingApproveId === confirmTarget.proposal.id ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text className="text-white font-bold">Apply live change</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -871,6 +1020,66 @@ function BookingUrlActions({
         </TouchableOpacity>
       </View>
     </View>
+  );
+}
+
+// ── ConfirmModalNewValue ──────────────────────────────────────────────────────
+
+/**
+ * Renders the proposed new value inside the confirmation modal.
+ *
+ * - Scalars: unwraps the `{ v: string }` JSON wrapper.
+ * - Description: shows the admin's own rewritten text (the appliedText arg),
+ *   not the extracted evidence — this is the exact string that will be written.
+ * - Opening hours: concise 7-day summary (same layout as FieldValueDisplay).
+ */
+function ConfirmModalNewValue({
+  proposal,
+  appliedText,
+}: {
+  proposal: ProposalRow;
+  appliedText?: string;
+}) {
+  if (proposal.field === 'opening_hours') {
+    const week = proposal.proposed_value as OpeningWeekDisplay | null;
+    if (!week?.days) {
+      return (
+        <Text testID="confirm-new-value" className="text-grey text-xs">
+          Opening hours: (no structured data)
+        </Text>
+      );
+    }
+    const sorted = [...week.days].sort((a, b) => a.day_of_week - b.day_of_week);
+    return (
+      <View testID="confirm-new-value">
+        {sorted.map((day) => (
+          <Text key={day.day_of_week} className="text-charcoal text-xs">
+            {DAY_NAMES[day.day_of_week] ?? '?'}:{' '}
+            {day.is_closed || day.intervals.length === 0
+              ? 'Closed'
+              : day.intervals.map((iv) => `${iv.opens}–${iv.closes}`).join(', ')}
+          </Text>
+        ))}
+        {week.seasonal_notes && (
+          <Text className="text-grey text-xs italic">{week.seasonal_notes}</Text>
+        )}
+      </View>
+    );
+  }
+
+  if (proposal.field === 'description') {
+    return (
+      <Text testID="confirm-new-value" className="text-charcoal text-sm" numberOfLines={5}>
+        {appliedText ?? '—'}
+      </Text>
+    );
+  }
+
+  // Scalars: phone / email / website / price_range
+  return (
+    <Text testID="confirm-new-value" className="text-charcoal text-sm font-bold">
+      {scalarValue(proposal.proposed_value)}
+    </Text>
   );
 }
 
