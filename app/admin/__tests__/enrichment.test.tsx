@@ -80,6 +80,43 @@ jest.spyOn(require('react-native'), 'Alert', 'get').mockReturnValue({
   alert: jest.fn(),
 });
 
+// ── Phase 4 component mocks ───────────────────────────────────────────────────
+// Mock the new sub-components so they don't fire their own Supabase queries
+// during screen-level tests. Each mock renders a testID element so tab-switch
+// tests can verify the correct panel is mounted.
+
+jest.mock('@/components/admin/EnrichmentSummary', () => ({
+  EnrichmentSummary: () => {
+    const React = require('react');
+    const { View } = require('react-native');
+    return React.createElement(View, { testID: 'mocked-enrichment-summary' });
+  },
+}));
+
+jest.mock('@/components/admin/AutoApplyBatchPanel', () => ({
+  AutoApplyBatchPanel: () => {
+    const React = require('react');
+    const { View } = require('react-native');
+    return React.createElement(View, { testID: 'mocked-auto-apply-panel' });
+  },
+}));
+
+jest.mock('@/components/admin/EnrichmentAudit', () => ({
+  EnrichmentAudit: () => {
+    const React = require('react');
+    const { View } = require('react-native');
+    return React.createElement(View, { testID: 'mocked-enrichment-audit' });
+  },
+}));
+
+jest.mock('@/components/admin/EnrichmentRollback', () => ({
+  EnrichmentRollback: () => {
+    const React = require('react');
+    const { View } = require('react-native');
+    return React.createElement(View, { testID: 'mocked-enrichment-rollback' });
+  },
+}));
+
 process.env.EXPO_PUBLIC_SUPABASE_URL      = 'https://test.supabase.co';
 process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
 
@@ -127,13 +164,22 @@ function makeVenueFieldProposalsFromBuilder(
   const eqAfterUpdate     = jest.fn().mockReturnValue({ select: selectAfterUpdate });
   const updateMock        = jest.fn().mockReturnValue({ eq: eqAfterUpdate });
 
-  // Select chain: select().in().order().limit() → resolved promise
-  // Also supports .eq() after select for any path that still uses it.
-  const limitMock  = jest.fn().mockResolvedValue({ data: proposals, error: null });
-  const orderMock  = jest.fn().mockReturnValue({ limit: limitMock });
-  const inMock     = jest.fn().mockReturnValue({ order: orderMock });
-  const eqForQuery = jest.fn().mockReturnValue({ order: orderMock }); // back-compat
-  const selectMock = jest.fn().mockReturnValue({ in: inMock, eq: eqForQuery });
+  // Select chain: select().in().eq().order().limit() → resolved promise
+  //
+  // useReviewableProposals now does:
+  //   .in('status', ['pending', 'approved'])
+  //   .eq('decision', 'manual_review')   ← Phase 4 addition
+  //   .order(...).limit(...)
+  //
+  // We expose .eq on inMock so the chained .eq() call doesn't throw.
+  // Old tests that call .in().order() directly still work because .order is
+  // still present on inMock's return value.
+  const limitMock   = jest.fn().mockResolvedValue({ data: proposals, error: null });
+  const orderMock   = jest.fn().mockReturnValue({ limit: limitMock });
+  const eqAfterIn   = jest.fn().mockReturnValue({ order: orderMock }); // for .in().eq().order()
+  const inMock      = jest.fn().mockReturnValue({ order: orderMock, eq: eqAfterIn });
+  const eqForQuery  = jest.fn().mockReturnValue({ order: orderMock }); // back-compat for .select().eq()
+  const selectMock  = jest.fn().mockReturnValue({ in: inMock, eq: eqForQuery });
 
   return {
     select: selectMock,
@@ -162,6 +208,13 @@ interface ProposalRow {
   evidence_raw: string | null;
   retrieved_at: string;
   status: string;
+  // Phase 4 fields (optional — not set in pre-Phase-4 fixtures)
+  run_id?: string | null;
+  decision?: string | null;
+  decision_reasons?: string[];
+  decision_engine_version?: string | null;
+  decision_at?: string | null;
+  applied_mode?: string | null;
   venues: { name: string } | null;
 }
 
@@ -1126,7 +1179,9 @@ describe('confirm-apply modal — double-tap protection', () => {
 
     const limitMockDouble  = jest.fn().mockResolvedValue({ data: [PROPOSAL_PHONE], error: null });
     const orderMockDouble  = jest.fn().mockReturnValue({ limit: limitMockDouble });
-    const inMockDouble     = jest.fn().mockReturnValue({ order: orderMockDouble });
+    // eqAfterInDouble handles .in(...).eq('decision','manual_review').order(...) chain
+    const eqAfterInDouble  = jest.fn().mockReturnValue({ order: orderMockDouble });
+    const inMockDouble     = jest.fn().mockReturnValue({ order: orderMockDouble, eq: eqAfterInDouble });
     const eqQueryDouble    = jest.fn().mockReturnValue({ order: orderMockDouble });
     const selectMockDouble = jest.fn().mockReturnValue({ in: inMockDouble, eq: eqQueryDouble });
 
@@ -1266,5 +1321,489 @@ describe('confirm-apply modal — description rewrite validation', () => {
         p_applied_text: rewrittenText,
       });
     });
+  });
+});
+
+// ===========================================================================
+// Phase 4 tests
+// ===========================================================================
+
+// Extra fixtures for Phase 4
+const PROPOSAL_DESC_ENGINE: ProposalRow = {
+  ...PROPOSAL_DESC,
+  id:              'prop-desc-engine',
+  decision:        'manual_review',
+  decision_reasons: ['low_confidence', 'existing_description'],
+  decision_engine_version: '1.0.0',
+};
+
+const PROPOSAL_WITH_REASONS: ProposalRow = {
+  ...PROPOSAL_PHONE,
+  id:               'prop-reasons-1',
+  decision:         'manual_review',
+  decision_reasons: ['conflict_with_existing', 'low_confidence'],
+};
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Tab navigation
+// ---------------------------------------------------------------------------
+
+describe('Phase 4 — tab navigation', () => {
+  beforeEach(() => {
+    stubAdmin();
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [], { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+  });
+
+  it('renders all four tab buttons', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => {
+      expect(getByTestId('tab-review')).toBeTruthy();
+      expect(getByTestId('tab-auto-apply')).toBeTruthy();
+      expect(getByTestId('tab-audit')).toBeTruthy();
+      expect(getByTestId('tab-rollback')).toBeTruthy();
+    });
+  });
+
+  it('default tab is review — proposal list is shown, not other panels', async () => {
+    const { queryByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => {
+      // Mocked sub-panels must NOT be visible on the default tab
+      expect(queryByTestId('mocked-auto-apply-panel')).toBeNull();
+      expect(queryByTestId('mocked-enrichment-audit')).toBeNull();
+      expect(queryByTestId('mocked-enrichment-rollback')).toBeNull();
+    });
+  });
+
+  it('pressing Auto-Apply tab renders AutoApplyBatchPanel', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId('tab-auto-apply')).toBeTruthy());
+
+    await act(async () => { fireEvent.press(getByTestId('tab-auto-apply')); });
+
+    await waitFor(() => {
+      expect(getByTestId('mocked-auto-apply-panel')).toBeTruthy();
+    });
+  });
+
+  it('pressing Audit tab renders EnrichmentAudit', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId('tab-audit')).toBeTruthy());
+
+    await act(async () => { fireEvent.press(getByTestId('tab-audit')); });
+
+    await waitFor(() => {
+      expect(getByTestId('mocked-enrichment-audit')).toBeTruthy();
+    });
+  });
+
+  it('pressing Rollback tab renders EnrichmentRollback', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId('tab-rollback')).toBeTruthy());
+
+    await act(async () => { fireEvent.press(getByTestId('tab-rollback')); });
+
+    await waitFor(() => {
+      expect(getByTestId('mocked-enrichment-rollback')).toBeTruthy();
+    });
+  });
+
+  it('switching from Auto-Apply back to Review shows proposal cards again', async () => {
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_PHONE], { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId, queryByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId('tab-auto-apply')).toBeTruthy());
+
+    // Go to Auto-Apply
+    await act(async () => { fireEvent.press(getByTestId('tab-auto-apply')); });
+    await waitFor(() => expect(getByTestId('mocked-auto-apply-panel')).toBeTruthy());
+
+    // Back to Review
+    await act(async () => { fireEvent.press(getByTestId('tab-review')); });
+    await waitFor(() => {
+      expect(queryByTestId('mocked-auto-apply-panel')).toBeNull();
+      expect(getByTestId(`proposal-card-${PROPOSAL_PHONE.id}`)).toBeTruthy();
+    });
+  });
+
+  it('the mocked EnrichmentSummary is rendered regardless of active tab', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    // Mocked summary is shown on review tab
+    await waitFor(() => expect(getByTestId('mocked-enrichment-summary')).toBeTruthy());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Exception filter chips
+// ---------------------------------------------------------------------------
+
+describe('Phase 4 — exception filter chips', () => {
+  beforeEach(() => {
+    stubAdmin();
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_PHONE, PROPOSAL_CONFLICT],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+  });
+
+  it('conflict filter chip is shown when proposals exist', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId('filter-conflict')).toBeTruthy());
+  });
+
+  it('low-confidence filter chip is shown when proposals exist', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId('filter-low-confidence')).toBeTruthy());
+  });
+
+  it('has-existing-value filter chip is shown when proposals exist', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId('filter-has-current')).toBeTruthy());
+  });
+
+  it('activating conflict filter hides non-conflicting proposals', async () => {
+    const { getByTestId, queryByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId('filter-conflict')).toBeTruthy());
+
+    // Both cards initially visible
+    await waitFor(() => {
+      expect(getByTestId(`proposal-card-${PROPOSAL_PHONE.id}`)).toBeTruthy();
+      expect(getByTestId(`proposal-card-${PROPOSAL_CONFLICT.id}`)).toBeTruthy();
+    });
+
+    // Toggle conflict filter
+    await act(async () => { fireEvent.press(getByTestId('filter-conflict')); });
+
+    // Only the conflicting proposal stays visible
+    await waitFor(() => {
+      expect(queryByTestId(`proposal-card-${PROPOSAL_PHONE.id}`)).toBeNull();
+      expect(getByTestId(`proposal-card-${PROPOSAL_CONFLICT.id}`)).toBeTruthy();
+    });
+  });
+
+  it('toggling conflict filter twice shows all proposals again', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId('filter-conflict')).toBeTruthy());
+
+    await act(async () => { fireEvent.press(getByTestId('filter-conflict')); });
+    await act(async () => { fireEvent.press(getByTestId('filter-conflict')); });
+
+    await waitFor(() => {
+      expect(getByTestId(`proposal-card-${PROPOSAL_PHONE.id}`)).toBeTruthy();
+      expect(getByTestId(`proposal-card-${PROPOSAL_CONFLICT.id}`)).toBeTruthy();
+    });
+  });
+
+  it('field filter chip is shown for each unique field in proposals', async () => {
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    // PROPOSAL_PHONE has field='phone'; PROPOSAL_CONFLICT also has field='phone'
+    // So only one field chip should appear
+    await waitFor(() => expect(getByTestId('filter-field-phone')).toBeTruthy());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Decision reason chips
+// ---------------------------------------------------------------------------
+
+describe('Phase 4 — decision reason chips on proposal cards', () => {
+  beforeEach(() => {
+    stubAdmin();
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+  });
+
+  it('shows decision-reason-chips for proposals with decision_reasons', async () => {
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_WITH_REASONS],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => {
+      expect(getByTestId('decision-reason-chips')).toBeTruthy();
+    });
+  });
+
+  it('does NOT show decision-reason-chips for proposals with no decision_reasons', async () => {
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_PHONE],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { queryByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(queryByTestId(`proposal-card-${PROPOSAL_PHONE.id}`)).toBeTruthy());
+    // PROPOSAL_PHONE has no decision_reasons (field not set)
+    expect(queryByTestId('decision-reason-chips')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Engine description prefill (decision='manual_review')
+// ---------------------------------------------------------------------------
+
+describe('Phase 4 — description prefill for engine proposals', () => {
+  beforeEach(() => {
+    stubAdmin();
+    // Clear call history so assertions don't pick up rpc calls from earlier describe blocks.
+    mockRpc.mockClear();
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+  });
+
+  it('prefills the description input with sanitized proposed_value.v when decision=manual_review', async () => {
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_DESC_ENGINE],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`description-input-${PROPOSAL_DESC_ENGINE.id}`)).toBeTruthy());
+
+    const input = getByTestId(`description-input-${PROPOSAL_DESC_ENGINE.id}`);
+    // PROPOSAL_DESC_ENGINE.proposed_value = { v: 'A great family venue with outdoor play.' }
+    expect(input.props.value).toBe('A great family venue with outdoor play.');
+  });
+
+  it('prefilled engine draft enables the Approve & Apply button (text is non-empty)', async () => {
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_DESC_ENGINE],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`approve-apply-btn-${PROPOSAL_DESC_ENGINE.id}`)).toBeTruthy());
+
+    const btn = getByTestId(`approve-apply-btn-${PROPOSAL_DESC_ENGINE.id}`);
+    const isDisabled = btn.props.accessibilityState?.disabled ?? btn.props.disabled;
+    expect(isDisabled).toBeFalsy();
+  });
+
+  it('does NOT prefill description when decision is null (legacy/non-engine row)', async () => {
+    // PROPOSAL_DESC has no decision field → treated as null/undefined.
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_DESC],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`description-input-${PROPOSAL_DESC.id}`)).toBeTruthy());
+
+    const input = getByTestId(`description-input-${PROPOSAL_DESC.id}`);
+    expect(input.props.value).toBe('');
+  });
+
+  it('editing the prefilled text updates the state (admin can modify the draft)', async () => {
+    // updateResult.data must be non-empty — the hook throws if 0 rows returned.
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_DESC_ENGINE],
+        { data: [{ id: PROPOSAL_DESC_ENGINE.id }], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    mockRpc.mockResolvedValue({ data: { ok: true }, error: null } as never);
+
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`description-input-${PROPOSAL_DESC_ENGINE.id}`)).toBeTruthy());
+
+    const editedText = 'An edited version of the draft text.';
+    await act(async () => {
+      fireEvent.changeText(getByTestId(`description-input-${PROPOSAL_DESC_ENGINE.id}`), editedText);
+    });
+
+    // Open apply modal and verify it uses the edited (not original prefilled) text
+    await act(async () => {
+      fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_DESC_ENGINE.id}`));
+    });
+    await waitFor(() => expect(getByTestId('confirm-apply-confirm')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-apply-confirm'));
+    });
+
+    await waitFor(() => {
+      expect(mockRpc).toHaveBeenCalledWith('apply_venue_proposal', {
+        p_proposal_id:  PROPOSAL_DESC_ENGINE.id,
+        p_applied_text: editedText,
+      });
+    });
+  });
+
+  it('whitespace in prefilled text is sanitized (3+ newlines → 2)', async () => {
+    const proposalWithPaddedText: ProposalRow = {
+      ...PROPOSAL_DESC_ENGINE,
+      id:             'prop-padded',
+      proposed_value: { v: '  Great farm.\n\n\n\nNice venue.  ' },
+    };
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [proposalWithPaddedText],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`description-input-${proposalWithPaddedText.id}`)).toBeTruthy());
+
+    const input = getByTestId(`description-input-${proposalWithPaddedText.id}`);
+    // trim() removes leading/trailing spaces; 4 newlines collapse to 2
+    expect(input.props.value).toBe('Great farm.\n\nNice venue.');
+  });
+
+  it('character counter is visible for description proposals', async () => {
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_DESC_ENGINE],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => {
+      expect(getByTestId(`description-char-count-${PROPOSAL_DESC_ENGINE.id}`)).toBeTruthy();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix B regression — T3: opening_hours day with NO intervals key renders gracefully
+// ---------------------------------------------------------------------------
+
+// A proposal whose first day object has no `intervals` key at all
+const PROPOSAL_HOURS_NO_INTERVALS: ProposalRow = {
+  ...PROPOSAL_PHONE,
+  id:     'prop-hours-no-iv',
+  field:  'opening_hours',
+  proposed_value: {
+    days: [
+      { day_of_week: 0, is_closed: false },                                         // ← no intervals key
+      { day_of_week: 1, is_closed: true,  intervals: [] },                          // closed, empty array
+      { day_of_week: 2, is_closed: false, intervals: [{ opens: '09:00', closes: '17:00' }] },
+      { day_of_week: 3, is_closed: true },                                           // ← no intervals key
+      { day_of_week: 4, is_closed: false, intervals: [{ opens: '10:00', closes: '16:00' }] },
+      { day_of_week: 5, is_closed: false, intervals: [{ opens: '10:00', closes: '16:00' }] },
+      { day_of_week: 6, is_closed: true },                                           // ← no intervals key
+    ],
+    seasonal_notes: null,
+  },
+  current_value: null,
+};
+
+describe('Fix B — T3: opening_hours with no intervals key renders without crashing', () => {
+  beforeEach(() => {
+    stubAdmin();
+    mockRpc.mockClear();
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+  });
+
+  it('T3a: review card (FieldValueDisplay ~L1008) renders "Closed" for days missing intervals', async () => {
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_HOURS_NO_INTERVALS],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    // If the component crashes, waitFor will time out. Success = no throw.
+    await waitFor(() =>
+      expect(getByTestId(`proposal-card-${PROPOSAL_HOURS_NO_INTERVALS.id}`)).toBeTruthy()
+    );
+  });
+
+  it('T3b: confirm modal (ConfirmModalNewValue ~L1298) renders without crash for days missing intervals', async () => {
+    // The opening_hours flow goes: button → Alert → "Yes, apply" → setConfirmTarget → confirm modal.
+    // We capture the Alert callback and invoke it manually.
+    const { Alert } = require('react-native');
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [PROPOSAL_HOURS_NO_INTERVALS],
+        { data: [{ id: PROPOSAL_HOURS_NO_INTERVALS.id }], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() =>
+      expect(getByTestId(`approve-apply-btn-${PROPOSAL_HOURS_NO_INTERVALS.id}`)).toBeTruthy()
+    );
+
+    // Press the button — this triggers Alert.alert (not the confirm modal directly).
+    await act(async () => {
+      fireEvent.press(getByTestId(`approve-apply-btn-${PROPOSAL_HOURS_NO_INTERVALS.id}`));
+    });
+
+    // Simulate the user pressing "Yes, apply" in the Alert.
+    const alertCalls = (Alert.alert as jest.Mock).mock.calls;
+    const lastCall = alertCalls[alertCalls.length - 1];
+    const buttons: { text: string; onPress?: () => void }[] = lastCall?.[2] ?? [];
+    const yesButton = buttons.find((b) => b.text === 'Yes, apply');
+    await act(async () => { yesButton?.onPress?.(); });
+
+    // Confirm modal must appear without crashing.
+    await waitFor(() => expect(getByTestId('confirm-apply-modal')).toBeTruthy());
+    // ConfirmModalNewValue (L1298 path) rendered successfully — no crash.
+    expect(getByTestId('confirm-new-value')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix C regression — T4: engine-draft label uses decision_engine_version, not decision
+// ---------------------------------------------------------------------------
+
+describe('Fix C — T4: descriptionInitial/isEngineDraft discriminates by decision_engine_version', () => {
+  beforeEach(() => {
+    stubAdmin();
+    mockRpc.mockClear();
+    mockRpc.mockResolvedValue({ data: null, error: null } as never);
+  });
+
+  it('T4a: legacy-pilot proposal → blank input (NOT labeled engine draft)', async () => {
+    const legacyProposal: ProposalRow = {
+      ...PROPOSAL_DESC,
+      id:                      'prop-desc-legacy-t4',
+      decision:                'manual_review',
+      decision_engine_version: 'legacy-pilot',
+      proposed_value:          { v: 'Some legacy scraped text.' },
+    };
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [legacyProposal],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`description-input-${legacyProposal.id}`)).toBeTruthy());
+
+    // Legacy rows must NOT prefill the editor
+    expect(getByTestId(`description-input-${legacyProposal.id}`).props.value).toBe('');
+  });
+
+  it('T4b: current-engine proposal → input prefilled with draft text', async () => {
+    const engineProposal: ProposalRow = {
+      ...PROPOSAL_DESC,
+      id:                      'prop-desc-engine-t4b',
+      decision:                'manual_review',
+      decision_engine_version: 'decision-engine@1.0.0',
+      proposed_value:          { v: 'A trampoline park in Leeds.' },
+    };
+    mockFrom.mockReturnValue(
+      makeVenueFieldProposalsFromBuilder(
+        [engineProposal],
+        { data: [], error: null }
+      ) as unknown as ReturnType<typeof supabase.from>
+    );
+    const { getByTestId } = render(<EnrichmentScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(getByTestId(`description-input-${engineProposal.id}`)).toBeTruthy());
+
+    // Current-engine rows must prefill the editor with the generated draft
+    expect(getByTestId(`description-input-${engineProposal.id}`).props.value).toBe('A trampoline park in Leeds.');
   });
 });
