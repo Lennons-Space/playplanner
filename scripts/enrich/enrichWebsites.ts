@@ -36,9 +36,11 @@ import * as path from 'path';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { CurrentVenueSnapshot, DayHours } from '../../types/webEnrichment';
+import type { FieldDecision } from '../../types/enrichmentDecision';
+import { DECISION_ENGINE_VERSION } from '../../types/enrichmentDecision';
 import { WebClient, nodeWebClientDeps } from './web/webClient';
 import { runEnrichment, type VenueInput } from './web/orchestrate';
-import { renderRunJson, renderRunCsv, renderRunHtml } from './web/report';
+import { renderRunJson, renderRunCsv, renderRunHtml, renderDecisionsCsv } from './web/report';
 import { stratifiedSample, categoryBreakdown, parsePilotVenueIds } from './sampling';
 
 // ── Load environment variables ────────────────────────────────────────────────
@@ -79,6 +81,10 @@ const PROPOSE_LIMIT_CAP = 100;
 
 interface ScriptFlags {
   propose: boolean;
+  /** --auto-apply-safe: store auto_apply rows as decision='auto_apply'.
+   *  Without this, auto_apply is downgraded to manual_review for safety.
+   *  The script NEVER calls apply/rollback RPCs — apply is in-app admin only. */
+  autoApplySafe: boolean;
   limit: number;
   limitProvided: boolean;
   venueId: string | null;
@@ -87,11 +93,16 @@ interface ScriptFlags {
   perDomainDelayMs: number;
   refresh: boolean;
   cacheOnly: boolean;
+  /** Maximum propose_field writes per run (0 = unlimited up to PROPOSE_LIMIT_CAP). */
+  maxWrites: number;
+  /** Abort after this many consecutive write errors (0 = never abort). */
+  stopOnErrorThreshold: number;
 }
 
 function parseFlags(argv: string[]): ScriptFlags {
   const flags: ScriptFlags = {
     propose: false,
+    autoApplySafe: false,
     limit: 20,
     limitProvided: false,
     venueId: null,
@@ -100,11 +111,15 @@ function parseFlags(argv: string[]): ScriptFlags {
     perDomainDelayMs: 3000,
     refresh: false,
     cacheOnly: false,
+    maxWrites: 0,
+    stopOnErrorThreshold: 0,
   };
 
   for (const arg of argv.slice(2)) {
-    if (arg === '--propose') {
+    if (arg === '--propose' || arg === '--proposal-only') {
       flags.propose = true;
+    } else if (arg === '--auto-apply-safe') {
+      flags.autoApplySafe = true;
     } else if (arg.startsWith('--limit=')) {
       const val = parseInt(arg.slice('--limit='.length), 10);
       if (!isNaN(val) && val > 0) {
@@ -121,6 +136,12 @@ function parseFlags(argv: string[]): ScriptFlags {
     } else if (arg.startsWith('--per-domain-delay-ms=')) {
       const val = parseInt(arg.slice('--per-domain-delay-ms='.length), 10);
       if (!isNaN(val) && val >= 0) flags.perDomainDelayMs = val;
+    } else if (arg.startsWith('--max-writes=')) {
+      const val = parseInt(arg.slice('--max-writes='.length), 10);
+      if (!isNaN(val) && val >= 0) flags.maxWrites = val;
+    } else if (arg.startsWith('--stop-on-error=')) {
+      const val = parseInt(arg.slice('--stop-on-error='.length), 10);
+      if (!isNaN(val) && val >= 0) flags.stopOnErrorThreshold = val;
     } else if (arg === '--refresh') {
       flags.refresh = true;
     } else if (arg === '--cache-only') {
@@ -155,6 +176,14 @@ function applyProposeGates(flags: ScriptFlags): void {
     );
     process.exit(1);
   }
+
+  // --auto-apply-safe requires --propose to be meaningful.
+  if (flags.autoApplySafe) {
+    console.log(
+      'INFO: --auto-apply-safe active — auto_apply rows will be stored with decision=auto_apply.\n' +
+      '      The script NEVER calls apply/rollback RPCs. Apply is in-app admin only.',
+    );
+  }
 }
 
 // ── DB: fetch pilot venues ────────────────────────────────────────────────────
@@ -168,9 +197,14 @@ interface VenueRow {
   phone: string | null;
   email: string | null;
   category_id: string | null;
+  /** City/town for description composition. May be null if the DB column differs. */
+  city: string | null;
+  /** Category slug resolved from the categories table (used for description composition). */
+  category_slug?: string | null;
 }
 
-const VENUE_SELECT = 'id, name, website, description, price_range, phone, email, category_id';
+// 'city' supplies the description composer with a verified location fact.
+const VENUE_SELECT = 'id, name, website, description, price_range, phone, email, category_id, city';
 
 /** Supabase returns at most ~1000 rows per request; page through them all. */
 const PAGE_SIZE = 1000;
@@ -302,8 +336,8 @@ async function fetchPilotVenues(flags: ScriptFlags): Promise<VenueRow[]> {
     console.log(`  ${String(count).padStart(4)}  ${slug}`);
   }
 
-  // Strip the transient `slug` field — orchestrator only needs the VenueRow.
-  return selected.map(({ slug: _slug, ...row }) => row);
+  // Preserve the slug as category_slug for the description composer.
+  return selected.map(({ slug, ...row }) => ({ ...row, category_slug: slug ?? null }));
 }
 
 // ── DB: build CurrentVenueSnapshot ────────────────────────────────────────────
@@ -350,33 +384,85 @@ async function buildSnapshot(venueId: string, venueRow: VenueRow): Promise<Curre
 
 /**
  * GATED PROPOSE PATH — only reached when --propose is explicitly passed.
- * Writes pending proposals to the DB via the propose_field RPC.
- * This branch is NOT exercised in the default dry-run path.
- * Migration 056 must be applied before this can succeed.
+ *
+ * Persists a FieldDecision via the extended propose_field RPC (§6b).
+ * Passes p_decision / p_decision_reasons / p_decision_engine_version.
+ *
+ * Safety invariants:
+ *  - This function NEVER calls apply, auto_apply, or rollback RPCs.
+ *  - Apply is in-app admin only (authenticated + is_admin()).
+ *  - Service_role fails is_admin() by design (no profiles row).
+ *  - auto_apply decisions are downgraded to manual_review unless --auto-apply-safe.
+ *  - PII (proposed value) is never logged — only field + error code.
+ *
+ * Throws on RPC error so the caller can apply stop-on-error logic.
+ * Migration 057 must be applied before the extended signature is available.
  */
-async function writeProposeRpc(
+async function writeDecisionRpc(
   runId: string,
   venueId: string,
-  _proposal: import('../../types/webEnrichment').ProposalDraft,
+  venueWebsite: string | null,
+  decision: FieldDecision,
+  autoApplySafe: boolean,
 ): Promise<void> {
-  // The propose_field RPC signature (spec §2):
-  //   propose_field(p_run_id, p_venue_id, p_field, p_proposed, p_source_url,
-  //                 p_evidence, p_evidence_raw, p_method, p_confidence, p_conflicts)
+  // Without --auto-apply-safe, downgrade auto_apply to manual_review.
+  // The in-app admin batch needs explicit authorisation through the UI.
+  const effectiveDecision =
+    decision.decision === 'auto_apply' && !autoApplySafe ? 'manual_review' : decision.decision;
+
+  let proposedValue: unknown;
+  let sourceUrl: string;
+  let evidence: string;
+  let evidenceRaw: string | null;
+  let method: string;
+  let confidence: string;
+  let conflicts: boolean;
+
+  if (decision.field === 'description') {
+    // Description: composed from DB facts, no specific web candidate.
+    if (!decision.generatedText) return; // report_only with no draft — nothing to store.
+    proposedValue = { v: decision.generatedText };
+    sourceUrl = venueWebsite ?? '';
+    evidence = 'Composed from verified DB facts (name, category slug, city)';
+    evidenceRaw = null;
+    method = 'heuristic';
+    confidence = 'medium';
+    conflicts = false;
+  } else if (decision.chosen) {
+    const c = decision.chosen;
+    // Opening hours: OpeningWeek is stored directly; scalars are wrapped in {v:…}.
+    proposedValue = decision.field === 'opening_hours' ? c.value : { v: c.value };
+    sourceUrl = c.sourceUrl;
+    evidence = c.evidenceSnippet;
+    evidenceRaw = c.evidenceRaw;
+    method = c.method;
+    confidence = c.confidence;
+    conflicts = c.conflictsExisting;
+  } else {
+    return; // No candidate value and no generated text — nothing to persist.
+  }
+
   const { error } = await supabase.rpc('propose_field', {
     p_run_id: runId,
     p_venue_id: venueId,
-    p_field: _proposal.field,
-    p_proposed: _proposal.proposed_value,
-    p_source_url: _proposal.source_url,
-    p_evidence: _proposal.evidence_snippet,
-    p_evidence_raw: _proposal.evidence_raw,
-    p_method: _proposal.extraction_method,
-    p_confidence: _proposal.confidence,
-    p_conflicts: _proposal.conflicts_existing,
+    p_field: decision.field,
+    p_proposed: proposedValue,
+    p_source_url: sourceUrl,
+    p_evidence: evidence,
+    p_evidence_raw: evidenceRaw,
+    p_method: method,
+    p_confidence: confidence,
+    p_conflicts: conflicts,
+    // Decision metadata — requires the extended propose_field from §6b.
+    p_decision: effectiveDecision,
+    p_decision_reasons: decision.reasons,
+    p_decision_engine_version: DECISION_ENGINE_VERSION,
   });
+
   if (error) {
-    // Log only the field + error code — never the proposed value (may contain PII)
-    console.warn(`  [propose_field] failed for field=${_proposal.field}: ${error.message}`);
+    // Log only field + error code — never the proposed value (may contain PII).
+    console.warn(`  [propose_field] failed for field=${decision.field}: ${error.message}`);
+    throw error; // Re-throw so the caller can track stop-on-error.
   }
 }
 
@@ -386,6 +472,7 @@ function writeReports(
   reportBase: string,
   jsonContent: string,
   csvContent: string,
+  decisionsContent: string,
   htmlContent: string,
 ): void {
   const dir = path.dirname(reportBase);
@@ -393,16 +480,19 @@ function writeReports(
 
   const jsonPath = `${reportBase}.json`;
   const csvPath = `${reportBase}.csv`;
+  const decisionsPath = `${reportBase}.decisions.csv`;
   const htmlPath = `${reportBase}.html`;
 
   fs.writeFileSync(jsonPath, jsonContent, 'utf8');
   fs.writeFileSync(csvPath, csvContent, 'utf8');
+  fs.writeFileSync(decisionsPath, decisionsContent, 'utf8');
   fs.writeFileSync(htmlPath, htmlContent, 'utf8');
 
   console.log(`\nReports written:`);
-  console.log(`  JSON: ${jsonPath}`);
-  console.log(`  CSV:  ${csvPath}`);
-  console.log(`  HTML: ${htmlPath}`);
+  console.log(`  JSON:      ${jsonPath}`);
+  console.log(`  CSV:       ${csvPath}`);
+  console.log(`  Decisions: ${decisionsPath}`);
+  console.log(`  HTML:      ${htmlPath}`);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -412,7 +502,12 @@ async function main(): Promise<void> {
 
   console.log('\nPlayPlanner Website Enrichment Engine — Build Step 4');
   console.log('=====================================================');
-  console.log(`Mode      : ${flags.propose ? '*** PROPOSE — will insert pending proposals ***' : 'DRY RUN (no DB writes)'}`);
+  const modeLabel = !flags.propose
+    ? 'DRY RUN (no DB writes)'
+    : flags.autoApplySafe
+      ? '*** PROPOSE + AUTO-APPLY-SAFE (marks auto_apply rows) ***'
+      : '*** PROPOSE — will persist decisions (auto_apply downgraded to manual_review) ***';
+  console.log(`Mode      : ${modeLabel}`);
   console.log(`Limit     : ${flags.venueId ? 'single venue' : flags.limit}`);
   console.log(`Max pages : ${flags.maxPages}`);
   console.log(`Cache     : ${flags.cacheOnly ? 'cache-only (no network)' : flags.refresh ? 'refresh (ignore cache)' : 'normal'}`);
@@ -432,6 +527,11 @@ async function main(): Promise<void> {
     venueId: v.id,
     name: v.name,
     website: v.website,
+    // category_slug is resolved by fetchPilotVenues (stratified path only).
+    // Single-venue and pilot-ids paths leave it null → description routes to
+    // report_only (safe conservative default).
+    categorySlug: v.category_slug ?? null,
+    city: v.city ?? null,
   }));
 
   // ── Build WebClient ────────────────────────────────────────────────────────
@@ -470,8 +570,9 @@ async function main(): Promise<void> {
   // ── Render and write reports ───────────────────────────────────────────────
   const jsonContent = renderRunJson(report);
   const csvContent = renderRunCsv(report);
+  const decisionsContent = renderDecisionsCsv(report);
   const htmlContent = renderRunHtml(report);
-  writeReports(flags.reportBase, jsonContent, csvContent, htmlContent);
+  writeReports(flags.reportBase, jsonContent, csvContent, decisionsContent, htmlContent);
 
   // ── Print summary ──────────────────────────────────────────────────────────
   const { summary } = report;
@@ -486,19 +587,43 @@ async function main(): Promise<void> {
     console.log(`  ${outcome.padEnd(30)}: ${count}`);
   }
 
+  // Print batch decision summary.
+  const { batchSummary } = report;
+  console.log('\n=== BATCH DECISION SUMMARY ===');
+  console.log(`Safe changes ready (auto_apply) : ${batchSummary.safeChangesReady}`);
+  console.log(`Exceptions (manual_review)       : ${batchSummary.exceptions}`);
+  console.log(`Suppressed (reject/report_only)  : ${batchSummary.suppressed}`);
+  console.log(`Failures (fetch/skip)            : ${batchSummary.failures}`);
+  if (batchSummary.fieldsAffected.length > 0) {
+    console.log(`Fields affected                  : ${batchSummary.fieldsAffected.join(', ')}`);
+  }
+  if (batchSummary.wouldReplaceNonEmpty) {
+    console.error('CRITICAL: wouldReplaceNonEmpty=true — auto_apply would overwrite a non-empty field.');
+    console.error('          This is a policy violation. Aborting propose path.');
+    process.exit(1);
+  }
+
   // ── GATED PROPOSE PATH ────────────────────────────────────────────────────
   // This block is only reached when --propose is explicitly passed.
   // In dry-run mode (the default), execution ends above this block.
-  // Migration 056 must be applied before --propose can succeed.
+  // Migrations 056 + 057 must be applied before --propose can succeed.
+  // The script NEVER calls apply/rollback RPCs — those are in-app admin only.
   if (flags.propose) {
-    console.log('\n*** PROPOSE MODE — inserting pending proposals ***');
-    console.log('    (Migration 056 must be applied first)');
+    console.log('\n*** PROPOSE MODE — persisting decisions via propose_field RPC ***');
+    console.log('    (Migrations 056 + 057 must be applied first)');
+    if (!flags.autoApplySafe) {
+      console.log('    (auto_apply decisions downgraded to manual_review — use --auto-apply-safe to enable)');
+    }
 
-    // Insert a parent run row per venue (simplified — full RPC contract per §2)
-    for (const venueResult of report.venues) {
-      if (venueResult.proposals.length === 0) continue;
+    let totalWrites = 0;
+    let consecutiveErrors = 0;
+    const maxWrites = flags.maxWrites > 0 ? flags.maxWrites : Infinity;
+    const errorThreshold = flags.stopOnErrorThreshold > 0 ? flags.stopOnErrorThreshold : Infinity;
 
-      // Insert parent venue_enrichment_runs row
+    outer: for (const venueResult of report.venues) {
+      if (venueResult.decisions.length === 0) continue;
+
+      // Insert parent venue_enrichment_runs row.
       const { data: runData, error: runError } = await supabase
         .from('venue_enrichment_runs')
         .insert({
@@ -514,20 +639,48 @@ async function main(): Promise<void> {
 
       if (runError || !runData) {
         console.warn(`  [run insert] failed for venue ${venueResult.venueId}: ${runError?.message ?? 'no data'}`);
+        consecutiveErrors++;
+        if (consecutiveErrors >= errorThreshold) {
+          console.error(`  Consecutive error threshold (${flags.stopOnErrorThreshold}) reached — aborting.`);
+          break outer;
+        }
         continue;
       }
 
       const runId = (runData as { id: string }).id;
+      consecutiveErrors = 0;
+      let venueWrites = 0;
 
-      // Insert each proposal via propose_field RPC
-      for (const proposal of venueResult.proposals) {
-        await writeProposeRpc(runId, venueResult.venueId, proposal);
+      // Persist each decision via the extended propose_field RPC.
+      for (const decision of venueResult.decisions) {
+        if (totalWrites >= maxWrites) {
+          console.log(`  --max-writes=${flags.maxWrites} reached — stopping.`);
+          break outer;
+        }
+        try {
+          await writeDecisionRpc(
+            runId,
+            venueResult.venueId,
+            venueResult.website,
+            decision,
+            flags.autoApplySafe,
+          );
+          totalWrites++;
+          venueWrites++;
+          consecutiveErrors = 0;
+        } catch {
+          consecutiveErrors++;
+          if (consecutiveErrors >= errorThreshold) {
+            console.error(`  Consecutive error threshold (${flags.stopOnErrorThreshold}) reached — aborting.`);
+            break outer;
+          }
+        }
       }
 
-      console.log(`  [proposed] ${venueResult.name}: ${venueResult.proposals.length} proposal(s)`);
+      console.log(`  [proposed] ${venueResult.name}: ${venueWrites} decision(s) persisted`);
     }
 
-    console.log('\n*** PROPOSE COMPLETE ***');
+    console.log(`\n*** PROPOSE COMPLETE — ${totalWrites} total writes ***`);
   } else {
     console.log('\n=== DRY RUN COMPLETE (no DB writes) ===');
   }

@@ -1,10 +1,20 @@
 /**
  * Admin — Website Enrichment Review screen.
  *
- * Shows pending AND approved-but-unapplied field proposals extracted from venue
- * websites, grouped by venue. Admins can Approve & Apply (write to DB) or Reject
- * (with notes) each proposal. Approved-but-unapplied rows show Retry Apply and
- * Return to Pending.
+ * Shows pending AND approved-but-unapplied manual-review field proposals extracted
+ * from venue websites, grouped by venue. Admins can Approve & Apply (write to DB)
+ * or Reject (with notes) each proposal. Approved-but-unapplied rows show Retry Apply
+ * and Return to Pending.
+ *
+ * Phase 4 additions:
+ * - Tab navigation: Manual Review | Auto-Apply | Audit | Rollback.
+ * - Run Summary strip (counts from useEnrichmentSummary) above all tabs.
+ * - Exception filters on the manual-review tab (conflict, low-confidence, field, reason-code).
+ * - Decision-reason chips on every proposal card.
+ * - Description proposals from the engine are prefilled with the generated draft text.
+ * - Auto-Apply tab: safe-candidate preview + sequential batch driver.
+ * - Audit tab: write ledger + engine decision history (auto_reject / report_only).
+ * - Rollback tab: run selector + write preview + confirmed rollback.
  *
  * SECURITY:
  * - Authenticated supabase client only — never service-role.
@@ -17,8 +27,9 @@
  *
  * FIELD-TYPE RULES:
  * - Scalars (phone/email/website/price_range): Approve & Apply + Reject.
- * - description: admin must enter ORIGINAL rewritten text; Apply disabled until
- *   non-empty; proposed/evidence shown as reference only.
+ * - description: engine draft prefilled when decision='manual_review'; admin
+ *   must verify/edit before applying. Existing "must differ from extracted text"
+ *   guard still applies at the DB level.
  * - opening_hours: 7-day schedule rendered; explicit Alert confirmation required.
  * - booking_url: NO Apply button (no target column); only Leave Pending or Reject.
  *
@@ -48,12 +59,29 @@ import {
   useResolveProposal,
 } from '@/hooks/useEnrichmentProposals';
 import type { ProposalRow } from '@/hooks/useEnrichmentProposals';
+import { REASON_LABELS } from '@/types/enrichmentDecision';
+import type { ReasonCode } from '@/types/enrichmentDecision';
+import { EnrichmentSummary } from '@/components/admin/EnrichmentSummary';
+import { AutoApplyBatchPanel } from '@/components/admin/AutoApplyBatchPanel';
+import { EnrichmentAudit } from '@/components/admin/EnrichmentAudit';
+import { EnrichmentRollback } from '@/components/admin/EnrichmentRollback';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
+const TAB_LABELS: Record<ViewTab, string> = {
+  review:      'Review',
+  'auto-apply': 'Auto-Apply',
+  audit:       'Audit',
+  rollback:    'Rollback',
+};
+
+const CHAR_LIMIT = 500;
+
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+type ViewTab = 'review' | 'auto-apply' | 'audit' | 'rollback';
 
 type VenueGroup = {
   venueId: string;
@@ -64,7 +92,7 @@ type VenueGroup = {
 type OpeningDayDisplay = {
   day_of_week: number;
   is_closed: boolean;
-  intervals: { opens: string; closes: string }[];
+  intervals?: { opens: string; closes: string }[];
 };
 
 type OpeningWeekDisplay = {
@@ -128,6 +156,30 @@ function enrichmentErrorMessage(err: unknown): string {
   return msg || 'Unknown error. Please try again.';
 }
 
+/**
+ * Sanitise the engine-generated description text before prefilling the editor.
+ * - Trims leading/trailing whitespace.
+ * - Collapses 3 or more consecutive newlines to exactly 2 (one blank line).
+ */
+function sanitiseGeneratedText(text: string): string {
+  return text.trim().replace(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * Returns the initial text to show in the description editor for a proposal.
+ * For engine proposals (decision='manual_review'), prefill with the generated
+ * draft so the admin can review/edit rather than write from scratch.
+ * For legacy or non-engine proposals (decision null/undefined), start blank.
+ */
+function descriptionInitial(proposal: ProposalRow): string {
+  if (proposal.field !== 'description') return '';
+  if (proposal.decision_engine_version && proposal.decision_engine_version !== 'legacy-pilot') {
+    const raw = scalarValue(proposal.proposed_value);
+    if (raw && raw !== '—') return sanitiseGeneratedText(raw);
+  }
+  return '';
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function EnrichmentScreen() {
@@ -136,7 +188,10 @@ export default function EnrichmentScreen() {
   const profile       = useAuthStore((s) => s.profile);
   const authIsLoading = useAuthStore((s) => s.isLoading);
 
-  // ── Data ─────────────────────────────────────────────────────────────────
+  // ── Tab state ─────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<ViewTab>('review');
+
+  // ── Data (review tab) ─────────────────────────────────────────────────────
   const {
     data: proposals = [],
     isLoading: proposalsLoading,
@@ -144,6 +199,12 @@ export default function EnrichmentScreen() {
   } = useReviewableProposals(isAdmin);
 
   const { approveAndApply, retryApply, returnToPending, reject } = useResolveProposal();
+
+  // ── Filters (review tab) ──────────────────────────────────────────────────
+  const [filterConflict,       setFilterConflict]       = useState(false);
+  const [filterLowConf,        setFilterLowConf]        = useState(false);
+  const [filterHasCurrent,     setFilterHasCurrent]     = useState(false);
+  const [filterField,          setFilterField]          = useState<string | null>(null);
 
   // ── Local UI state ────────────────────────────────────────────────────────
 
@@ -153,7 +214,7 @@ export default function EnrichmentScreen() {
   const [rejectNote,         setRejectNote]         = useState('');
 
   // Description rewrite text — per proposal ID.
-  // Admin must type ORIGINAL text here; the input is NOT prefilled with evidence.
+  // Lazily prefilled for engine proposals (decision='manual_review'); starts empty otherwise.
   const [descriptionTexts, setDescriptionTexts] = useState<Record<string, string>>({});
 
   // Per-proposal inline error messages — set on mutation error, cleared on retry.
@@ -161,10 +222,10 @@ export default function EnrichmentScreen() {
   const [proposalErrors, setProposalErrors] = useState<Record<string, string>>({});
 
   // Which proposal is in-flight (for per-button loading state)
-  const [pendingApproveId,     setPendingApproveId]     = useState<string | null>(null);
-  const [pendingRetryId,       setPendingRetryId]       = useState<string | null>(null);
-  const [pendingReturnId,      setPendingReturnId]      = useState<string | null>(null);
-  const [pendingRejectId,      setPendingRejectId]      = useState<string | null>(null);
+  const [pendingApproveId,  setPendingApproveId]  = useState<string | null>(null);
+  const [pendingRetryId,    setPendingRetryId]    = useState<string | null>(null);
+  const [pendingReturnId,   setPendingReturnId]   = useState<string | null>(null);
+  const [pendingRejectId,   setPendingRejectId]   = useState<string | null>(null);
 
   // Confirmation modal target — set when the admin presses "Approve & Apply".
   // No write runs until the admin presses "Apply live change" inside the modal.
@@ -173,10 +234,21 @@ export default function EnrichmentScreen() {
     appliedText?: string;
   } | null>(null);
 
-  // ── Group proposals by venue ──────────────────────────────────────────────
+  // ── Filtered + grouped proposals ──────────────────────────────────────────
+
+  const filteredProposals = useMemo((): ProposalRow[] => {
+    return proposals.filter((p) => {
+      if (filterConflict   && !p.conflicts_existing) return false;
+      if (filterLowConf    && p.confidence !== 'low') return false;
+      if (filterHasCurrent && !p.current_value)       return false;
+      if (filterField      && p.field !== filterField) return false;
+      return true;
+    });
+  }, [proposals, filterConflict, filterLowConf, filterHasCurrent, filterField]);
+
   const groupedProposals = useMemo((): VenueGroup[] => {
     const groups: Record<string, VenueGroup> = {};
-    for (const p of proposals) {
+    for (const p of filteredProposals) {
       if (!groups[p.venue_id]) {
         groups[p.venue_id] = {
           venueId:   p.venue_id,
@@ -187,6 +259,11 @@ export default function EnrichmentScreen() {
       groups[p.venue_id].proposals.push(p);
     }
     return Object.values(groups);
+  }, [filteredProposals]);
+
+  // Available fields for the field filter
+  const availableFields = useMemo(() => {
+    return Array.from(new Set(proposals.map(p => p.field)));
   }, [proposals]);
 
   // ── Action handlers ───────────────────────────────────────────────────────
@@ -515,74 +592,201 @@ export default function EnrichmentScreen() {
         )}
       </View>
 
-      {/* ── Loading ───────────────────────────────────────────────────────── */}
-      {proposalsLoading && (
-        <ActivityIndicator color="#FF6B6B" className="mt-8" />
-      )}
+      {/* ── Summary strip (always visible, run-independent) ───────────────── */}
+      <EnrichmentSummary isAdmin={isAdmin} />
 
-      {/* ── Query error ───────────────────────────────────────────────────── */}
-      {proposalsError && !proposalsLoading && (
-        <View className="items-center py-12 px-6">
-          <Text className="text-charcoal font-bold text-center">
-            Couldn&apos;t load proposals
-          </Text>
-          <Text className="text-grey text-sm text-center mt-1">
-            Check your admin permissions or try signing out and back in.
-          </Text>
-        </View>
-      )}
+      {/* ── Tab bar ───────────────────────────────────────────────────────── */}
+      <View className="flex-row px-4 pb-2 gap-1">
+        {(['review', 'auto-apply', 'audit', 'rollback'] as ViewTab[]).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            testID={`tab-${tab}`}
+            className={`flex-1 py-2 rounded-xl items-center ${
+              activeTab === tab ? 'bg-sky' : 'bg-sandDark'
+            }`}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text className={`text-xs font-bold ${activeTab === tab ? 'text-white' : 'text-charcoal'}`}>
+              {TAB_LABELS[tab]}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
-      {/* ── Empty state ───────────────────────────────────────────────────── */}
-      {!proposalsLoading && !proposalsError && groupedProposals.length === 0 && (
-        <View className="items-center py-12">
-          <Text className="text-grey">No pending enrichment proposals.</Text>
-        </View>
-      )}
-
-      {/* ── Proposal list grouped by venue ────────────────────────────────── */}
-      {!proposalsLoading && !proposalsError && groupedProposals.length > 0 && (
-        <ScrollView className="flex-1" contentContainerClassName="px-4 pb-8">
-          <Text className="text-grey font-bold uppercase text-xs mb-3 mt-1">
-            Pending enrichment proposals
-          </Text>
-
-          {groupedProposals.map((group) => (
-            <View key={group.venueId} className="mb-6">
-
-              {/* Venue name header */}
-              <View className="bg-sky/20 rounded-xl px-4 py-2 mb-2">
-                <Text className="text-charcoal font-extrabold text-base">
-                  {group.venueName}
-                </Text>
-              </View>
-
-              {/* Proposal cards for this venue */}
-              {group.proposals.map((proposal) => (
-                <ProposalCard
-                  key={proposal.id}
-                  proposal={proposal}
-                  descriptionText={descriptionTexts[proposal.id] ?? ''}
-                  onDescriptionChange={(text) =>
-                    setDescriptionTexts((prev) => ({ ...prev, [proposal.id]: text }))
-                  }
-                  proposalError={proposalErrors[proposal.id] ?? ''}
-                  pendingApproveId={pendingApproveId}
-                  pendingRetryId={pendingRetryId}
-                  pendingReturnId={pendingReturnId}
-                  pendingRejectId={pendingRejectId}
-                  onApproveApply={handleApproveApply}
-                  onOpeningHoursApply={handleOpeningHoursApply}
-                  onRetryApply={handleRetryApply}
-                  onReturnToPending={handleReturnToPending}
-                  onReject={openRejectModal}
+      {/* ── Manual Review tab ─────────────────────────────────────────────── */}
+      {activeTab === 'review' && (
+        <>
+          {/* Exception filters */}
+          {proposals.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              className="px-4 pb-2"
+              contentContainerClassName="gap-2"
+            >
+              <FilterChip
+                testID="filter-conflict"
+                label="Conflict"
+                active={filterConflict}
+                onPress={() => setFilterConflict(v => !v)}
+              />
+              <FilterChip
+                testID="filter-low-confidence"
+                label="Low confidence"
+                active={filterLowConf}
+                onPress={() => setFilterLowConf(v => !v)}
+              />
+              <FilterChip
+                testID="filter-has-current"
+                label="Has existing value"
+                active={filterHasCurrent}
+                onPress={() => setFilterHasCurrent(v => !v)}
+              />
+              {availableFields.map((f) => (
+                <FilterChip
+                  key={f}
+                  testID={`filter-field-${f}`}
+                  label={fieldLabel(f)}
+                  active={filterField === f}
+                  onPress={() => setFilterField(prev => prev === f ? null : f)}
                 />
               ))}
+            </ScrollView>
+          )}
+
+          {/* ── Loading ────────────────────────────────────────────────────── */}
+          {proposalsLoading && (
+            <ActivityIndicator color="#FF6B6B" className="mt-8" />
+          )}
+
+          {/* ── Query error ────────────────────────────────────────────────── */}
+          {proposalsError && !proposalsLoading && (
+            <View className="items-center py-12 px-6">
+              <Text className="text-charcoal font-bold text-center">
+                Couldn&apos;t load proposals
+              </Text>
+              <Text className="text-grey text-sm text-center mt-1">
+                Check your admin permissions or try signing out and back in.
+              </Text>
             </View>
-          ))}
-        </ScrollView>
+          )}
+
+          {/* ── Empty state ────────────────────────────────────────────────── */}
+          {!proposalsLoading && !proposalsError && groupedProposals.length === 0 && (
+            <View className="items-center py-12">
+              <Text className="text-grey">
+                {proposals.length > 0
+                  ? 'No proposals match the active filters.'
+                  : 'No pending enrichment proposals.'}
+              </Text>
+            </View>
+          )}
+
+          {/* ── Proposal list grouped by venue ─────────────────────────────── */}
+          {!proposalsLoading && !proposalsError && groupedProposals.length > 0 && (
+            <ScrollView className="flex-1" contentContainerClassName="px-4 pb-8">
+              <Text className="text-grey font-bold uppercase text-xs mb-3 mt-1">
+                Manual review proposals
+              </Text>
+
+              {groupedProposals.map((group) => (
+                <View key={group.venueId} className="mb-6">
+
+                  {/* Venue name header */}
+                  <View className="bg-sky/20 rounded-xl px-4 py-2 mb-2">
+                    <Text className="text-charcoal font-extrabold text-base">
+                      {group.venueName}
+                    </Text>
+                  </View>
+
+                  {/* Proposal cards for this venue */}
+                  {group.proposals.map((proposal) => (
+                    <ProposalCard
+                      key={proposal.id}
+                      proposal={proposal}
+                      descriptionText={
+                        descriptionTexts[proposal.id] ??
+                        descriptionInitial(proposal)
+                      }
+                      onDescriptionChange={(text) =>
+                        setDescriptionTexts((prev) => ({ ...prev, [proposal.id]: text }))
+                      }
+                      proposalError={proposalErrors[proposal.id] ?? ''}
+                      pendingApproveId={pendingApproveId}
+                      pendingRetryId={pendingRetryId}
+                      pendingReturnId={pendingReturnId}
+                      pendingRejectId={pendingRejectId}
+                      onApproveApply={handleApproveApply}
+                      onOpeningHoursApply={handleOpeningHoursApply}
+                      onRetryApply={handleRetryApply}
+                      onReturnToPending={handleReturnToPending}
+                      onReject={openRejectModal}
+                    />
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </>
+      )}
+
+      {/* ── Auto-Apply tab ────────────────────────────────────────────────── */}
+      {activeTab === 'auto-apply' && (
+        <AutoApplyBatchPanel isAdmin={isAdmin} />
+      )}
+
+      {/* ── Audit tab ─────────────────────────────────────────────────────── */}
+      {activeTab === 'audit' && (
+        <EnrichmentAudit isAdmin={isAdmin} />
+      )}
+
+      {/* ── Rollback tab ──────────────────────────────────────────────────── */}
+      {activeTab === 'rollback' && (
+        <EnrichmentRollback isAdmin={isAdmin} />
       )}
 
     </SafeAreaView>
+  );
+}
+
+// ── FilterChip ────────────────────────────────────────────────────────────────
+
+function FilterChip({
+  testID,
+  label,
+  active,
+  onPress,
+}: {
+  testID: string;
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      testID={testID}
+      className={`rounded-full px-3 py-1.5 ${active ? 'bg-sky' : 'bg-sandDark'}`}
+      onPress={onPress}
+    >
+      <Text className={`text-xs font-bold ${active ? 'text-white' : 'text-charcoal'}`}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+// ── ReasonChips ───────────────────────────────────────────────────────────────
+
+function ReasonChips({ codes }: { codes: ReasonCode[] }) {
+  if (!codes || codes.length === 0) return null;
+  return (
+    <View testID="decision-reason-chips" className="flex-row flex-wrap gap-1 mt-1 mb-1">
+      {codes.map((code) => (
+        <View key={code} className="bg-sandDark rounded-full px-2 py-0.5">
+          <Text className="text-grey text-xs">{REASON_LABELS[code] ?? code}</Text>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -673,7 +877,19 @@ function ProposalCard({
             <Text className="text-sky text-xs font-bold">NO TARGET COLUMN</Text>
           </View>
         )}
+
+        {/* ENGINE VERSION — shown when a decision has been computed */}
+        {proposal.decision_engine_version && proposal.decision_engine_version !== 'legacy-pilot' && (
+          <View className="bg-success/10 rounded-full px-2 py-0.5">
+            <Text className="text-success text-xs">engine</Text>
+          </View>
+        )}
       </View>
+
+      {/* ── Decision reason chips ────────────────────────────────────────── */}
+      {proposal.decision_reasons && proposal.decision_reasons.length > 0 && (
+        <ReasonChips codes={proposal.decision_reasons} />
+      )}
 
       {/* ── Proposed value ───────────────────────────────────────────────── */}
       <FieldValueDisplay proposal={proposal} />
@@ -789,9 +1005,9 @@ function FieldValueDisplay({ proposal }: { proposal: ProposalRow }) {
         {sorted.map((day) => (
           <Text key={day.day_of_week} className="text-charcoal text-xs">
             {DAY_NAMES[day.day_of_week] ?? '?'}:{' '}
-            {day.is_closed || day.intervals.length === 0
+            {day.is_closed || !day.intervals || day.intervals.length === 0
               ? 'Closed'
-              : day.intervals.map((iv) => `${iv.opens}–${iv.closes}`).join(', ')}
+              : (day.intervals ?? []).map((iv) => `${iv.opens}–${iv.closes}`).join(', ')}
           </Text>
         ))}
         {week.seasonal_notes && (
@@ -873,30 +1089,54 @@ function DescriptionActions({
   onApproveApply: (proposal: ProposalRow, appliedText: string) => void;
   onReject: (id: string) => void;
 }) {
-  const hasText = descriptionText.trim().length > 0;
+  const hasText  = descriptionText.trim().length > 0;
   const disabled = !hasText || anyPending;
+  const charCount = descriptionText.length;
+  const isEngineDraft = !!(proposal.decision_engine_version && proposal.decision_engine_version !== 'legacy-pilot') && scalarValue(proposal.proposed_value) !== '—';
 
   return (
     <View className="mt-3">
       <View className="bg-sandDark rounded-xl px-3 py-2 mb-2">
-        <Text className="text-charcoal text-xs font-bold mb-1">
-          Write your own description below
-        </Text>
-        <Text className="text-grey text-xs leading-4">
-          You MUST write an ORIGINAL summary. Do not copy the extracted text above
-          (copyright). The text box is intentionally blank — reference the evidence
-          and source URL, then write in your own words.
-        </Text>
+        {isEngineDraft ? (
+          <>
+            <Text className="text-charcoal text-xs font-bold mb-1">
+              Engine draft — review and edit before applying
+            </Text>
+            <Text className="text-grey text-xs leading-4">
+              This text was composed by PlayPlanner from verified facts. Edit it carefully.
+              The text MUST NOT match the raw extracted evidence (copyright). The DB re-checks
+              this guard at apply time.
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text className="text-charcoal text-xs font-bold mb-1">
+              Write your own description below
+            </Text>
+            <Text className="text-grey text-xs leading-4">
+              You MUST write an ORIGINAL summary. Do not copy the extracted text above
+              (copyright). The text box is intentionally blank — reference the evidence
+              and source URL, then write in your own words.
+            </Text>
+          </>
+        )}
       </View>
 
       <TextInput
         testID={`description-input-${proposal.id}`}
-        className="border border-greyLighter rounded-xl px-3 py-2 text-charcoal min-h-[80px] mb-2"
+        className="border border-greyLighter rounded-xl px-3 py-2 text-charcoal min-h-[80px] mb-1"
         multiline
         placeholder="Write an original description for this venue..."
         value={descriptionText}
         onChangeText={onDescriptionChange}
+        maxLength={CHAR_LIMIT}
       />
+      <Text
+        testID={`description-char-count-${proposal.id}`}
+        className={`text-xs text-right mb-2 ${charCount > CHAR_LIMIT * 0.9 ? 'text-error' : 'text-grey'}`}
+      >
+        {charCount}/{CHAR_LIMIT}
+      </Text>
 
       <View className="flex-row gap-2">
         <TouchableOpacity
@@ -1055,9 +1295,9 @@ function ConfirmModalNewValue({
         {sorted.map((day) => (
           <Text key={day.day_of_week} className="text-charcoal text-xs">
             {DAY_NAMES[day.day_of_week] ?? '?'}:{' '}
-            {day.is_closed || day.intervals.length === 0
+            {day.is_closed || !day.intervals || day.intervals.length === 0
               ? 'Closed'
-              : day.intervals.map((iv) => `${iv.opens}–${iv.closes}`).join(', ')}
+              : (day.intervals ?? []).map((iv) => `${iv.opens}–${iv.closes}`).join(', ')}
           </Text>
         ))}
         {week.seasonal_notes && (
