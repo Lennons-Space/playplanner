@@ -9,6 +9,7 @@
 import { renderRunJson, renderRunCsv, renderRunHtml } from '../report';
 import type { RunReport } from '../orchestrate';
 import type { ProposalDraft } from '../../../../types/webEnrichment';
+import type { EnrichmentBatchSummary } from '../../../../types/enrichmentDecision';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,16 @@ const normalDraft: ProposalDraft = {
   conflicts_existing: false,
 };
 
+const emptyBatchSummary: EnrichmentBatchSummary = {
+  venuesProcessed: 2,
+  safeChangesReady: 0,
+  exceptions: 0,
+  suppressed: 0,
+  failures: 0,
+  wouldReplaceNonEmpty: false,
+  fieldsAffected: [],
+};
+
 function makeReport(overrides: Partial<RunReport> = {}): RunReport {
   return {
     runLabel: 'test-run-2026-06-22',
@@ -55,6 +66,7 @@ function makeReport(overrides: Partial<RunReport> = {}): RunReport {
         outcome: 'extracted',
         pages: [{ url: 'https://venue.co.uk/', httpStatus: 200, contentSha256: 'abc', bytes: 1000, fetchedAt: AT }],
         proposals: [normalDraft],
+        decisions: [],
       },
       {
         venueId: 'v-skipped',
@@ -63,6 +75,7 @@ function makeReport(overrides: Partial<RunReport> = {}): RunReport {
         outcome: 'skipped_no_website',
         pages: [],
         proposals: [],
+        decisions: [],
       },
     ],
     summary: {
@@ -71,6 +84,7 @@ function makeReport(overrides: Partial<RunReport> = {}): RunReport {
       totalProposals: 1,
       proposalsByConfidence: { high: 1, medium: 0, low: 0 },
     },
+    batchSummary: emptyBatchSummary,
     ...overrides,
   };
 }
@@ -103,6 +117,7 @@ describe('renderRunJson', () => {
           outcome: 'extracted',
           pages: [],
           proposals: [xssDraft],
+          decisions: [],
         },
       ],
       summary: { venuesProcessed: 1, byOutcome: { extracted: 1 }, totalProposals: 1, proposalsByConfidence: { high: 0, medium: 1, low: 0 } },
@@ -151,6 +166,7 @@ describe('renderRunCsv', () => {
           outcome: 'extracted',
           pages: [],
           proposals: [normalDraft],
+          decisions: [],
         },
       ],
       summary: { venuesProcessed: 1, byOutcome: { extracted: 1 }, totalProposals: 1, proposalsByConfidence: { high: 1, medium: 0, low: 0 } },
@@ -186,6 +202,7 @@ describe('renderRunHtml (XSS + structure)', () => {
           outcome: 'extracted',
           pages: [],
           proposals: [xssDraft],
+          decisions: [],
         },
       ],
       summary: { venuesProcessed: 1, byOutcome: { extracted: 1 }, totalProposals: 1, proposalsByConfidence: { high: 0, medium: 1, low: 0 } },
@@ -207,6 +224,7 @@ describe('renderRunHtml (XSS + structure)', () => {
           outcome: 'extracted',
           pages: [],
           proposals: [],
+          decisions: [],
         },
       ],
       summary: { venuesProcessed: 1, byOutcome: { extracted: 1 }, totalProposals: 0, proposalsByConfidence: { high: 0, medium: 0, low: 0 } },
@@ -226,6 +244,7 @@ describe('renderRunHtml (XSS + structure)', () => {
           outcome: 'extracted',
           pages: [],
           proposals: [xssDraft],
+          decisions: [],
         },
       ],
       summary: { venuesProcessed: 1, byOutcome: { extracted: 1 }, totalProposals: 1, proposalsByConfidence: { high: 0, medium: 1, low: 0 } },
@@ -249,6 +268,7 @@ describe('renderRunHtml (XSS + structure)', () => {
           outcome: 'extracted',
           pages: [],
           proposals: [jsDraft],
+          decisions: [],
         },
       ],
       summary: { venuesProcessed: 1, byOutcome: { extracted: 1 }, totalProposals: 1, proposalsByConfidence: { high: 1, medium: 0, low: 0 } },
@@ -273,9 +293,10 @@ describe('renderRunHtml (XSS + structure)', () => {
     expect(html).toContain('Skipped Venue');
   });
 
-  it('shows "No proposals" for zero-proposal venues', () => {
+  it('shows "No decisions" for zero-proposal/zero-decision venues', () => {
     const html = renderRunHtml(makeReport());
-    expect(html).toContain('No proposals');
+    // Skipped Venue has no decisions — the decision section renders the no-decisions message.
+    expect(html).toContain('No decisions');
   });
 
   it('shows outcome in each per-venue section', () => {

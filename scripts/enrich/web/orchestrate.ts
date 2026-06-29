@@ -22,10 +22,13 @@ import type {
   ProposalDraft,
   WebFetchResult,
 } from '../../../types/webEnrichment';
+import type { EnrichmentBatchSummary, FieldDecision } from '../../../types/enrichmentDecision';
+import type { WebField } from '../../../types/webEnrichment';
 import { extractCandidates } from './htmlExtract';
 import { isMeaningfulDescription } from './fields';
 import { buildProposals } from './proposals';
 import { isSafeUrl, sameRegistrableDomain } from './urlSafety';
+import { makeFieldDecisions, type VenueFacts } from './decision';
 
 // ── Method-rank table (jsonld > microdata > meta > heuristic) ─────────────────
 
@@ -60,6 +63,10 @@ export interface VenueInput {
   venueId: string;
   name: string;
   website: string | null;
+  /** Category slug from the categories table (for description composition). */
+  categorySlug?: string | null;
+  /** City/town from the venue row (for description composition). */
+  city?: string | null;
 }
 
 export interface VenueRunResult {
@@ -70,6 +77,8 @@ export interface VenueRunResult {
   pages: PageFetch[];
   note?: string;
   proposals: ProposalDraft[];
+  /** Per-field decisions from the decision engine (all candidates, not best-only). */
+  decisions: FieldDecision[];
 }
 
 export interface RunSummary {
@@ -84,6 +93,7 @@ export interface RunReport {
   generatedAt: string;
   venues: VenueRunResult[];
   summary: RunSummary;
+  batchSummary: EnrichmentBatchSummary;
 }
 
 // ── Injected deps for orchestrateVenue ───────────────────────────────────────
@@ -208,6 +218,7 @@ export async function orchestrateVenue(
       outcome: 'skipped_no_website',
       pages: [],
       proposals: [],
+      decisions: [],
     };
   }
 
@@ -229,6 +240,7 @@ export async function orchestrateVenue(
       pages: [],
       note: err instanceof Error ? err.message : String(err),
       proposals: [],
+      decisions: [],
     };
   }
 
@@ -241,6 +253,7 @@ export async function orchestrateVenue(
       pages: [],
       note: landingResult.note,
       proposals: [],
+      decisions: [],
     };
   }
 
@@ -276,7 +289,22 @@ export async function orchestrateVenue(
     }
   }
 
-  // ── Step 3: select best candidates and build proposals ────────────────────
+  // ── Step 3: decision engine — feed ALL candidates (not best-only) ────────
+
+  const venueFacts: VenueFacts = {
+    name: venue.name,
+    categorySlug: venue.categorySlug ?? null,
+    city: venue.city ?? null,
+  };
+
+  const decisions = makeFieldDecisions({
+    allCandidates,
+    snapshot,
+    venueFacts,
+    venueWebsite: venue.website,
+  });
+
+  // ── Step 4: legacy best-candidate proposals (kept for backwards compat) ───
 
   // FIX 4: filter out description candidates that are just the venue name
   // (or a trivial variation of it) before ranking/dedup. This prevents
@@ -297,6 +325,7 @@ export async function orchestrateVenue(
     outcome: 'extracted',
     pages: allPages,
     proposals,
+    decisions,
   };
 }
 
@@ -349,16 +378,18 @@ export async function runEnrichment(
   }
 
   const summary = buildSummary(results);
+  const batchSummary = buildBatchSummary(results);
 
   return {
     runLabel,
     generatedAt: deps.retrievedAt,
     venues: results,
     summary,
+    batchSummary,
   };
 }
 
-// ── Summary builder ───────────────────────────────────────────────────────────
+// ── Summary builders ──────────────────────────────────────────────────────────
 
 function buildSummary(results: VenueRunResult[]): RunSummary {
   const byOutcome: Partial<Record<VenueOutcome, number>> = {};
@@ -378,5 +409,53 @@ function buildSummary(results: VenueRunResult[]): RunSummary {
     byOutcome,
     totalProposals,
     proposalsByConfidence,
+  };
+}
+
+/**
+ * Build the EnrichmentBatchSummary from all venue decisions.
+ * This is the summary shown in the admin confirm dialog before a batch apply.
+ */
+function buildBatchSummary(results: VenueRunResult[]): EnrichmentBatchSummary {
+  let safeChangesReady = 0;
+  let suppressed = 0;
+  let exceptions = 0;
+  let failures = 0;
+  let wouldReplaceNonEmpty = false;
+  const fieldsAffectedSet = new Set<WebField>();
+
+  for (const r of results) {
+    if (r.outcome !== 'extracted') {
+      failures++;
+      continue;
+    }
+    for (const d of r.decisions) {
+      switch (d.decision) {
+        case 'auto_apply':
+          safeChangesReady++;
+          fieldsAffectedSet.add(d.field);
+          // The global policy forbids replacing non-empty fields — if this fires,
+          // it is a critical invariant violation.
+          if (d.chosen?.conflictsExisting) wouldReplaceNonEmpty = true;
+          break;
+        case 'manual_review':
+          exceptions++;
+          break;
+        case 'auto_reject':
+        case 'report_only':
+          suppressed++;
+          break;
+      }
+    }
+  }
+
+  return {
+    venuesProcessed: results.length,
+    safeChangesReady,
+    suppressed,
+    exceptions,
+    failures,
+    wouldReplaceNonEmpty,
+    fieldsAffected: [...fieldsAffectedSet],
   };
 }
