@@ -14,7 +14,7 @@
     "type-check": "tsc --noEmit",
     "enrich:dry-run": "tsx scripts/enrich/enrichVenues.ts --dry-run",
     "enrich:dry-run:single": "tsx scripts/enrich/enrichVenues.ts --dry-run --limit=1",
-    "test:db": "node supabase/tests/056_venue_website_enrichment.mjs"
+    "test:db": "node supabase/tests/056_venue_website_enrichment.mjs && node supabase/tests/057_enrichment_auto_decision.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/bricolage-grotesque": "^0.4.1",
