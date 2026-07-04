@@ -18,6 +18,8 @@
 --   profiles, is_admin(), snapshot_current_value(), touch_updated_at().
 -- =============================================================================
 
+BEGIN;
+
 -- =============================================================================
 -- A.  Extend venue_field_proposals (all ALTER TABLE statements are idempotent)
 -- =============================================================================
@@ -49,6 +51,16 @@ alter table venue_field_proposals
 alter table venue_field_proposals
   add constraint venue_field_proposals_status_check
   check (status in ('pending','approved','rejected','applied','superseded','report_only'));
+
+-- F3 remediation: reviewed_by originated in 056 with no ON DELETE clause (defaulted
+-- to NO ACTION), blocking deletion of any admin account that has reviewed a proposal
+-- (GDPR Art.17 concern). Fixed here rather than in 056 since 056 is already applied
+-- to prod; DROP+ADD is idempotent (safe to replay).
+alter table venue_field_proposals
+  drop constraint if exists venue_field_proposals_reviewed_by_fkey;
+alter table venue_field_proposals
+  add constraint venue_field_proposals_reviewed_by_fkey
+  foreign key (reviewed_by) references profiles(id) on delete set null;
 
 -- Backfill: stamp all pre-057 rows as legacy-pilot manual_review decisions.
 -- ONLY the 5 new/decision columns are touched — status, confidence, evidence_*,
@@ -86,7 +98,7 @@ create table if not exists venue_enrichment_writes (
   new_value_hash    text,
 
   applied_mode      text check (applied_mode in ('auto','manual')),
-  applied_by        uuid references profiles(id),
+  applied_by        uuid references profiles(id) on delete set null,
   decision_reasons  jsonb not null default '[]'::jsonb,
   source_url        text,
   evidence_snapshot text,
@@ -810,3 +822,5 @@ revoke all on function apply_venue_proposal(uuid, text)  from public, anon;
 revoke all on function reject_venue_proposal(uuid, text) from public, anon;
 grant execute on function apply_venue_proposal(uuid, text)  to authenticated, service_role;
 grant execute on function reject_venue_proposal(uuid, text) to authenticated, service_role;
+
+COMMIT;

@@ -481,6 +481,46 @@ await test('propose_field new signature: grant — service_role=true, anon=false
   eq(r.rows[0].svc,  true,  'service_role: has execute on new propose_field');
 });
 
+await test('propose_field: exactly one overload exists, with 14 arguments', async () => {
+  const r = await q(`
+    select pg_get_function_identity_arguments(oid) as args
+      from pg_proc
+     where proname = 'propose_field'
+       and pronamespace = 'public'::regnamespace
+  `);
+  eq(r.rows.length, 1, 'exactly one propose_field overload exists (no ambiguity)');
+  // pg_get_function_identity_arguments includes each parameter's declared name
+  // and spells timestamptz out as "timestamp with time zone" — assert on the
+  // type list only (strip names) so the test isn't brittle to that formatting.
+  const types = r.rows[0].args.split(',').map(p => p.trim().split(' ').slice(1).join(' '));
+  eq(
+    JSON.stringify(types),
+    JSON.stringify([
+      'uuid', 'uuid', 'text', 'jsonb', 'text', 'text', 'text', 'text', 'text',
+      'boolean', 'timestamp with time zone', 'text', 'jsonb', 'text',
+    ]),
+    `the single overload has the expected 14-arg type signature (got: ${r.rows[0].args})`,
+  );
+});
+
+await test('propose_field: the old 11-arg overload no longer exists', async () => {
+  const r = await q(`
+    select pg_get_function_identity_arguments(oid) as args
+      from pg_proc
+     where proname = 'propose_field'
+       and pronamespace = 'public'::regnamespace
+  `);
+  const old11ArgTypes = JSON.stringify([
+    'uuid', 'uuid', 'text', 'jsonb', 'text', 'text', 'text', 'text', 'text',
+    'boolean', 'timestamp with time zone',
+  ]);
+  const hasOld = r.rows.some(row => {
+    const types = row.args.split(',').map(p => p.trim().split(' ').slice(1).join(' '));
+    return JSON.stringify(types) === old11ArgTypes;
+  });
+  assert(!hasOld, 'no leftover 11-arg propose_field overload (would cause ambiguous calls)');
+});
+
 // ── 3. Schema constraints ──────────────────────────────────────────────────
 await test('constraint: decision_reasons must be a JSON array (rejects object)', async () => {
   await asUid(ADMIN);
@@ -515,6 +555,48 @@ await test('constraint: status=report_only is now a valid status value', async (
     [run, v],
   );
   assert(r.rows[0].id, 'report_only status accepted');
+});
+
+await test('constraint: status_check definition lists all 6 valid status values', async () => {
+  const r = await q(`
+    select pg_get_constraintdef(oid) as def
+      from pg_constraint
+     where conrelid = 'venue_field_proposals'::regclass
+       and conname   = 'venue_field_proposals_status_check'
+  `);
+  eq(r.rows.length, 1, 'exactly one status_check constraint exists');
+  const def = r.rows[0].def;
+  for (const v of ['pending', 'approved', 'rejected', 'applied', 'superseded', 'report_only']) {
+    assert(def.includes(v), `status_check definition includes '${v}': ${def}`);
+  }
+});
+
+// ── 3b. F3/F4: reviewed_by / applied_by FK must SET NULL on profile deletion ─
+// GDPR Art.17 (right to erasure): deleting an admin account must not be blocked
+// by, nor cascade-delete, rows that merely reference it as reviewer/applier.
+await test('F3: venue_field_proposals.reviewed_by FK is ON DELETE SET NULL', async () => {
+  const r = await q(`
+    select conname, confdeltype
+      from pg_constraint
+     where conrelid  = 'venue_field_proposals'::regclass
+       and contype    = 'f'
+       and confrelid  = 'profiles'::regclass
+  `);
+  eq(r.rows.length, 1, 'exactly one FK from venue_field_proposals to profiles');
+  eq(r.rows[0].conname, 'venue_field_proposals_reviewed_by_fkey', 'FK is named as expected');
+  eq(r.rows[0].confdeltype, 'n', 'confdeltype=n (SET NULL) on reviewed_by FK');
+});
+
+await test('F4: venue_enrichment_writes.applied_by FK is ON DELETE SET NULL', async () => {
+  const r = await q(`
+    select conname, confdeltype
+      from pg_constraint
+     where conrelid  = 'venue_enrichment_writes'::regclass
+       and contype    = 'f'
+       and confrelid  = 'profiles'::regclass
+  `);
+  eq(r.rows.length, 1, 'exactly one FK from venue_enrichment_writes to profiles');
+  eq(r.rows[0].confdeltype, 'n', 'confdeltype=n (SET NULL) on applied_by FK');
 });
 
 // ── 4. Admin queue filter ──────────────────────────────────────────────────
@@ -972,6 +1054,81 @@ await test('ledger: RLS — admin sees ledger rows, non-admin sees zero', async 
   await asUid(ADMIN);
 });
 
+await test('ledger: venue_enrichment_writes full shape — columns, RLS, single policy', async () => {
+  const cols = await q(`
+    select column_name from information_schema.columns
+     where table_schema = 'public' and table_name = 'venue_enrichment_writes'
+  `);
+  const expected = [
+    'id', 'run_id', 'proposal_id', 'venue_id', 'field', 'operation',
+    'old_value', 'old_value_hash', 'new_value', 'new_value_hash',
+    'applied_mode', 'applied_by', 'decision_reasons', 'source_url',
+    'evidence_snapshot', 'applied_at', 'reverts_write_id',
+  ];
+  eq(cols.rows.length, expected.length, `column count is ${expected.length}`);
+  const names = cols.rows.map(r => r.column_name).sort();
+  eq(
+    JSON.stringify(names),
+    JSON.stringify([...expected].sort()),
+    'column names match expected set',
+  );
+
+  const rls = await q(`
+    select relrowsecurity from pg_class where oid = 'venue_enrichment_writes'::regclass
+  `);
+  eq(rls.rows[0].relrowsecurity, true, 'RLS is enabled on venue_enrichment_writes');
+
+  const policies = await q(`
+    select policyname, cmd, qual
+      from pg_policies
+     where schemaname = 'public' and tablename = 'venue_enrichment_writes'
+  `);
+  eq(policies.rows.length, 1, 'exactly one policy exists');
+  eq(policies.rows[0].policyname, 'writes_admin_select', 'policy is named writes_admin_select');
+  eq(policies.rows[0].cmd, 'SELECT', 'policy applies to SELECT only');
+  assert(policies.rows[0].qual.includes('is_admin'), 'policy USING clause calls is_admin()');
+});
+
+await test('ledger: no role (anon/authenticated/service_role/public) can INSERT/UPDATE/DELETE', async () => {
+  const roles = ['anon', 'authenticated', 'service_role', 'public'];
+  const privs = ['INSERT', 'UPDATE', 'DELETE'];
+  for (const role of roles) {
+    for (const priv of privs) {
+      const r = await q(
+        `select has_table_privilege($1, 'venue_enrichment_writes', $2) as has`,
+        [role, priv],
+      );
+      eq(r.rows[0].has, false, `${role} must NOT have ${priv} on venue_enrichment_writes`);
+    }
+  }
+});
+
+await test('grants: no PUBLIC/anon EXECUTE on any function touched by 057 (consolidated)', async () => {
+  // aclexplode grantee=0 represents the PUBLIC pseudo-role. This complements
+  // (does not replace) the per-function has_function_privilege tests above —
+  // it is a single sweep across every function 057 creates/replaces, so a
+  // future edit that accidentally re-adds a PUBLIC/anon grant to ANY of them
+  // fails here even if nobody remembers to add a dedicated test for it.
+  const r = await q(`
+    select p.proname,
+           pg_get_function_identity_arguments(p.oid) as args,
+           case when g.grantee = 0 then 'PUBLIC' else g.grantee::regrole::text end as grantee_name
+      from pg_proc p,
+           lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g
+     where p.pronamespace = 'public'::regnamespace
+       and p.proname = any(array[
+             '_enrichment_apply_write', 'apply_venue_proposal',
+             'auto_apply_venue_proposal', 'rollback_enrichment_run', 'propose_field'
+           ])
+       and g.privilege_type = 'EXECUTE'
+       and (g.grantee = 0 or g.grantee::regrole::text = 'anon')
+  `);
+  eq(
+    r.rows.length, 0,
+    `no PUBLIC/anon EXECUTE grants expected, found: ${JSON.stringify(r.rows)}`,
+  );
+});
+
 // ── 20. 056 grant matrix still intact after 057 ───────────────────────────
 await test('056 grants unchanged: apply_venue_proposal authenticated=true service_role=true', async () => {
   const sig = 'public.apply_venue_proposal(uuid, text)';
@@ -1014,6 +1171,64 @@ await test('056 compat: apply_venue_proposal still raises not_approved for pendi
     /not_approved/,
     '056 behaviour: not_approved still raised',
   );
+});
+
+// ── 22. F3/F4 behavioural regression: deleting the referenced admin must NOT
+//        be blocked by a NO ACTION FK, and must SET NULL rather than error ──
+// These are the real regression tests for the F3/F4 fixes — the earlier
+// pg_constraint/confdeltype checks only prove the schema says SET NULL; these
+// prove the DELETE actually succeeds and the dependent row survives with NULL.
+await test('F3 behavioural: deleting a profile who reviewed a proposal sets reviewed_by NULL', async () => {
+  const reviewerId = '33333333-3333-3333-3333-333333333333';
+  await q(`insert into profiles (id, is_admin) values ($1, true)`, [reviewerId]);
+  await asUid(reviewerId);
+
+  const v   = await newVenue();
+  const run = await newRun(v);
+  const id  = await propose(run, v, 'phone', { v: '+447700900100' });
+  await approve(id);
+  await q(`select apply_venue_proposal($1)`, [id]);
+
+  const before = await q(
+    `select reviewed_by from venue_field_proposals where id=$1`, [id],
+  );
+  eq(before.rows[0].reviewed_by, reviewerId, 'reviewed_by set to the reviewing admin');
+
+  // The regression check: this DELETE must succeed (not raise a FK violation).
+  await q(`delete from profiles where id=$1`, [reviewerId]);
+
+  const after = await q(
+    `select reviewed_by from venue_field_proposals where id=$1`, [id],
+  );
+  eq(after.rows.length, 1, 'proposal row still exists after reviewer profile deleted');
+  eq(after.rows[0].reviewed_by, null, 'reviewed_by is NULL after reviewer profile deleted');
+
+  await asUid(ADMIN);
+});
+
+await test('F4 behavioural: deleting a profile who applied a write sets applied_by NULL', async () => {
+  const applierId = '44444444-4444-4444-4444-444444444444';
+  await q(`insert into profiles (id, is_admin) values ($1, true)`, [applierId]);
+  await asUid(applierId);
+
+  const v   = await newVenue();
+  const run = await newRun(v);
+  const id  = await propose(run, v, 'phone', { v: '+447700900101' });
+  await setDecision(id, 'auto_apply');
+  await q(`select auto_apply_venue_proposal($1)`, [id]);
+
+  const rows = await ledgerRowsFor(id);
+  eq(rows.length, 1, 'one ledger row created by auto-apply');
+  eq(rows[0].applied_by, applierId, 'applied_by set to the applying admin');
+
+  // The regression check: this DELETE must succeed (not raise a FK violation).
+  await q(`delete from profiles where id=$1`, [applierId]);
+
+  const after = await ledgerRowsFor(id);
+  eq(after.length, 1, 'ledger row still exists after applier profile deleted');
+  eq(after[0].applied_by, null, 'applied_by is NULL after applier profile deleted');
+
+  await asUid(ADMIN);
 });
 
 // ── Summary ────────────────────────────────────────────────────────────────

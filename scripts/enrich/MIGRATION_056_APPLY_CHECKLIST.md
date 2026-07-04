@@ -5,6 +5,11 @@ human-approved procedure. Do **not** run `--propose` / `--apply` at any point du
 migration validation — proposal-writing is a *separate* step that happens only after
 this checklist and the DPIA sign-off are both complete.
 
+> **Governance paperwork complete (2026-06-24):** DPIA addendum signed off by Liam Evanson
+> (data-protection owner); LIA recorded in master `docs/DPIA.md` §2.6; retention rule + owner
+> recorded in master `docs/DPIA.md` §12. **Still outstanding:** the named human approval to apply
+> `056` (this checklist §9) and the apply itself — NOT yet given.
+
 Migration file: `supabase/migrations/056_venue_website_enrichment.sql`
 Down/rollback: see §8 (drop statements) — purely additive + isolated, no existing object altered.
 DB behavioural tests: `supabase/tests/056_venue_website_enrichment.mjs` (`npm run test:db`, 27 tests,
@@ -133,7 +138,7 @@ drop table if exists venue_enrichment_runs;
 
 ## 9. EXPLICIT production approval gate
 - [ ] Migration reviewed (SQL) and §1–§8 all green on local/staging.
-- [ ] DPIA addendum (see `docs/DPIA_website_enrichment_addendum.md`) signed off.
+- [x] DPIA addendum (see `docs/DPIA_website_enrichment_addendum.md`) signed off. — **DONE 2026-06-24 (Liam Evanson); LIA in master DPIA §2.6; retention in master DPIA §12.**
 - [ ] **Named human approval to apply `056` to production** recorded here:
       approver: __________  date: __________
 - [ ] Apply to production.

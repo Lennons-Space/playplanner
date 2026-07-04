@@ -32,12 +32,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const dotenv = require('dotenv') as { config: (o: { path: string }) => void };
-  dotenv.config({ path: path.join(__dirname, '../.env') });
-} catch { /* rely on shell env */ }
-
 import { createClient } from '@supabase/supabase-js';
 import { geoapifyClientFromEnv } from './geoapifyClient';
 import { matchVenue } from './geoapifyMatch';
@@ -57,6 +51,12 @@ import type {
   RawFacts,
   VenueMatchInput,
 } from '../../types/enrichment';
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const dotenv = require('dotenv') as { config: (o: { path: string }) => void };
+  dotenv.config({ path: path.join(__dirname, '../.env') });
+} catch { /* rely on shell env */ }
 
 // ── Selected venues (Phase 2B-1B) — 1 popular pick per category family ────────
 // Picked via a read-only ILIKE search against `venues` (data_source='osm',

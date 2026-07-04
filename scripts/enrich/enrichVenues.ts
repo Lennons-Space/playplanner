@@ -41,6 +41,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { createClient } from '@supabase/supabase-js';
+import { extractRawFacts } from './osmExtract';
+import { computeIntelligence, type VenueForScoring } from './intelligence';
+import type {
+  RawFacts,
+  EnrichmentConfidence,
+  RecommendedForTag,
+  ScoreBreakdown,
+} from '../../types/enrichment';
+
 // ── Load environment variables ────────────────────────────────────────────────
 // Try to load from scripts/.env first (developer convenience).
 // If dotenv is not installed, fall through and rely on shell environment.
@@ -52,16 +62,6 @@ try {
   // dotenv not available; SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be
   // set in the shell environment before running this script.
 }
-
-import { createClient } from '@supabase/supabase-js';
-import { extractRawFacts } from './osmExtract';
-import { computeIntelligence, type VenueForScoring } from './intelligence';
-import type {
-  RawFacts,
-  EnrichmentConfidence,
-  RecommendedForTag,
-  ScoreBreakdown,
-} from '../../types/enrichment';
 
 // ── Validate environment ──────────────────────────────────────────────────────
 

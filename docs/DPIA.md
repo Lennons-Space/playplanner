@@ -78,6 +78,30 @@ PlayPlanner is a UK/EU-compliant, privacy-first mobile app (React Native + Expo 
   - Deleted on account erasure (Art.17)
   - No automated decision-making based on children's data
 
+### 2.6 Legitimate Interest Assessment (LIA) — Venue Website Enrichment
+
+**Added:** 2026-06-24 · **Assessor / data-protection owner:** Liam Evanson
+**Feature:** an automated, dry-run-by-default pipeline that reads a venue's **own public website** and produces **reviewable proposals** for up to seven listing fields (description, price_range, website, booking_url, phone, email, opening_hours). Nothing is written to live data without an admin-only, stale-guarded `apply_venue_proposal` action. Companion documents: `docs/DPIA_website_enrichment_addendum.md` and `scripts/enrich/WEBSITE_ENRICHMENT_SPEC.md`.
+
+This is the formal three-part LIA underpinning the Art.6(1)(f) legitimate-interests basis recorded in §2.3 (and summarised in the enrichment DPIA addendum §2).
+
+**(1) Purpose test — is there a legitimate interest?**
+Yes. The interest is keeping a public venue directory accurate and complete for parents — correct opening hours, contact details and descriptions. This benefits both data subjects' customers (parents relying on the listing) and the venues themselves (an accurate, up-to-date listing). It is a real, specific, present interest of the controller and of third parties (app users), not speculative.
+
+**(2) Necessity test — is the processing necessary for that purpose?**
+Yes, and it is proportionate. The information is **already published by the venue on its own website**; reading it is the least intrusive way to keep listings current. No new data is collected from data subjects; no third-party aggregator/scraper sites are read; off-domain redirects are refused. Processing is minimised to the seven listing fields only, evidence snippets are length-capped and PII-scrubbed, and every proposal passes through human review before any change. Less intrusive alternatives (manual re-entry of every venue, or purchasing third-party datasets) are slower, less accurate, and would generally involve *more* processing, not less.
+
+**(3) Balancing test — are the individual's interests, rights and freedoms overridden?**
+No. Data subjects are venue operators. For most venues the data is purely about a place (not personal data at all); for **sole traders**, a business phone/email or a `firstname.lastname@` address can be personal data, so it is treated as personal data here. Impact is low and within reasonable expectations: this is information the operator **chose to publish publicly** on their own site, and a business publishing contact details would reasonably expect them to appear in directories. There is **no profiling**, **no automated decision-making about individuals**, and **no enrichment of parent/child accounts**. Safeguards that tip the balance toward the controller's interest:
+  - Admin-only RLS on both enrichment tables — proposals (which may carry sole-trader PII) are never readable by anon/authenticated users.
+  - Evidence is PII-scrubbed and length-capped; personal-looking emails are capped to `low` confidence; heuristic pricing is suppressed.
+  - Human-in-the-loop: dry-run by default; `--propose` only inserts `pending` rows; a named admin must approve (and rewrite descriptions) before anything is written.
+  - Right to object / erasure: a venue or owner deletion cascades to related proposals and run records (`on delete cascade`); an objection can be honoured by removing the venue's proposals.
+  - Retention limits applied (see §12).
+  - PECR: read-only HTTP fetches of public pages — no cookies set, no tracking, no marketing.
+
+**Outcome:** Legitimate interests (UK GDPR Art.6(1)(f)) is an appropriate and proportionate lawful basis for this feature; the legitimate interest is **not** overridden by the rights and freedoms of the data subjects, given the safeguards above. **To be re-assessed if the feature's scope changes** (e.g., reading third-party sites, expanding fields, or any automated apply).
+
 ---
 
 ## 3. ICO Children's Code Considerations
@@ -391,6 +415,13 @@ A checkbox declaration was added to `app/(auth)/register.tsx`:
 | venues | Indefinite | Community database; anonymised on account deletion |
 | gdpr_audit_log | 3 years | GDPR Art.5(2) accountability; auto-delete via cron (future) |
 | push_notification_tokens | Until user revokes or logs out | Session-based refresh |
+| venue_field_proposals (rejected) | 90 days | Website-enrichment proposals; deleted 90 days after rejection (cleanup job to be built; rule owner: Liam Evanson) |
+| venue_field_proposals (superseded) | 30 days | Deleted 30 days after being superseded by a newer proposal (cleanup job to be built; rule owner: Liam Evanson) |
+| venue_field_proposals (applied) | Retained as audit trail | Applied proposals kept as the change audit trail (pre-apply value + reviewer + timestamp); rule owner: Liam Evanson |
+| venue_enrichment_runs | Retained as audit trail | Append-only fetch/audit log for website enrichment; rule owner: Liam Evanson |
+| venue_enrichment_writes | Retained as audit trail | Append-only ledger of applied/rolled-back enrichment changes (migration 057); stores acting-admin UUID (`applied_by`, SET NULL on account deletion); rule owner: Liam Evanson |
+
+**Website-enrichment retention (added 2026-06-24, owner: Liam Evanson):** rejected proposals → delete after 90 days; superseded → after 30 days; applied → retained as the audit trail; `venue_enrichment_runs` → retained as append-only audit. The cleanup job is a follow-up build (NOT part of migration 056); the rule and its owner are recorded now.
 
 **No current auto-expiry for pending photos or audit logs; recommended future enhancements to add cron jobs for cleanup.**
 
