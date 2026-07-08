@@ -191,3 +191,78 @@ describe('Fix H — EnrichmentRollback result rows show venue name', () => {
     expect(within(resultsSection).getByText('venue-bb…')).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Crash-fix regression — confirm modal must not be unconditionally mounted
+// ---------------------------------------------------------------------------
+//
+// Root cause of the on-device Fabric crash (IllegalViewOperationException,
+// driven by Reanimated's native-operation flush during tab switching): the
+// rollback confirm <Modal> used to be declared at the top of this component's
+// JSX, unconditionally — so it was mounted and torn down on EVERY switch
+// into/out of the Rollback tab, even when there were zero runs to roll back
+// (the screen's actual live-data state). RN's <Modal> allocates its own
+// native surface on Android; repeatedly allocating/destroying that surface
+// for no reason is the exact "component with an active native
+// mount/unmount lifecycle torn down by a tab switch" pattern the reported
+// crash signature describes.
+//
+// The fix scopes the Modal to the `applyWrites.length > 0` branch — the only
+// condition under which `confirmModalVisible` can ever become true (it is
+// only set via the "rollback-btn" press, itself gated on the same
+// condition) — so it is completely absent from the tree whenever there is
+// nothing to roll back.
+describe('Crash-fix regression — confirm modal presence is data-gated', () => {
+  it('does NOT mount the confirm modal when there are zero enrichment runs', async () => {
+    mockUseRuns.mockReturnValue({
+      data:      [] as RunRecord[],
+      isLoading: false,
+    } as ReturnType<typeof useEnrichmentRuns>);
+    mockUseWrites.mockReturnValue({
+      data:      [] as WriteRecord[],
+      isLoading: false,
+    } as ReturnType<typeof useRunWrites>);
+
+    const { queryByTestId } = render(
+      <EnrichmentRollback isAdmin={true} />,
+      { wrapper: makeWrapper() }
+    );
+
+    await waitFor(() => expect(queryByTestId('enrichment-rollback')).toBeTruthy());
+    expect(queryByTestId('rollback-confirm-modal')).toBeNull();
+  });
+
+  it('does NOT mount the confirm modal when a run is selected but it has zero applied writes', async () => {
+    mockUseWrites.mockReturnValue({
+      data:      [] as WriteRecord[],
+      isLoading: false,
+    } as ReturnType<typeof useRunWrites>);
+
+    const { getByTestId, queryByTestId } = render(
+      <EnrichmentRollback isAdmin={true} />,
+      { wrapper: makeWrapper() }
+    );
+
+    await waitFor(() => expect(getByTestId(`run-selector-${RUN.id}`)).toBeTruthy());
+    await act(async () => { fireEvent.press(getByTestId(`run-selector-${RUN.id}`)); });
+
+    await waitFor(() => expect(getByTestId('rollback-no-writes')).toBeTruthy());
+    expect(queryByTestId('rollback-confirm-modal')).toBeNull();
+  });
+
+  it('DOES mount the confirm modal once a run with applied writes is selected (no regression)', async () => {
+    const { getByTestId, queryByTestId } = render(
+      <EnrichmentRollback isAdmin={true} />,
+      { wrapper: makeWrapper() }
+    );
+
+    await waitFor(() => expect(getByTestId(`run-selector-${RUN.id}`)).toBeTruthy());
+    await act(async () => { fireEvent.press(getByTestId(`run-selector-${RUN.id}`)); });
+
+    await waitFor(() => expect(getByTestId('rollback-btn')).toBeTruthy());
+    // Modal exists in the tree once writes are present (visible only after pressing rollback-btn).
+    expect(queryByTestId('rollback-confirm-modal')).toBeNull(); // not visible yet
+    await act(async () => { fireEvent.press(getByTestId('rollback-btn')); });
+    await waitFor(() => expect(getByTestId('rollback-confirm-modal')).toBeTruthy());
+  });
+});

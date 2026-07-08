@@ -169,58 +169,6 @@ export function EnrichmentRollback({ isAdmin }: Props) {
   return (
     <ScrollView testID="enrichment-rollback" className="flex-1" contentContainerClassName="px-4 pb-8">
 
-      {/* Confirmation modal */}
-      <Modal
-        visible={confirmModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConfirmModal(false)}
-      >
-        <View className="flex-1 bg-black/50 items-center justify-center px-6">
-          <View testID="rollback-confirm-modal" className="bg-white rounded-2xl p-6 w-full max-w-sm">
-            <Text className="text-charcoal font-extrabold text-lg mb-3">Confirm rollback</Text>
-            <Text className="text-charcoal text-sm mb-3">
-              This will restore {applyWrites.length} field value{applyWrites.length !== 1 ? 's' : ''} to
-              their state before the enrichment run.
-            </Text>
-            <View className="bg-success/10 border border-success rounded-xl px-3 py-2 mb-3">
-              <Text className="text-success text-xs font-bold">
-                Human edits are protected: any field modified by a human after the enrichment
-                run was applied will be SKIPPED automatically (the stale guard detects the
-                newer value).
-              </Text>
-            </View>
-            <View className="bg-sandDark rounded-xl px-3 py-2 mb-4">
-              <Text className="text-grey text-xs">
-                Original write ledger rows are preserved. Rollback appends a compensating
-                row — history is never edited or deleted.
-              </Text>
-            </View>
-            <View className="flex-row gap-3">
-              <TouchableOpacity
-                testID="rollback-confirm-cancel"
-                className="flex-1 bg-sandDark rounded-xl py-3 items-center"
-                onPress={() => setConfirmModal(false)}
-              >
-                <Text className="text-charcoal font-bold">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                testID="rollback-confirm-confirm"
-                className="flex-1 bg-error rounded-xl py-3 items-center"
-                disabled={rollbackMutation.isPending}
-                accessibilityState={{ disabled: rollbackMutation.isPending }}
-                onPress={handleRollback}
-              >
-                {rollbackMutation.isPending
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text className="text-white font-bold">Rollback run</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
       {/* Run selector */}
       <Text className="text-grey font-bold uppercase text-xs mt-4 mb-2">
         Select enrichment run
@@ -296,6 +244,75 @@ export function EnrichmentRollback({ isAdmin }: Props) {
                   </Text>
                 </TouchableOpacity>
               )}
+
+              {/*
+                * Confirmation modal — deliberately scoped INSIDE this
+                * `applyWrites.length > 0` branch (the only condition under which
+                * `confirmModalVisible` can ever become true; see the "rollback-btn"
+                * onPress above) rather than mounted unconditionally at the top of
+                * the screen.
+                *
+                * WHY: previously this <Modal> was always in the tree — even on a
+                * Rollback tab with zero runs/writes, which is the exact state of
+                * this screen on a fresh install. RN's <Modal> allocates its own
+                * native surface on Android, and mounting/tearing it down every
+                * time the admin switches into and out of the Rollback tab (while
+                * it carried no data at all) repeatedly created and destroyed that
+                * surface for no reason. Scoping it here means it is only ever
+                * mounted when there is something to roll back, matching the one
+                * user action that can open it — removing the churn without
+                * changing any behaviour when a rollback is actually available.
+                */}
+              <Modal
+                visible={confirmModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setConfirmModal(false)}
+              >
+                <View className="flex-1 bg-black/50 items-center justify-center px-6">
+                  <View testID="rollback-confirm-modal" className="bg-white rounded-2xl p-6 w-full max-w-sm">
+                    <Text className="text-charcoal font-extrabold text-lg mb-3">Confirm rollback</Text>
+                    <Text className="text-charcoal text-sm mb-3">
+                      This will restore {applyWrites.length} field value{applyWrites.length !== 1 ? 's' : ''} to
+                      their state before the enrichment run.
+                    </Text>
+                    <View className="bg-success/10 border border-success rounded-xl px-3 py-2 mb-3">
+                      <Text className="text-success text-xs font-bold">
+                        Human edits are protected: any field modified by a human after the enrichment
+                        run was applied will be SKIPPED automatically (the stale guard detects the
+                        newer value).
+                      </Text>
+                    </View>
+                    <View className="bg-sandDark rounded-xl px-3 py-2 mb-4">
+                      <Text className="text-grey text-xs">
+                        Original write ledger rows are preserved. Rollback appends a compensating
+                        row — history is never edited or deleted.
+                      </Text>
+                    </View>
+                    <View className="flex-row gap-3">
+                      <TouchableOpacity
+                        testID="rollback-confirm-cancel"
+                        className="flex-1 bg-sandDark rounded-xl py-3 items-center"
+                        onPress={() => setConfirmModal(false)}
+                      >
+                        <Text className="text-charcoal font-bold">Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        testID="rollback-confirm-confirm"
+                        className="flex-1 bg-error rounded-xl py-3 items-center"
+                        disabled={rollbackMutation.isPending}
+                        accessibilityState={{ disabled: rollbackMutation.isPending }}
+                        onPress={handleRollback}
+                      >
+                        {rollbackMutation.isPending
+                          ? <ActivityIndicator color="#fff" size="small" />
+                          : <Text className="text-white font-bold">Rollback run</Text>
+                        }
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              </Modal>
             </>
           )}
 
