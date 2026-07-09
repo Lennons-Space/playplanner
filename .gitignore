@@ -47,6 +47,7 @@ scripts/enrich/out/
 
 # Supabase local temp (project metadata, not secrets — but local only)
 supabase/.temp/
+supabase/.branches/
 
 # Local Claude/agent tool installs
 .claude/skills/
@@ -54,6 +55,10 @@ supabase/.temp/
 
 # Design import artefacts (binary, generated)
 .design-import/
+
+# Claude Design v2 handoff reference (local copy of the design authority —
+# do not commit without explicit approval)
+.design-v2-handoff/
 
 # Accidental shell output files
 set

@@ -1,38 +1,70 @@
 // ─────────────────────────────────────────────────────────────────────────
-// SmartFeaturedCard — the hero "Good for today" card on the Home screen.
+// SmartFeaturedCard — the hero "Good for today" card on the v2 Home screen.
 //
-// Ported from the design handoff's SmartFeaturedCard (pp2-home.jsx), restyled
-// with useAppTheme() tokens for chrome that sits OUTSIDE the photo (there is
-// none — the card is full-bleed), but using the EXACT glass/gradient values
-// from the README for the overlays on top of the photo, which are
-// theme-independent (always white text on a dark photo-gradient).
+// Ported from the design handoff's SmartFeaturedCard (pp2-home.jsx) and the
+// ground-truth screenshot (screens/01-home-dark.png), which shows a full-photo
+// hero card with a price/free-entry pill, a save heart, an "Open now · till X"
+// pill, the venue name, a rating/type/distance row and honest "why" pills —
+// this is a DIFFERENT, richer component to the "EditorialCollectionHero" also
+// present in pp2-home.jsx (a plain gradient+emoji "Collection" card): that one
+// is a different hero used elsewhere in the prototype, not what "Good for
+// today" actually renders. See the final report for this discrepancy.
 //
 // Spec (README "Good for today" — smart featured card):
-//   - Tall magazine cover (460px), large radius (64), full-bleed image.
-//   - Bottom gradient rgba(8,6,10,0.94) → transparent at 72%, via
-//     expo-linear-gradient (already installed).
+//   - Tall magazine cover, BorderRadius.featured (26), full-bleed image.
+//     Height is RESPONSIVE (getFeaturedCardHeight: 48% of window height,
+//     clamped 340–430) — the handoff's fixed 440px was mockup-scale and
+//     buried the bottom-anchored info below the fold on real Android phones.
+//   - Bottom gradient rgba(8,6,10,0.94) → transparent at 72%.
 //   - Top-left: price/"Free entry" dark-glass pill — ONLY if
 //     venue.price_range is set (no fabricated prices).
-//   - Top-right: 40px circular button → venue detail (no save mutation
-//     exists yet, see hard constraint 8 — pressing always opens the venue).
+//   - Top-right: 40px circular glass save-heart — only rendered when a save
+//     handler is provided (NearbyPreview, an orphaned pre-v2 consumer of this
+//     component, does not pass one, so no heart renders there — unchanged
+//     behaviour for that screen).
 //   - Bottom stack: open-status glass pill (green dot + "Open now · till X")
 //     ONLY when both computeIsOpenNow() AND a closing time are known; venue
 //     name (26px/700/display, white); rating · type · distance row; up to 3
 //     "why" glass pills from generateRecommendationReasons().
 //
-// "Glass" pills here are emulated with semi-opaque rgba(...) View
-// backgrounds — expo-blur is not installed (hard constraint 7).
+// The price pill / save heart / open pill / why pills are real BlurView glass
+// (components/ui/GlassSurface) — this card renders once per screen, so the
+// native compositing cost of a few blurred pills is negligible. Compare
+// VenueCard2's thumbnail price badge, which stays a plain semi-opaque View
+// because it repeats once per list row.
 // ─────────────────────────────────────────────────────────────────────────
 
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { FontFamily, BorderRadius } from '@/constants/theme';
+import { Colors, FontFamily, BorderRadius, Shadow } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import { getCategoryMeta } from '@/constants/categories';
 import { computeIsOpenNow } from '@/lib/venueAttributes';
 import { generateRecommendationReasons } from '@/lib/recommendations/recommendationReasons';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { Icon } from '@/components/ui/Icon';
+import { Stars } from '@/components/ui/Stars';
 import type { Venue } from '@/types';
+
+function formatDistance(km: number | undefined): string | null {
+  if (km == null) return null;
+  if (km < 1) return `${Math.round(km * 1000)}m`;
+  return `${(km * 0.621371).toFixed(1)}mi`;
+}
+
+// ── Responsive card height (2026-07-08 Android correction pass) ────────────
+// The handoff's fixed 440px magazine cover was mockup-scale: on a ~700dp
+// Android viewport the card started so far down the page that only its top
+// (image + heart) was visible above the tab bar — the bottom-anchored venue
+// info never made the first screen. 48% of the window height, clamped to
+// 340–430, keeps the magazine-cover feel while fitting real phones:
+//   ~640dp phone → 340 · ~740dp → 355 · ~800dp → 384 · ≥900dp → 430.
+// Exported so Home's loading skeleton (and tests) use the same formula.
+export function getFeaturedCardHeight(windowHeight: number): number {
+  return Math.min(430, Math.max(340, Math.round(windowHeight * 0.48)));
+}
 
 // ── Price pill text ──────────────────────────────────────────────────────
 // Only rendered when venue.price_range is set — never fabricated.
@@ -57,7 +89,8 @@ function pricePillText(venue: Venue): string | null {
 // re-derive the display string defensively). If we can't produce an honest
 // "till HH:MM", we don't show the pill at all rather than show a bare
 // "Open now" that implies a closing time we don't have.
-function openUntilText(venue: Venue): string | null {
+// Exported: VenueCard2 reuses closesAtText() for its "Open till X" row.
+export function closesAtText(venue: Venue): string | null {
   if (computeIsOpenNow(venue) !== true) return null;
   const today = new Date().getDay();
   const row = venue.opening_hours?.find((h) => h.day_of_week === today);
@@ -69,8 +102,12 @@ function openUntilText(venue: Venue): string | null {
   if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
   const period = h >= 12 ? 'pm' : 'am';
   const h12 = h % 12 === 0 ? 12 : h % 12;
-  const time = m === 0 ? `${h12}${period}` : `${h12}:${String(m).padStart(2, '0')}${period}`;
-  return `Open now · till ${time}`;
+  return m === 0 ? `${h12}${period}` : `${h12}:${String(m).padStart(2, '0')}${period}`;
+}
+
+function openUntilText(venue: Venue): string | null {
+  const time = closesAtText(venue);
+  return time != null ? `Open now · till ${time}` : null;
 }
 
 export interface SmartFeaturedCardProps {
@@ -85,24 +122,34 @@ export interface SmartFeaturedCardProps {
    * category/rating facts.
    */
   contextReasons?: string[];
+  /** Whether this venue is in the user's saved list (drives the heart icon). */
+  saved?: boolean;
+  /** Called when the save heart is pressed. Omit to hide the heart. */
+  onToggleSave?: () => void;
 }
 
-export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: SmartFeaturedCardProps) {
+export function SmartFeaturedCard({ venue, onPress, contextReasons = [], saved = false, onToggleSave }: SmartFeaturedCardProps) {
+  const { tokens, accent } = useAppTheme();
+  const { height: windowHeight } = useWindowDimensions();
+  const cardHeight = getFeaturedCardHeight(windowHeight);
   const categorySlug = venue.category?.slug ?? null;
   const meta = getCategoryMeta(categorySlug);
 
   const pricePill = pricePillText(venue);
   const openPill = openUntilText(venue);
-  // ONE honest editorial reason: the top curation/recommendation reason if there
-  // is one, otherwise a neutral category label. Never fabricated — both sources
-  // derive from real venue.category + current weather.
-  const whyReasons = Array.from(new Set([...contextReasons, ...generateRecommendationReasons(venue)]));
-  const heroReason = whyReasons[0] ?? meta.label;
+  const distance = formatDistance(venue.distance_km);
+  const hasRating = (venue.review_count ?? 0) > 0;
+  // Honest "why" pills: curation reasons first, then recommendation reasons
+  // (deduped). Never fabricated — all derive from real venue data. Capped at
+  // 2 on compact cards (<380dp) so the bottom stack never crowds the name.
+  const whyReasons = Array.from(
+    new Set([...contextReasons, ...generateRecommendationReasons(venue)]),
+  ).slice(0, cardHeight < 380 ? 2 : 3);
 
   return (
     // Plain, static, in-flow card — NO Animated/reanimated wrapper. The root
     // Pressable itself owns the fixed height + overflow clip, so the column
-    // layout always reserves a 380px box and the absolute children
+    // layout always reserves a 440px box and the absolute children
     // (image/gradient/pills/overlay) are clipped inside it and can never escape
     // upward over the "Good for today" heading or age chips.
     <Pressable
@@ -110,19 +157,16 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
       accessibilityRole="button"
       accessibilityLabel={`Open ${venue.name}`}
       style={({ pressed }) => ({
-        height: 460,
+        height: cardHeight,
         width: '100%',
         position: 'relative',
-        borderRadius: 64,
+        borderRadius: BorderRadius.featured,
         overflow: 'hidden',
-        // Editorial magazine cover — soft, diffuse shadow only. This is the
-        // dominant object on Home, but the lift stays gentle (cream-paper feel).
-        // Opaque card, so Android elevation is safe (no translucent-plate artifact).
-        shadowColor: '#1A1208',
-        shadowOffset: { width: 0, height: 18 },
-        shadowOpacity: 0.16,
-        shadowRadius: 40,
-        elevation: 8,
+        // Reconciled with the theme's single hero-shadow recipe (Shadow.featured)
+        // rather than a bespoke shadow — the previous orphaned variant of this
+        // component and the tab bar's own hero styling had drifted onto two
+        // different shadow recipes for the same card type.
+        ...Shadow.featured,
         opacity: pressed ? 0.94 : 1,
         transform: [{ scale: pressed ? 0.99 : 1 }],
       })}
@@ -134,7 +178,7 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
             0 height (the explicit height didn't hold) and the bottom-anchored
             overlay escaped upward over the headings. The image/placeholder fill
             this layer; the gradient + pills + text overlay it absolutely. */}
-        <View style={{ width: '100%', height: 460 }}>
+        <View style={{ width: '100%', height: '100%' }}>
           {venue.cover_photo_url ? (
             <Image
               source={{ uri: venue.cover_photo_url }}
@@ -143,7 +187,7 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
               accessibilityLabel={`Photo of ${venue.name}`}
             />
           ) : (
-            <CategoryPlaceholder categorySlug={categorySlug} fill iconSize={60} borderRadius={0} />
+            <CategoryPlaceholder categorySlug={categorySlug} fill iconSize={60} borderRadius={0} variant="dark" />
           )}
         </View>
 
@@ -156,14 +200,15 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
           style={{ position: 'absolute', inset: 0 }}
         />
 
-        {/* ── Top-left: price / "Free entry" glass pill ── */}
+        {/* ── Top-left: price / "Free entry" dark-glass pill ── */}
         {pricePill != null && (
-          <View
+          <GlassSurface
+            intensity={24}
+            tintColor="rgba(20,18,24,0.7)"
             style={{
               position: 'absolute',
               top: 16,
               left: 16,
-              backgroundColor: 'rgba(20,18,24,0.7)',
               borderRadius: BorderRadius.pill,
               borderWidth: 1,
               borderColor: 'rgba(255,255,255,0.12)',
@@ -174,69 +219,138 @@ export function SmartFeaturedCard({ venue, onPress, contextReasons = [] }: Smart
             <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: '#FFFFFF' }}>
               {pricePill}
             </Text>
-          </View>
+          </GlassSurface>
+        )}
+
+        {/* ── Top-right: save heart (dark glass circle) ── */}
+        {onToggleSave != null && (
+          <Pressable
+            onPress={onToggleSave}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={saved ? 'Remove from saved' : 'Save venue'}
+            style={{ position: 'absolute', top: 16, right: 16 }}
+          >
+            <GlassSurface
+              intensity={24}
+              tintColor="rgba(20,18,24,0.55)"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.12)',
+              }}
+            >
+              <Icon name={saved ? 'heartFill' : 'heart'} size={20} color={saved ? Colors.coral : '#FFFFFF'} />
+            </GlassSurface>
+          </Pressable>
         )}
 
         {/* ── Bottom content stack — magazine cover: open pill, big name, one
             honest editorial reason, large soft Explore pill. ── */}
-        <View style={{ position: 'absolute', left: 24, right: 24, bottom: 26 }}>
+        <View style={{ position: 'absolute', left: 18, right: 18, bottom: 16 }}>
           {openPill != null && (
-            <View
+            <GlassSurface
+              intensity={16}
+              tint="light"
+              tintColor="rgba(255,255,255,0.14)"
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 6,
                 alignSelf: 'flex-start',
-                backgroundColor: 'rgba(255,255,255,0.14)',
                 borderRadius: BorderRadius.pill,
                 paddingHorizontal: 11,
                 paddingVertical: 5,
-                marginBottom: 12,
+                marginBottom: 9,
               }}
             >
               <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#5BD08A' }} />
               <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: '#FFFFFF' }}>
                 {openPill}
               </Text>
-            </View>
+            </GlassSurface>
           )}
 
           <Text
             style={{
               fontFamily: FontFamily.display,
-              fontSize: 40,
+              fontSize: 22,
               color: '#FFFFFF',
-              letterSpacing: -0.9,
-              lineHeight: 44,
+              letterSpacing: -0.4,
+              lineHeight: 26,
             }}
             numberOfLines={2}
           >
             {venue.name}
           </Text>
 
-          {/* One honest editorial reason (top curation reason, else neutral
-              category label) — never fabricated. */}
-          <Text
-            style={{ fontFamily: FontFamily.body, fontSize: 15, color: 'rgba(255,255,255,0.9)', marginTop: 6 }}
-            numberOfLines={1}
-          >
-            {heroReason}
-          </Text>
-
-          {/* Large soft Explore pill inside the card */}
-          <View
-            style={{
-              alignSelf: 'flex-start',
-              marginTop: 18,
-              backgroundColor: 'rgba(255,255,255,0.92)',
-              borderRadius: BorderRadius.pill,
-              paddingHorizontal: 22,
-              paddingVertical: 13,
-            }}
-          >
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: '#1C1408' }}>
-              Explore →
+          {/* Rating · type · distance row (real data; pieces hide when absent). */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+            {hasRating && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Stars rating={venue.average_rating} size={13} color={tokens.star} />
+                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>
+                  {venue.average_rating.toFixed(1)}
+                </Text>
+              </View>
+            )}
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 13.5, color: 'rgba(255,255,255,0.85)' }}>
+              {meta.label}
             </Text>
+            {distance != null && (
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13.5, color: 'rgba(255,255,255,0.85)' }}>
+                · {distance}
+              </Text>
+            )}
+          </View>
+
+          {/* Bottom row: honest "why" glass pills (left, wrapping) + a clear
+              go-CTA disc (right) so the card reads as an actionable feature,
+              not a mute image. The disc is decorative affordance — the whole
+              card is the pressable. */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 10 }}>
+            <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {whyReasons.map((reason) => (
+                <GlassSurface
+                  key={reason}
+                  intensity={16}
+                  tint="light"
+                  tintColor="rgba(255,255,255,0.16)"
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    borderRadius: BorderRadius.pill,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.18)',
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                  }}
+                >
+                  <Icon name="check" size={12} color="#FFFFFF" />
+                  <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: '#FFFFFF' }} numberOfLines={1}>
+                    {reason}
+                  </Text>
+                </GlassSurface>
+              ))}
+            </View>
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                flexShrink: 0,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: accent.accent,
+              }}
+            >
+              <Icon name="arrow" size={17} color="#FFFFFF" />
+            </View>
           </View>
         </View>
       </Pressable>

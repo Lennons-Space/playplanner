@@ -5,6 +5,13 @@ Each entry links to a memory file with more detail.
 
 **Important:** Always read this file at the start of a session. Always update it when progress is made.
 
+## ⚡ CURRENT FOCUS (2026-07-09)
+- Branch `feat/exact-v2-design`: EXACT Play Planner v2 rebuild. Home fix rounds 1+2 done, UNCOMMITTED, awaiting on-device re-review (round 3).
+- **CRITICAL RULE: no `Pressable` style-as-function anywhere device-rendered — NativeWind 4.0.1 interop drops them silently (root cause of both broken screenshot rounds). Static style objects + android_ripple only.** ~14 legacy files still unconverted.
+- Round 2 delivered: visible search bubble, intent chips as icon-tile card buttons (user override of jsx emoji pills), animated V2WeatherMotion background, gradient-fade tab bar.
+- Design authority + session log: see bottom of [Project Progress](project_progress.md). Handoff: `.design-v2-handoff/` (gitignored).
+- DO NOT commit/push; do not start Venue Detail until Home approved; never mount expo-blur BlurView (native module missing → Android crash).
+
 ---
 
 ## Developer Profile

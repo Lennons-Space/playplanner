@@ -429,3 +429,166 @@ DB writes, no app wiring** — all logic exercised against saved fixtures.
 - GDPR data subject request workflow
 - Consent history UI
 - Groups/social features (schema + UI + moderation)
+
+---
+
+## Session log: 2026-07-08 — Play Planner v2 EXACT Home redesign (`feat/exact-v2-design`)
+
+**THIS IS THE CURRENT FOCUS. Read this before anything above (older sections are stale).**
+
+### Design authority (LOCKED by user decision)
+- Target = the **final rendered prototype**: `Play Planner v2.html` + `pp2-home.jsx` (+ sibling `pp2-*.jsx`).
+- Authority order: 1) Play Planner v2.html (viewer shell — renders the jsx) 2) pp2-home.jsx 3) screenshots 4) README.
+- `screens/01-home-dark.png` + README describe an OLDER iteration (two-line intent cards, age chips, 380px photo featured card) — **do not chase them** where they conflict with the jsx.
+- Handoff source: `C:\Users\Liame\Downloads\Handoff\`. Local untracked copy: `D:\PlayPlanner\.design-v2-handoff\` (gitignored — never commit without explicit approval).
+
+### Done this session (P1 Home exactness — ALL UNCOMMITTED)
+- Home rewritten to final-jsx order: header (pin icon, 17px area, brand 42) → time-based greeting + weather pill → 38px headline → context-line copy map → **weather CTA card (new)** → search pill with **34×34 filter box INSIDE the pill** → single-line intent rail + **inline Clear** (no section labels) → "Good for today" 22px + **192px EditorialCollectionHero (new — routes to real /discover collections, never a venue)** → consent-gated venue list (22px header + "Near you · updated just now" + 38×38 boxed refresh).
+- **Age chips REMOVED from Home** (final jsx has none). AgeChips.tsx + age logic kept in tree for later.
+- VenueCard2 rebuilt: 82px thumb, r5 context chip, category dot, single star, "Open till X" (real hours via closesAtText exported from SmartFeaturedCard), closed treatment, 34×34 heart wired to real favourites. NO duration (no honest source), NO price badge (not in final jsx).
+- New pure fns in lib/homeIntents: `pickHeroCollection`, `getWeatherCta`, `getHomeContextLine`. Hero mapping: rain family→rainy-day, night hours→hidden-gems "Plan for Tomorrow", snow→hidden-gems "Winter Days Out", intent energy/free/animals→burn-energy/free-days-out/hidden-gems, season fallback.
+- Earlier same-day: GlassSurface de-blurred (expo-blur native module NOT in installed dev build — any BlurView mount = instant Android crash; do not reintroduce), dark CategoryPlaceholder variant, tab bar cushion Android 10/iOS 22, dev watermark removed from Home.
+- Fonts: app ALREADY loads Bricolage Grotesque + Hanken Grotesk (FontFamily.display/body) — typography matches prototype natively.
+
+### Gates at session end (all green)
+- Tests: 98 suites, **1815/1815 pass** (home.test.tsx rewritten, 31 tests).
+- TypeScript: **31 errors = pre-existing baseline, zero new** (none in touched files).
+- ESLint: clean on touched files.
+- Gotcha: `.expo/types/router.d.ts` (generated, gitignored) got corrupted by the running Expo dev server's typegen writing concurrently → if tsc shows ~TS1005/TS1128 parse errors there, trim to the first valid closing braces (head -14 worked) or restart expo; not a real error.
+
+### Rules in force (user-imposed)
+- **DO NOT commit or push** — user commits only after visually approving Home on device.
+- Do not start Venue Detail / Saved / Map / Profile / Auth until Home is visually accepted.
+- No Supabase/enrichment/migration/RPC/backend changes.
+- P2 (deferred, do NOT start unprompted): animated weather background, Continue-exploring rail (needs recently-viewed tracking), 8-condition weather-pill colour map, 3-equal-lines filter glyph in Icon.tsx.
+
+### Next session
+1. User reviews Home on device (expo start was running; reload). If accepted → user commits → move to Venue Detail using `.design-v2-handoff/pp2-venue.jsx` (same authority order).
+2. If not accepted → fix against the actual screenshot; the handoff files are local so compare precisely.
+
+---
+
+## Session log: 2026-07-09 — Home visual-review fix round 1 (`feat/exact-v2-design`, still ALL UNCOMMITTED)
+
+User reviewed Home on device: v2 direction confirmed but NOT accepted. 3 blockers reported + fixes applied:
+
+1. **Search pill — filter box appeared below the prompt.** Structure was already a
+   `flexDirection:'row'` + `flexWrap:'nowrap'` (should be unable to wrap), so the fix makes
+   stacking *physically impossible*: pill is now `minHeight:62`, prompt row (icon + 1-line text,
+   `home-search-pill-row`) reserves `paddingRight: 14+34+11`, and the 34×34 filter box is
+   **absolutely pinned** inside the pill (`home-filter-anchor`: top:0/bottom:0/right:14,
+   justifyContent:center). Font-scale cap 1.3 on the prompt.
+2. **EditorialCollectionHero overlap/crush.** Root cause found: on a 360dp phone the title column
+   is ~178px (prototype web frame = 390px), so "Plan for Tomorrow" truncated to "Plan for Tomo…";
+   the absolutely-positioned badge could collide at large Android font scales. Fix: badge moved
+   into NORMAL FLOW (content wrapper `flex:1, justifyContent:'space-between'`, padding
+   16/20/18 — padding on wrapper not Pressable because **Yoga insets absolute children by parent
+   padding**, would have shrunk the gradient); title `numberOfLines={2}` (prototype wraps
+   naturally); desc 2 lines; `maxFontSizeMultiplier={1.2}` on all card text (fixed 192px card).
+3. **Tab bar covering "Family favourites" / "Near you · updated just now".** Bottom clearance now
+   defensive: `Math.max(useBottomTabBarHeight(), 72 + insets.bottom) + 48` (was tabBarHeight+28).
+4. Intent rail verified against pp2-home.jsx — labels/emoji/order/spacing already exact; untouched.
+
+Files: `app/(tabs)/index.tsx`, `components/home/EditorialCollectionHero.tsx`,
+`app/(tabs)/__tests__/home.test.tsx` (padding + pill-structure tests updated to lock new invariants).
+
+Gates: 98 suites / **1815 pass** (34 focused Home+tabs pass), tsc **31 = baseline, 0 new**, ESLint clean.
+No commit/push, no Supabase/enrichment/migrations, consent gating untouched (only HomeResults calls useLocation()).
+
+**Next:** user re-reviews Home on device → if accepted, user commits → Venue Detail (pp2-venue.jsx).
+
+---
+
+## Session log: 2026-07-09 — Home visual-review fix round 2 (`feat/exact-v2-design`, still ALL UNCOMMITTED)
+
+### 🔑 ROOT CAUSE FOUND (explains BOTH review rounds)
+User's screenshot (d:\Downloads\1783541891286.jpeg) showed: no search bubble, intent chips as bare
+emoji-over-text stacks, weather CTA card unstyled/stacked, hero square-cornered and too tall — while
+plain-View rows rendered fine. Pattern: **every broken element was a `Pressable` with a
+style-as-FUNCTION; the app's NativeWind 4.0.1 interop (babel `jsxImportSource: 'nativewind'`)
+silently DROPS function styles on the device build.** Jest resolves them fine → tests never caught it.
+**RULE: static style objects only + `android_ripple` for feedback.** See auto-memory
+`nativewind-function-style-bug.md`. ~14 non-Home files still use the pattern (legacy screens) — convert
+whenever a screen is reskinned.
+
+### Fixes (round 2)
+1. **All function styles removed from the Home surface**: index.tsx (header/CTA/search pill/refresh/
+   nudge/clear ×6), EditorialCollectionHero, VenueCard2 (card + heart), PPBrandMark, IntentChips.
+   Press feedback = android_ripple(foreground) + overflow hidden.
+2. **Search bubble** now actually visible on device (static style: surface #17171F fill + separator
+   ring + r-chip + minHeight 62; filter box still absolutely pinned inside right).
+3. **IntentChips rebuilt as designed card buttons** (USER OVERRIDE of final-jsx plain emoji pills,
+   recorded decision): 38×38 tinted rounded-square emoji tile + label/sub column on a surface card,
+   selected = intent-colour ring + tinted fill + selected a11y state; inline Clear card. testIDs
+   intent-chip-*/intent-chip-tile-*/intent-clear.
+4. **Animated weather background**: new `components/ui/V2WeatherMotion.tsx` mounted inside
+   V2Background — sunny pulse+6 bokeh, 14 rain streaks (11° field), 3 mist bands, 12 stars, 12
+   snowflakes; transform/opacity only, built on WeatherLayer's useLoop/seededNodes/
+   useReducedMotionPref/useAppActive; renders null under reduce-motion/background (static gradients
+   = fallback). Full WEATHER_BACKGROUNDS.md particle system still P2.
+   `useAppActive` fixed: undefined/'unknown' AppState (cold start, jest) no longer counts as inactive.
+5. **Tab bar**: flat rgba(14,14,20,0.82) GlassSurface fill → vertical LinearGradient fade
+   (0.40→0.88→0.96) so scrolled content passing beneath stays faintly visible instead of being
+   chopped dead; hairline kept; Home bottom clearance unchanged (max(barHeight, 72+inset)+48).
+
+### Tests
+New: components/home/__tests__/IntentChips.test.tsx (card container/tile/selected/toggle/clear),
+components/ui/__tests__/V2WeatherMotion.test.tsx (per-atmosphere no-crash, decorative, reduce-motion
+→ null). Updated: home.test.tsx search-pill test asserts VISIBLE bubble (bg #17171F, border, radius).
+
+### Gates (all green)
+**100 suites / 1826 tests pass** (baseline was 98/1815 + 2 new suites), tsc **31 = baseline, 0 new**,
+ESLint clean on all touched files. No commit/push, no Supabase/enrichment/migrations; consent gating
+untouched.
+
+**Next:** user re-reviews Home on device (round 3). If accepted → user commits → Venue Detail.
+
+---
+
+## Session log: 2026-07-09 — Home fix round 3: vertical rhythm + tab bar weight (still ALL UNCOMMITTED)
+
+User verdict on round 2: search bubble / intent cards / weather CTA / dark v2 / hero concept ACCEPTED
+in principle; blockers = lower half (hero + Family favourites under the tab bar; bar too heavy).
+
+### Compression pass (~84px reclaimed vs the bar on a real Android viewport)
+- index.tsx paddings: header top 10→6, greeting top 20→14, context margin 8→6, CTA section 16→12,
+  CTA card padV 14→11 + tile 44→40, search section 18→12 + pill minHeight 62→56 (11+34+11),
+  intent rail top 18→12, Good-for-today top 26→18 + heading marginBottom 13→10, list header
+  top 28→22 / bottom 14→12.
+- IntentChips card: tile 38→34 (r11), padV 8→7, padL 7/padR 13, radius 15, gap 9 (test updated).
+- EditorialCollectionHero: height 192→176 (web frame had ~100px more room than a real phone),
+  content padding 16/18→14/16.
+- Tab bar (_layout.tsx): content height 50→46, Android cushion 10→6, paddingTop 8→6, gradient
+  lightened 0.40/0.88/0.96 → 0.28/0.80/0.92 (icons sit in the ≥0.80 zone). Home clearance formula
+  unchanged (max(barHeight, 72+inset)+48 — 72 still a safe over-estimate of 46+22).
+
+### Gates (all green)
+100 suites / 1826 tests pass, tsc 31 = baseline (0 new), ESLint clean. No commit/push/backend.
+
+**Next:** user re-reviews Home (round 4). If accepted → user commits → Venue Detail (pp2-venue.jsx).
+
+---
+
+## Session log: 2026-07-09 — Home fix round 4: tab-safe scroll viewport (still ALL UNCOMMITTED)
+
+Round-3 verdict: entire top half ACCEPTED (search bubble, intent cards, weather CTA, hero, dark v2).
+Last blocker: content passing beneath / half-hidden behind the tab bar.
+
+### Structural fix (index.tsx)
+Padding-only clearance can never stop mid-scroll content passing under an overlay bar, so the
+**scroll VIEWPORT now ends above the bar**: `<ScrollView style={{ marginBottom: tabSafeZone }}>`
+where `tabSafeZone = Math.max(useBottomTabBarHeight(), 52 + insets.bottom)` (52 = 46 content + 6
+Android cushion floor), with `contentContainerStyle={{ paddingBottom: 32 }}` breathing room inside.
+Content is clipped above the bar — it is impossible for any text/card to sit or pass beneath it, at
+rest or mid-scroll; the bar overlays ONLY the V2Background atmosphere (mounted at screen root,
+continues behind the bar), so the glass still reads as glass. "Family favourites" is now either
+fully visible above the bar or cleanly below the fold — never half-hidden. Bar opacity/height
+unchanged from round 3 (0.28/0.80/0.92 gradient, 46+6+inset).
+
+home.test.tsx: clearance test replaced with tab-safe-zone test (viewport marginBottom =
+max(88, 52+34) under the mocks + paddingBottom ≥ 32 spacer).
+
+### Gates (all green)
+100 suites / 1826 tests, tsc 31 = baseline (0 new), ESLint clean. No commit/push/backend.
+
+**Next:** user re-reviews Home (round 5 — expected final). If accepted → user commits → Venue Detail.

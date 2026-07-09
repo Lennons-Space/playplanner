@@ -76,8 +76,14 @@ export default function DiscoverScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Weather background lives once, globally, in app/(tabs)/_layout. */}
-      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
+      {/* Opaque tokens.bg (not 'transparent'): useAppTheme() now defaults to
+          dark (Play Planner v2), so this screen's text tokens (tokens.label /
+          label2 / label3) render near-white. The shared WeatherBackground in
+          app/(tabs)/_layout stays on its calm light 'ambient' default (Search /
+          Favourites / Profile still need it light) — so this screen can no
+          longer rely on that shared wash for contrast and must own its
+          background, exactly like app/discover/[collection].tsx already does. */}
+      <SafeAreaView style={{ flex: 1, backgroundColor: tokens.bg }} edges={['top']}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 48 }}>
           {/* ── Header: title + small search icon (top-right) ───────── */}
           <View

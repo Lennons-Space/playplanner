@@ -1,12 +1,11 @@
 // Verifies QuickPicks intent-chip label colour.
 //
-// The (tabs) app is now a single LIGHT, weather-aware environment: one ambient
-// WeatherBackground sits behind every tab (app/(tabs)/_layout) and the legacy
-// light-only sibling screens (Search/Favourites/Profile) use dark text, so the
-// shared wash must stay light. useAppTheme() therefore resolves to the LIGHT
-// token set regardless of the OS colour scheme, and QuickPicks renders dark
-// label text on a light chip surface in every case. OS-dark support for the tab
-// app is deferred (see hooks/useAppTheme.ts).
+// Play Planner v2 (June 2026 relaunch) ships DARK by default: useAppTheme()
+// now hardcodes 'dark' regardless of the OS colour scheme (see
+// hooks/useAppTheme.ts), so every useAppTheme() consumer — including this
+// orphaned-but-still-tested QuickPicks component — renders the dark token
+// set in every case. OS-driven light switching is deferred (not wired up
+// yet); when it lands, these three cases should diverge again.
 
 import React from 'react';
 import { render } from '@testing-library/react-native';
@@ -20,22 +19,22 @@ jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
 
 const mockUseColorScheme = useColorScheme as jest.Mock;
 
-describe('QuickPicks theming (useAppTheme — light tab app)', () => {
+describe('QuickPicks theming (useAppTheme — dark by default)', () => {
   it('uses dark label text when the OS reports no preference', () => {
     mockUseColorScheme.mockReturnValue(null);
     const { getByText } = render(<QuickPicks onPick={jest.fn()} />);
-    expect(getByText('Rainy Day').props.style.color).toBe(Themes.light.label);
+    expect(getByText('Rainy Day').props.style.color).toBe(Themes.dark.label);
   });
 
-  it('stays light even when the OS reports dark (tab app is light-only for now)', () => {
+  it('stays dark even when the OS reports dark (OS-driven switching not wired up yet)', () => {
     mockUseColorScheme.mockReturnValue('dark');
     const { getByText } = render(<QuickPicks onPick={jest.fn()} />);
-    expect(getByText('Rainy Day').props.style.color).toBe(Themes.light.label);
+    expect(getByText('Rainy Day').props.style.color).toBe(Themes.dark.label);
   });
 
-  it('uses dark label text on a light OS theme', () => {
+  it('stays dark even when the OS reports light (OS-driven switching not wired up yet)', () => {
     mockUseColorScheme.mockReturnValue('light');
     const { getByText } = render(<QuickPicks onPick={jest.fn()} />);
-    expect(getByText('Rainy Day').props.style.color).toBe(Themes.light.label);
+    expect(getByText('Rainy Day').props.style.color).toBe(Themes.dark.label);
   });
 });

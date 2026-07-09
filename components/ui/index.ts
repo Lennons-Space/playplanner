@@ -25,3 +25,10 @@ export { ScreenTitle } from './ScreenTitle';
 export { IconBtn } from './IconBtn';
 export { PPBrandMark } from './PPBrandMark';
 export type { PPBrandMarkProps } from './PPBrandMark';
+
+// Play Planner v2 (dark/glass reskin)
+export { GlassSurface } from './GlassSurface';
+export type { GlassSurfaceProps } from './GlassSurface';
+
+// Dev tooling (DEV_VERSION-gated, never renders in production)
+export { DevVersionBadge } from './DevVersionBadge';

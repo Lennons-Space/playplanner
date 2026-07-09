@@ -139,8 +139,14 @@ export function useReducedMotionPref(): boolean {
 }
 
 // ── Battery: pause when the app is not foregrounded ────────────────────────
+// Only an EXPLICIT background/inactive state counts as "not active":
+// AppState.currentState can be undefined/'unknown' at cold start (and is
+// undefined in jest), and treating that as inactive silently disabled all
+// ambient motion until the first app-state change event.
 export function useAppActive(): boolean {
-  const [active, setActive] = useState(AppState.currentState === 'active');
+  const [active, setActive] = useState(
+    AppState.currentState !== 'background' && AppState.currentState !== 'inactive',
+  );
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s: AppStateStatus) =>
       setActive(s === 'active'),

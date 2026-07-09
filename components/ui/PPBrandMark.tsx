@@ -126,7 +126,10 @@ export function PPBrandMark({ size = 42, onPress, accessibilityLabel }: PPBrandM
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? 'Open profile'}
-      style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+      // No function style: NativeWind 4 interop drops style-as-function props
+      // on device. Feedback is intentionally omitted (mark is a small nav
+      // affordance; ripple would bleed past the rounded tile).
+      hitSlop={6}
     >
       {content}
     </Pressable>

@@ -81,15 +81,20 @@ jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: 'View',
 }));
 
-// constants/theme: TabsLayout imports Colors — provide minimal stubs so the
-// module resolves without a real build environment.
-jest.mock('@/constants/theme', () => ({
-  Colors: {
-    sky: '#0EA5E9',
-    grey: '#9CA3AF',
-    white: '#FFFFFF',
-    greyLighter: '#F3F4F6',
-  },
+// useAppTheme: TabsLayout reads accent.accent for the active tab tint (v2
+// dark glass tab bar) — stub it so the test doesn't depend on the real
+// Themes/ocean token module.
+jest.mock('@/hooks/useAppTheme', () => ({
+  useAppTheme: () => ({
+    mode: 'dark',
+    tokens: {
+      mode: 'dark', bg: '#0C0C11', warm: '#0E0E14', surface: '#17171F', surface2: '#1F1F29',
+      label: '#F4F4F6', label2: 'rgba(235,235,245,0.76)', label3: 'rgba(235,235,245,0.44)',
+      label4: 'rgba(235,235,245,0.22)', separator: 'rgba(255,255,255,0.08)',
+      fill: 'rgba(255,255,255,0.07)', fill2: 'rgba(255,255,255,0.04)', star: '#FFB23E', appBg: '#060608',
+    },
+    accent: { accent: '#4C8DF6', light: 'rgba(76,141,246,0.16)', tagText: '#82AEFA' },
+  }),
 }));
 
 // ─── Typed mock helper ───────────────────────────────────────────────────────

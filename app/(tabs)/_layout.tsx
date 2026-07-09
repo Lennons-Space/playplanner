@@ -1,16 +1,118 @@
-import { View } from 'react-native';
+// ─────────────────────────────────────────────────────────────────────────
+// TabsLayout — Play Planner v2 tab bar (Browse / Map / Saved / Profile).
+//
+// v2 spec: dark glass tab bar — translucent background rgba(14,14,20,0.82),
+// 0.5px top border, active icon tinted the Ocean accent, inactive icons
+// rgba(235,235,245,0.4), label 10px (600 weight active / 400 inactive),
+// 22px bottom cushion on top of the device safe area.
+//
+// CRASH FIX (2026-07-08): the tab bar background used to render a real
+// expo-blur BlurView. The on-device Android dev build predates expo-blur
+// being added to the app, so it has no native ExpoBlurView manager — the
+// tab bar mounts on every Home load, making it the guaranteed first crash
+// trigger (Fabric IllegalViewOperationException). Real blur can return
+// later via a native rebuild. 2026-07-09: the interim flat GlassSurface
+// tint became a vertical gradient fade (see GLASS_GRADIENT below) so the
+// bar reads as glass instead of chopping scrolled content off dead.
+//
+// Discover and Search stay real, navigable routes (href: null hides them from
+// the bar only) — Search is reachable from Home's search bar, Discover from
+// the Saved-tab empty state and other in-app links.
+//
+// WHY the shared <WeatherBackground /> keeps its default ('ambient', no
+// paletteMode): flipping it to the cinematic 'immersive'/'dark' palette (as a
+// previous, reverted iteration did) would change the backdrop behind EVERY
+// tab, including Search / Favourites / Profile — three screens that are still
+// light-only in this pass (they read the legacy `Colors` export directly, not
+// `useAppTheme()`), and whose text would lose contrast against a dark wash.
+// Home instead paints its own opaque `tokens.bg` background (see
+// app/(tabs)/index.tsx), so it can be fully dark without requiring those three
+// screens to be redone in the same pass. The tab bar itself is independent of
+// the shared weather layer either way — its own BlurView + rgba fill is what
+// makes it dark glass.
+//
+// WHY the global <StatusBar> stays "dark": it protects the 3 still-light
+// screens' dark text/icons. Home (the only dark screen in this pass) mounts
+// its own local <StatusBar style="light" /> — expo-status-bar stacks mounted
+// instances, so Home's override wins while it's focused and reverts to this
+// shared "dark" default on any other tab.
+// ─────────────────────────────────────────────────────────────────────────
+
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Tabs, Redirect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '@/store/authStore';
-import { Colors } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WeatherBackground } from '@/components/weather/WeatherBackground';
+
+// Content height (icon + label) before safe-area/cushion padding is added.
+// 46 (was 50, 2026-07-09 round 3): the bar read as a heavy block over Home's
+// content on-device; icons+labels still fit comfortably (24 icon + label +
+// 6 top padding).
+const TAB_BAR_CONTENT_HEIGHT = 46;
+// v2 spec: 22px bottom cushion ON TOP OF the device safe area — an iOS
+// home-indicator aesthetic. On Android that made the bar needlessly tall and
+// it visibly ate into Home's content, so Android uses a slim 6px cushion
+// (10 → 6 in the 2026-07-09 round-3 slimming pass); gesture/3-button nav
+// insets still stack on top via insets.bottom, so nothing collides with the
+// system bar.
+const TAB_BAR_BOTTOM_CUSHION = Platform.select({ ios: 22, default: 6 });
+// Exact v2 glass spec — deliberately literal values, not theme tokens (the
+// design calls out numbers slightly different from the nearest token, e.g.
+// 0.4 alpha vs tokens.label3's 0.44).
+const GLASS_BORDER = 'rgba(255,255,255,0.12)';
+const INACTIVE_TINT = 'rgba(235,235,245,0.4)';
+// Vertical fade replacing the previous FLAT rgba(14,14,20,0.82) fill
+// (2026-07-09 visual review): without real blur (BlurView is banned — native
+// module missing from the dev build) a flat 0.82 tint chopped scrolling
+// content off dead, which read as the bar "covering" section headers.
+// A lighter top edge fading to near-opaque behind the icons keeps the icons
+// fully legible while letting content passing beneath stay faintly visible —
+// the closest honest approximation of frosted glass available to us.
+// Lightened again in the round-3 pass (0.40/0.88/0.96 → 0.28/0.80/0.92):
+// the bar was still reading as a dark block; the icons sit in the ≥0.80
+// zone so legibility holds.
+const GLASS_GRADIENT = ['rgba(14,14,20,0.28)', 'rgba(14,14,20,0.80)', 'rgba(14,14,20,0.92)'] as const;
+
+function TabBarBackground() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <LinearGradient
+        colors={GLASS_GRADIENT}
+        locations={[0, 0.45, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.topBorder} />
+    </View>
+  );
+}
+
+function TabLabel({ title, focused, color }: { title: string; focused: boolean; color: string }) {
+  return (
+    <Text
+      style={{
+        fontFamily: 'System',
+        fontSize: 10,
+        fontWeight: focused ? '600' : '400',
+        color,
+        marginTop: -2,
+      }}
+    >
+      {title}
+    </Text>
+  );
+}
 
 export default function TabsLayout() {
   const session = useAuthStore((s) => s.session);
   const isLoading = useAuthStore((s) => s.isLoading);
   const insets = useSafeAreaInsets();
+  const { accent } = useAppTheme();
 
   // During cold-start session restore, isLoading is true while Supabase replays
   // the cached session via INITIAL_SESSION. Returning null here prevents a
@@ -21,81 +123,85 @@ export default function TabsLayout() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Single, app-wide status-bar style for the tabs. The app content is
-          ALWAYS light (cream weather wash), so we force DARK icons here rather
-          than letting userInterfaceStyle:'automatic' follow the device theme
-          (which drew invisible light icons on the cream background). One global
-          instance means switching tabs never leaves a stale per-screen mode. */}
       <StatusBar style="dark" />
-      {/* Single global weather layer behind every tab. Ambient (light) family,
-          readable with the dark text used across Home/Search/Favourites/Profile.
-          Replaces the per-screen WeatherBackground instances that used to live
-          in Home (immersive) and Search (ambient) — see the de-dupe in those
-          files. It is absolute-fill, non-interactive, pauses when backgrounded
-          and respects reduced motion (WeatherLayer). */}
       <WeatherBackground />
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: Colors.sky,
-          tabBarInactiveTintColor: Colors.grey,
-          // Let the global weather layer show through each tab's scene.
+          tabBarActiveTintColor: accent.accent,
+          tabBarInactiveTintColor: INACTIVE_TINT,
+          // Let each screen's own background show through (Home paints its
+          // own opaque dark bg; the 3 legacy screens rely on the shared
+          // ambient weather layer, unchanged).
           sceneStyle: { backgroundColor: 'transparent' },
+          tabBarBackground: TabBarBackground,
           tabBarStyle: {
-            // Warm off-white (was pure white) so the bar belongs to the cream
-            // editorial palette instead of looking like a stark system chrome.
-            backgroundColor: Colors.surface2,
-            borderTopColor: Colors.separator,
-            paddingBottom: insets.bottom,
-            // Slightly trimmed (was 64) — still ≥48dp touch targets with the label.
-            height: 58 + insets.bottom,
-          },
-          tabBarLabelStyle: {
-            fontFamily: 'Nunito-Bold',
-            fontSize: 11,
-            marginTop: -2, // tighten icon→label spacing
+            position: 'absolute',
+            backgroundColor: 'transparent',
+            borderTopWidth: 0,
+            elevation: 0,
+            height: TAB_BAR_CONTENT_HEIGHT + insets.bottom + TAB_BAR_BOTTOM_CUSHION,
+            paddingBottom: insets.bottom + TAB_BAR_BOTTOM_CUSHION,
+            paddingTop: 6,
           },
         }}
       >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="discover"
-        options={{
-          title: 'Discover',
-          tabBarIcon: ({ color, size }) => <Ionicons name="compass-outline" color={color} size={size} />,
-        }}
-      />
-      {/* Search is no longer a visible tab (Discover replaces it), but the screen
-          and all its logic/tests stay intact — it is reachable from the search
-          bar on Discover via router.push('/search'). href:null hides it from the
-          tab bar while keeping it a navigable route. */}
-      <Tabs.Screen
-        name="search"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="favourites"
-        options={{
-          title: 'Favourites',
-          tabBarIcon: ({ color, size }) => <Ionicons name="heart-outline" color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" color={color} size={size} />,
-        }}
-      />
+        {/* ── Browse (Home) ───────────────────────────────────────────── */}
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Browse',
+            tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} />,
+            tabBarLabel: ({ focused, color }) => <TabLabel title="Browse" focused={focused} color={color} />,
+          }}
+        />
+        {/* ── Map ──────────────────────────────────────────────────────── */}
+        <Tabs.Screen
+          name="map"
+          options={{
+            title: 'Map',
+            tabBarIcon: ({ color, size }) => <Ionicons name="map-outline" color={color} size={size} />,
+            tabBarLabel: ({ focused, color }) => <TabLabel title="Map" focused={focused} color={color} />,
+          }}
+        />
+        {/* ── Saved ────────────────────────────────────────────────────── */}
+        <Tabs.Screen
+          name="favourites"
+          options={{
+            title: 'Saved',
+            tabBarIcon: ({ color, size }) => <Ionicons name="heart-outline" color={color} size={size} />,
+            tabBarLabel: ({ focused, color }) => <TabLabel title="Saved" focused={focused} color={color} />,
+          }}
+        />
+        {/* ── Profile ──────────────────────────────────────────────────── */}
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" color={color} size={size} />,
+            tabBarLabel: ({ focused, color }) => <TabLabel title="Profile" focused={focused} color={color} />,
+          }}
+        />
+        {/* Discover is no longer a visible tab (v2 tab bar is Browse/Map/
+            Saved/Profile), but the editorial collection experience stays
+            intact and reachable (e.g. the Saved-tab empty state links to
+            /discover) — href:null hides it from the bar while keeping the
+            route navigable. */}
+        <Tabs.Screen name="discover" options={{ href: null }} />
+        {/* Search is reachable from Home's search bar via router.push('/(tabs)/search'). */}
+        <Tabs.Screen name="search" options={{ href: null }} />
       </Tabs>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  topBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 0.5,
+    backgroundColor: GLASS_BORDER,
+  },
+});
