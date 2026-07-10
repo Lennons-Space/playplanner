@@ -1,11 +1,34 @@
 /**
- * Venue detail screen — Phase 3 design system reskin.
+ * Venue detail screen — Play Planner v2 (Step 2, 2026-07-09).
  *
- * Layout: full-bleed hero (320px) with sand LinearGradient overlay →
- * floating card stack overlapping hero by 56px → sticky bottom bar.
+ * SOURCE OF TRUTH: `.design-v2-handoff/pp2-venue.jsx` as rendered by
+ * `Play Planner v2.html` (dark), ground truth screenshot
+ * `screens/02-venue-detail-dark.png`. Authority: html > jsx > screenshots >
+ * README.
  *
- * Visual layer only — no logic, hooks, data fetching, mutations, or
- * accessibility changes from the previous version.
+ * v2 layout: 300px hero photo (glass circular back/share/heart overlays,
+ * top+bottom scrims) → dark sheet (surface, 20px top radius, −20 overlap,
+ * drag handle) → name + ✓ Verified + type + rating → 3-tile stat strip →
+ * "Why we recommended this" → info rows card (address / price range / call)
+ * → What's here? (parent facility confirm) → Facilities pills → About →
+ * Photos rail → Reviews → photo upload → report/ODbL → sticky
+ * Directions + Plan-a-visit bar.
+ *
+ * PROTOTYPE-ONLY data deliberately OMITTED (no honest source — never faked):
+ * indoor/outdoor hero badge, trust-signal chips ("DBS checked staff"),
+ * "£6.50 per child" entry price (we show the real price_range only when
+ * present), "Free parking" row, hard-coded review fixtures, "See all"
+ * reviews link (every approved review already renders).
+ *
+ * VISUAL LAYER ONLY — all hooks, data fetching, mutations (favourite toggle,
+ * report, photo upload), navigation and accessibility behaviour are
+ * unchanged from the previous version.
+ *
+ * IMPLEMENTATION RULES (learned on Home, 2026-07-09):
+ *   • No Pressable style-as-function anywhere — the dev build's NativeWind 4
+ *     interop silently drops them (TouchableOpacity + static styles here).
+ *   • No BlurView (native module missing → Android crash); "glass" is a
+ *     translucent fill + hairline, same as the tab bar.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -22,6 +45,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -38,20 +62,24 @@ import { VenueContactRow } from '@/components/venue/VenueContactRow';
 import { FacilityChips } from '@/components/venue/FacilityChips';
 import { Skeleton } from '@/components/ui/SkeletonLoader';
 import { Icon } from '@/components/ui/Icon';
-import type { IconName } from '@/components/ui/Icon';
-import { IconBtn } from '@/components/ui/IconBtn';
 import { Stars } from '@/components/ui/Stars';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
-import { getCategoryMeta } from '@/constants/categories';
 import { RecommendationExplanation } from '@/components/venues/RecommendationExplanation';
-import { Colors, FontFamily, BorderRadius, Shadow, CardBorder } from '@/constants/theme';
+import { V2Background } from '@/components/ui/V2Background';
+import { Themes, ocean, FontFamily, BorderRadius } from '@/constants/theme';
 
-// ─── Local exception colours ───────────────────────────────────────────────────
-// Phase 6A.1 migrated this screen to the design system (Colors/FontFamily/etc).
-// These two values have no design-system token and are retained per the brief:
-//   • FEATURED_BG — warm amber badge tint for the FEATURED pill.
-//   • the green open indicator (#3CAE6B) and featured text (#8B6A00) stay inline.
-const FEATURED_BG = '#FFF1C7';
+// v2 dark tokens — this screen is dark-only, same as Home (see useAppTheme).
+const T = Themes.dark;
+const ACCENT = ocean;
+
+// Prototype literals with no token equivalent.
+const OPEN_GREEN = '#34C77B';
+const FEATURED_TINT = 'rgba(255,178,62,0.16)';
+const FEATURED_TEXT = '#FFC976';
+// Hero "glass" buttons/badges (pp2-venue.jsx: rgba(0,0,0,0.38) + blur —
+// blur omitted, see header note).
+const HERO_GLASS = 'rgba(0,0,0,0.38)';
+const HERO_GLASS_BORDER = 'rgba(255,255,255,0.14)';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -107,8 +135,10 @@ function getTodayClosingTime(hours: HoursRow[]): string | null {
 // ─── LoadingSkeleton ──────────────────────────────────────────────────────────
 function LoadingSkeleton() {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.warm }}>
-      <Skeleton width="100%" height={320} borderRadius={0} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
+      <V2Background />
+      <StatusBar style="light" />
+      <Skeleton width="100%" height={300} borderRadius={0} />
       <View style={{ padding: 20, gap: 12 }}>
         <Skeleton width="70%" height={28} borderRadius={8} />
         <Skeleton width="45%" height={14} borderRadius={6} />
@@ -158,6 +188,12 @@ export default function VenueDetailScreen() {
   // image_url still falls back to CategoryPlaceholder.
   const [coverPhotoError, setCoverPhotoError] = useState(false);
   const [wikimediaImgError, setWikimediaImgError] = useState(false);
+  // Measured height of the sticky bottom bar (Directions + Plan a visit),
+  // fed into the ScrollView's bottom padding so the last content (e.g.
+  // "Report an issue" / ODbL attribution) always scrolls fully clear of it.
+  // 0 until the bar's first onLayout fires; a safe-area-aware fallback is
+  // used for that brief window (never a bare constant — see Blocker 1).
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
   // useVenue already fetches and filters approved photos in its join — no second query needed.
   const photos = venue?.photos ?? [];
 
@@ -241,13 +277,20 @@ export default function VenueDetailScreen() {
   }, [submitReport]);
 
   // Get Directions handler — used by the sticky bottom bar.
+  // The venue name is included (URL-encoded) so the destination pin is
+  // labelled instead of showing up as "Unnamed location"; the lat/lng pair
+  // remains the authoritative coordinate in every branch.
   const handleGetDirections = useCallback(async () => {
     if (!venue?.latitude || !venue?.longitude) return;
     const lat = venue.latitude;
     const lng = venue.longitude;
+    const label = encodeURIComponent(venue.name);
     const url = Platform.select({
-      ios: `maps:0,0?q=${lat},${lng}`,
-      android: `geo:${lat},${lng}?q=${lat},${lng}`,
+      // Apple Maps: `q` supplies the pin label, `ll` the authoritative coords.
+      ios: `http://maps.apple.com/?q=${label}&ll=${lat},${lng}`,
+      // Google Maps (geo: intent): the `(Label)` suffix on `q` names the pin
+      // at the exact `lat,lng` given immediately before it.
+      android: `geo:${lat},${lng}?q=${lat},${lng}(${label})`,
       default: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
     })!;
     try {
@@ -262,7 +305,7 @@ export default function VenueDetailScreen() {
     } catch {
       Alert.alert('Cannot open maps', 'Could not open maps on your device.');
     }
-  }, [venue?.latitude, venue?.longitude]);
+  }, [venue?.latitude, venue?.longitude, venue?.name]);
 
   if (isLoading) return <LoadingSkeleton />;
 
@@ -271,18 +314,20 @@ export default function VenueDetailScreen() {
       <SafeAreaView
         style={{
           flex: 1,
-          backgroundColor: Colors.warm,
+          backgroundColor: 'transparent',
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: 24,
         }}
       >
-        <Icon name="info" size={48} color={Colors.label3} />
+        <V2Background />
+        <StatusBar style="light" />
+        <Icon name="info" size={48} color={T.label3} />
         <Text
           style={{
             fontFamily: FontFamily.heading,
             fontSize: 17,
-            color: Colors.label,
+            color: T.label,
             textAlign: 'center',
             marginTop: 14,
           }}
@@ -293,8 +338,8 @@ export default function VenueDetailScreen() {
           style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 4 }}
           onPress={() => router.back()}
         >
-          <Icon name="chevL" size={16} color={Colors.accent} />
-          <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: Colors.accent }}>Go back</Text>
+          <Icon name="chevL" size={16} color={ACCENT.accent} />
+          <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: ACCENT.accent }}>Go back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -319,9 +364,6 @@ export default function VenueDetailScreen() {
       ? venue.image_attribution
       : null;
 
-  // Category metadata for theming (pill colour, icon tint, soft bg).
-  const catMeta = getCategoryMeta(venue.category?.slug);
-
   // Opening hours derived state.
   const openNowState = isOpenNow(venue.opening_hours ?? []);
   const closingTime = getTodayClosingTime(venue.opening_hours ?? []);
@@ -333,17 +375,38 @@ export default function VenueDetailScreen() {
   // Age label for stat strip.
   const hasAges = venue.min_age > 0 || venue.max_age > 0;
 
+  // Photos rail — every approved photo with a url (real data only; the rail
+  // hides entirely when there are none).
+  const railPhotos = photos.filter((p) => !!p.url);
+
+  const addressText = [venue.address_line1, venue.address_line2, venue.city, venue.postcode]
+    .filter(Boolean)
+    .join(', ');
+
   return (
     <View style={styles.root}>
+      {/* Shared v2 atmosphere layer — SAME component Home mounts, reading the
+          identical coarse/cached weather fetch, so the background never
+          diverges between screens (see V2Background's own doc comment). */}
+      <V2Background />
+      <StatusBar style="light" />
 
       {/* ── ScrollView ──────────────────────────────────────────────────── */}
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{
+          // Clears the sticky Directions/Plan-a-visit bar on every device.
+          // Before the bar's first onLayout, fall back to a safe-area-aware
+          // estimate (never a bare constant, since Android nav-bar insets vary).
+          paddingBottom:
+            bottomBarHeight > 0
+              ? bottomBarHeight + insets.bottom + 24
+              : 120 + insets.bottom,
+        }}
       >
 
-        {/* ── Hero (320px) ─────────────────────────────────────────────── */}
+        {/* ── Hero (jsx: 300px photo + top/bottom scrims) ───────────────── */}
         <View style={styles.hero}>
           {heroUrl ? (
             <Image
@@ -359,14 +422,17 @@ export default function VenueDetailScreen() {
           ) : (
             <CategoryPlaceholder
               categorySlug={venue.category?.slug}
-              size={320}
+              size={300}
               borderRadius={0}
+              variant="dark"
             />
           )}
 
-          {/* Sand-fade gradient — transparent at top, sand at bottom */}
+          {/* jsx scrim: dark at very top (status/buttons legible), clear
+              middle, darker at the bottom where the sheet overlaps. */}
           <LinearGradient
-            colors={['transparent', Colors.warm]}
+            colors={['rgba(0,0,0,0.22)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.5)']}
+            locations={[0, 0.4, 1]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={StyleSheet.absoluteFillObject}
@@ -383,88 +449,128 @@ export default function VenueDetailScreen() {
           )}
         </View>
 
-        {/* ── Card stack — overlaps hero by 56px ──────────────────────── */}
-        <View style={styles.cardStack}>
+        {/* ── Dark sheet (jsx: surface, 20px top radius, −20 overlap) ──── */}
+        <View style={styles.sheet}>
+          {/* Drag handle */}
+          <View style={styles.handleRow}>
+            <View style={styles.handle} />
+          </View>
 
-          {/* ── Main info card ──────────────────────────────────────────── */}
-          <View style={styles.mainCard}>
-
-            {/* 1. Category pill + Featured badge row */}
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-              <View style={[styles.pill, { backgroundColor: catMeta.soft }]}>
-                <Text style={[styles.pillText, { color: catMeta.color }]}>
-                  {(venue.category?.name ?? 'Activity').toUpperCase()}
-                </Text>
+          {/* ── Name + Verified/Featured + type + rating ───────────────── */}
+          <View style={styles.headerBlock}>
+            <View style={styles.nameRow}>
+              <Text style={styles.venueName}>{venue.name}</Text>
+              <View style={{ gap: 6, alignItems: 'flex-end' }}>
+                {venue.is_verified && (
+                  <View style={styles.verifiedPill}>
+                    <Text style={styles.verifiedText}>✓ Verified</Text>
+                  </View>
+                )}
+                {isFeatured && (
+                  <View style={[styles.verifiedPill, { backgroundColor: FEATURED_TINT }]}>
+                    <Text style={[styles.verifiedText, { color: FEATURED_TEXT }]}>Featured</Text>
+                  </View>
+                )}
               </View>
-              {isFeatured && (
-                <View style={[styles.pill, { backgroundColor: FEATURED_BG }]}>
-                  <Text style={[styles.pillText, { color: '#8B6A00' }]}>FEATURED</Text>
-                </View>
-              )}
             </View>
-
-            {/* 2. Venue name */}
-            <Text style={styles.venueName}>{venue.name}</Text>
-
-            {/* 3. Rating row */}
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 8 }}>
+            <Text style={styles.typeText}>{venue.category?.name ?? 'Family venue'}</Text>
+            <View style={styles.ratingRow}>
               {venue.review_count > 0 ? (
                 <>
-                  <Stars rating={venue.average_rating} size={14} color={Colors.star} />
+                  <Stars rating={venue.average_rating} size={13} color={T.star} />
                   <Text style={styles.ratingValue}>{venue.average_rating.toFixed(1)}</Text>
                   <Text style={styles.ratingMeta}>
-                    · {venue.review_count} review{venue.review_count !== 1 ? 's' : ''}
+                    {venue.review_count} review{venue.review_count !== 1 ? 's' : ''}
                   </Text>
                 </>
               ) : (
-                <Text style={styles.noReviewsMeta}>No reviews yet</Text>
+                <Text style={styles.ratingMeta}>No reviews yet</Text>
               )}
-            </View>
-
-            {/* 4. Stat strip */}
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-              {/* Distance tile */}
-              <View style={styles.statTile}>
-                <Icon name="walk" size={16} color={Colors.accent} />
-                <Text style={styles.statValue}>
-                  {venue.distance_km != null
-                    ? `${(venue.distance_km * 0.621371).toFixed(1)}mi`
-                    : '—'}
-                </Text>
-                <Text style={styles.statLabel}>Distance</Text>
-              </View>
-
-              {/* Age tile */}
-              <View style={styles.statTile}>
-                <Icon name="user" size={16} color={Colors.accent} />
-                <Text style={styles.statValue}>
-                  {hasAges ? `Ages ${venue.min_age}–${venue.max_age}` : 'All ages'}
-                </Text>
-                <Text style={styles.statLabel}>Best fit</Text>
-              </View>
-
-              {/* Open/Closed tile */}
-              <View style={styles.statTile}>
-                <Icon
-                  name="clock"
-                  size={16}
-                  color={openNowState ? '#3CAE6B' : Colors.label3}
-                />
-                <Text style={styles.statValue}>{openNowState ? 'Open' : 'Closed'}</Text>
-                <Text style={styles.statLabel}>
-                  {closingTime ?? 'No hours'}
-                </Text>
-              </View>
             </View>
           </View>
 
-          {/* ── Why we recommended this ───────────────────────────────── */}
-          <RecommendationExplanation venue={venue} />
+          {/* ── 3-tile stat strip (jsx) ────────────────────────────────── */}
+          <View style={styles.statStrip}>
+            <View style={styles.statTile}>
+              <Icon name="walk" size={15} color={ACCENT.accent} />
+              <Text style={styles.statValue}>
+                {venue.distance_km != null
+                  ? `${(venue.distance_km * 0.621371).toFixed(1)} mi`
+                  : '—'}
+              </Text>
+              <Text style={styles.statLabel}>Distance</Text>
+            </View>
 
-          {/* ── What's here? (Parent Contribution MVP — one-tap facility confirm) ── */}
-          <FacilityChips venueId={venueId} />
+            <View style={styles.statTile}>
+              <Icon name="user" size={15} color={ACCENT.accent} />
+              <Text style={styles.statValue}>
+                {hasAges ? `${venue.min_age}–${venue.max_age}` : 'All ages'}
+              </Text>
+              <Text style={styles.statLabel}>Ages</Text>
+            </View>
 
-          {/* ── About section ─────────────────────────────────────────── */}
+            <View style={styles.statTile}>
+              <Icon name="clock" size={15} color={openNowState ? OPEN_GREEN : T.label3} />
+              <Text style={[styles.statValue, openNowState && { color: OPEN_GREEN }]}>
+                {openNowState ? (closingTime ? `till ${closingTime}` : 'Open') : 'Closed'}
+              </Text>
+              <Text style={styles.statLabel}>{openNowState ? 'Open now' : 'Right now'}</Text>
+            </View>
+          </View>
+
+          {/* ── Why we recommended this (real engine; self-hides) ─────── */}
+          <View style={{ paddingHorizontal: 16 }}>
+            <RecommendationExplanation venue={venue} />
+          </View>
+
+          {/* ── Info rows card (jsx: address / entry; call kept from the
+                 current app — hours have their own full section below) ── */}
+          <View style={styles.infoCard}>
+            {addressText ? (
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Icon name="pin" size={16} color={T.label3} strokeWidth={1.8} />
+                </View>
+                <Text style={styles.infoText}>{addressText}</Text>
+              </View>
+            ) : null}
+            {venue.price_range ? (
+              <View style={[styles.infoRow, styles.infoRowBorder]}>
+                <View style={styles.infoIcon}>
+                  <Text style={{ fontSize: 14, color: T.label3 }}>£</Text>
+                </View>
+                <Text style={styles.infoText}>Price range · {venue.price_range}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Call row — self-hides when there is no dialable phone number. */}
+          <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
+            <VenueContactRow phone={venue.phone} venueName={venue.name} />
+          </View>
+
+          {/* ── What's here? (Parent Contribution MVP) ────────────────── */}
+          <View style={{ paddingTop: 16 }}>
+            <FacilityChips venueId={venueId} />
+          </View>
+
+          {/* ── Facilities (jsx: simple pill wrap — real data only) ───── */}
+          {venue.facilities && venue.facilities.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionHeading}>Facilities</Text>
+              <View style={styles.facilityWrap}>
+                {(venue.facilities as { facility: { id: string; name: string; icon: string } }[]).map(
+                  (f, idx) => (
+                    <View key={f.facility.id ?? idx} style={styles.facilityPill}>
+                      <Text style={styles.facilityPillText}>{f.facility.name}</Text>
+                    </View>
+                  )
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* ── About ──────────────────────────────────────────────────── */}
           <View style={styles.section}>
             <Text style={styles.sectionHeading}>About</Text>
             {venue.description ? (
@@ -474,36 +580,62 @@ export default function VenueDetailScreen() {
             )}
           </View>
 
-          {/* ── Facilities section ────────────────────────────────────── */}
-          {venue.facilities && venue.facilities.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionHeading}>Facilities</Text>
-              <View style={styles.facilitiesGrid}>
-                {(venue.facilities as { facility: { id: string; name: string; icon: string } }[]).map(
-                  (f, idx) => {
-                    const facilityIconName = (f.facility.icon ?? 'shield') as IconName;
-                    return (
-                      <View key={f.facility.id ?? idx} style={styles.facilityTile}>
-                        <View
-                          style={[
-                            styles.facilityIconCircle,
-                            { backgroundColor: catMeta.soft },
-                          ]}
-                        >
-                          <Icon name={facilityIconName} size={16} color={catMeta.color} />
-                        </View>
-                        <Text style={styles.facilityName} numberOfLines={1}>
-                          {f.facility.name}
-                        </Text>
-                      </View>
-                    );
-                  }
-                )}
-              </View>
+          {/* ── Photos rail (jsx: 100×76 r10 — real approved photos only,
+                 hidden when there are none) ─────────────────────────── */}
+          {railPhotos.length > 0 && (
+            <View style={{ paddingTop: 20 }}>
+              <Text style={[styles.sectionHeading, { marginLeft: 16 }]}>Photos</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
+              >
+                {railPhotos.map((p, i) => (
+                  <View key={p.url ?? i} style={styles.railPhoto}>
+                    <Image
+                      source={{ uri: p.url }}
+                      style={{ width: '100%', height: '100%' }}
+                      contentFit="cover"
+                      transition={150}
+                      accessibilityLabel={`Photo of ${venue.name}`}
+                    />
+                  </View>
+                ))}
+              </ScrollView>
             </View>
           )}
 
-          {/* ── Opening hours section ─────────────────────────────────── */}
+          {/* ── Reviews ────────────────────────────────────────────────── */}
+          <View style={styles.section}>
+            <View style={styles.reviewsHeader}>
+              <Text style={[styles.sectionHeading, { marginBottom: 0 }]}>Reviews</Text>
+              <TouchableOpacity
+                style={styles.writeReviewBtn}
+                onPress={() => router.push(`/venue/${venueId}/review`)}
+                accessibilityRole="button"
+                accessibilityLabel="Write a review for this venue"
+              >
+                <Text style={styles.writeReviewText}>Write a review</Text>
+              </TouchableOpacity>
+            </View>
+
+            {reviewsLoading && (
+              <ActivityIndicator color={ACCENT.accent} style={{ marginVertical: 20 }} />
+            )}
+
+            {!reviewsLoading && (!reviews || reviews.length === 0) && (
+              <Text style={styles.mutedText}>No reviews yet. Be the first!</Text>
+            )}
+
+            {!reviewsLoading && reviews && reviews.length > 0 && (
+              <View style={{ gap: 10 }}>
+                {reviews.map((r) => <ReviewCard key={r.id} review={r} />)}
+              </View>
+            )}
+          </View>
+
+          {/* ── Opening hours (real 7-day data — richer than the jsx's
+                 single summary line, never fabricated) ────────────────── */}
           {sortedHours.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionHeading}>Opening hours</Text>
@@ -523,38 +655,10 @@ export default function VenueDetailScreen() {
             </View>
           )}
 
-          {/* ── Reviews section ───────────────────────────────────────── */}
-          <View style={styles.section}>
-            <View style={styles.reviewsHeader}>
-              <Text style={[styles.sectionHeading, { marginBottom: 0 }]}>Parent reviews</Text>
-              <TouchableOpacity
-                style={styles.writeReviewBtn}
-                onPress={() => router.push(`/venue/${venueId}/review`)}
-                accessibilityRole="button"
-                accessibilityLabel="Write a review for this venue"
-              >
-                <Icon name="plus" size={12} color={Colors.accent} />
-                <Text style={styles.writeReviewText}>Write review</Text>
-              </TouchableOpacity>
-            </View>
-
-            {reviewsLoading && (
-              <ActivityIndicator color={Colors.accent} style={{ marginVertical: 20 }} />
-            )}
-
-            {!reviewsLoading && (!reviews || reviews.length === 0) && (
-              <Text style={styles.mutedText}>No reviews yet. Be the first!</Text>
-            )}
-
-            {!reviewsLoading && reviews && reviews.length > 0 && (
-              <View style={{ gap: 10 }}>
-                {reviews.map((r) => <ReviewCard key={r.id} review={r} />)}
-              </View>
-            )}
-          </View>
-
           {/* ── Photo upload — authenticated users only ──────────────── */}
-          {user && venueId && <VenuePhotoUpload venueId={venueId} />}
+          <View style={{ paddingHorizontal: 16 }}>
+            {user && venueId && <VenuePhotoUpload venueId={venueId} />}
+          </View>
 
           {/* ── Report link ──────────────────────────────────────────── */}
           {/* Claim link intentionally removed — the claim flow is being
@@ -570,57 +674,32 @@ export default function VenueDetailScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ── Address + ODbL ────────────────────────────────────────── */}
-          <View style={{ marginTop: 12, marginBottom: 8, paddingHorizontal: 4 }}>
-            <VenueContactRow phone={venue.phone} venueName={venue.name} />
-            <Text style={styles.addressText}>
-              {[venue.address_line1, venue.address_line2, venue.city, venue.postcode]
-                .filter(Boolean)
-                .join(', ')}
-            </Text>
-            {venue.data_source === 'osm' && (
-              <Text style={styles.odblText}>
-                © OpenStreetMap contributors (ODbL)
-              </Text>
-            )}
-          </View>
+          {/* ── ODbL attribution ─────────────────────────────────────── */}
+          {venue.data_source === 'osm' && (
+            <Text style={styles.odblText}>© OpenStreetMap contributors (ODbL)</Text>
+          )}
 
         </View>
-        {/* ── end card stack ─────────────────────────────────────────── */}
+        {/* ── end sheet ─────────────────────────────────────────────── */}
 
       </ScrollView>
 
-      {/* ── Floating back button ─────────────────────────────────────────── */}
-      <View
-        style={[
-          styles.floatingBack,
-          { top: insets.top + 12 },
-        ]}
-      >
-        <IconBtn
-          size={40}
-          tone={Colors.surface}
-          border={false}
-          shadow
+      {/* ── Floating back button (jsx: 36px glass circle) ───────────────── */}
+      <View style={[styles.floatingBack, { top: insets.top + 8 }]}>
+        <TouchableOpacity
+          style={styles.glassBtn}
           onPress={() => router.back()}
+          accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Icon name="chevL" size={20} color={Colors.label} />
-        </IconBtn>
+          <Icon name="chevL" size={18} color="#FFFFFF" />
+        </TouchableOpacity>
       </View>
 
-      {/* ── Floating share + heart buttons ──────────────────────────────── */}
-      <View
-        style={[
-          styles.floatingActions,
-          { top: insets.top + 12 },
-        ]}
-      >
-        <IconBtn
-          size={40}
-          tone={Colors.surface}
-          border={false}
-          shadow
+      {/* ── Floating share + heart buttons (glass circles) ──────────────── */}
+      <View style={[styles.floatingActions, { top: insets.top + 8 }]}>
+        <TouchableOpacity
+          style={styles.glassBtn}
           onPress={async () => {
             const link = `playplanner://venue/${venueId}`;
             try {
@@ -640,14 +719,11 @@ export default function VenueDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel={`Share ${venue.name}`}
         >
-          <Icon name="share" size={18} color={Colors.label} />
-        </IconBtn>
+          <Icon name="share" size={16} color="#FFFFFF" />
+        </TouchableOpacity>
 
-        <IconBtn
-          size={40}
-          tone={Colors.surface}
-          border={false}
-          shadow
+        <TouchableOpacity
+          style={styles.glassBtn}
           onPress={() => toggleFavourite.mutate()}
           disabled={toggleFavourite.isPending}
           accessibilityRole="button"
@@ -655,17 +731,21 @@ export default function VenueDetailScreen() {
         >
           <Icon
             name={isFavourited ? 'heartFill' : 'heart'}
-            size={18}
-            color={isFavourited ? Colors.coral : Colors.label}
+            size={16}
+            color={isFavourited ? '#FF6B6B' : '#FFFFFF'}
           />
-        </IconBtn>
+        </TouchableOpacity>
       </View>
 
-      {/* ── Sticky bottom bar ────────────────────────────────────────────── */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
-        {/* Subtle gradient so bar lifts visually above content */}
+      {/* ── Sticky bottom bar (jsx CTA row: Directions + Plan a visit) ──── */}
+      <View
+        style={[styles.bottomBar, { paddingBottom: insets.bottom + 14 }]}
+        onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
+      >
+        {/* Fade so the bar lifts off the scrolling content beneath. */}
         <LinearGradient
-          colors={['transparent', Colors.warm]}
+          colors={['rgba(12,12,17,0)', T.bg]}
+          locations={[0, 0.55]}
           style={StyleSheet.absoluteFillObject}
           pointerEvents="none"
         />
@@ -678,7 +758,6 @@ export default function VenueDetailScreen() {
             accessibilityLabel="Get directions to this venue"
             accessibilityRole="button"
           >
-            <Icon name="pin" size={16} color={Colors.label} />
             <Text style={styles.directionsBtnText}>Directions</Text>
           </TouchableOpacity>
 
@@ -695,7 +774,6 @@ export default function VenueDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Plan a visit to this venue"
           >
-            <Icon name="calendar" size={16} color={Colors.surface} />
             <Text style={styles.planBtnText}>Plan a visit</Text>
           </TouchableOpacity>
         </View>
@@ -709,20 +787,24 @@ export default function VenueDetailScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.warm,
+    // Transparent so the shared <V2Background/> atmosphere (rendered as the
+    // first child, behind everything below) shows through in the status-bar
+    // zone, scroll overscroll, and any other gap — the hero, sheet, cards and
+    // sticky bar all still render fully opaque on top of it.
+    backgroundColor: 'transparent',
   },
 
   // ── Hero ──
   hero: {
-    height: 320,
+    height: 300,
     overflow: 'hidden',
-    backgroundColor: Colors.warm,
+    backgroundColor: T.bg,
   },
 
   // ── Image attribution (CC licence requirement) ──
   attribution: {
     position: 'absolute',
-    bottom: 8,
+    bottom: 28, // above the sheet's −20 overlap
     right: 8,
     backgroundColor: 'rgba(0,0,0,0.45)',
     paddingHorizontal: 6,
@@ -737,150 +819,216 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
 
-  // ── Card stack — overlaps hero ──
-  cardStack: {
-    marginTop: -56,
-    marginHorizontal: 20,
-    position: 'relative',
+  // ── Sheet (jsx: surface, 20px top radius, −20 overlap) ──
+  // Translucent (not T.surface's opaque hex) so the shared <V2Background/>
+  // atmosphere — mounted behind this sheet at the screen root — remains
+  // visible through every section that has no card background of its own
+  // (headerBlock, facility pills, About, report/ODbL row, etc). Island cards
+  // (statTile/infoCard/hoursCard/ReviewCard) keep their own opaque T.bg fill
+  // on top, so their text stays fully legible.
+  sheet: {
+    backgroundColor: 'rgba(14,14,20,0.5)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    marginTop: -20,
+    borderTopWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-
-  // ── Main info card ──
-  mainCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.featured,
-    borderWidth: 1,
-    borderColor: Colors.separator,
-    padding: 20,
-    // Elevated card shadow from the design-system token set.
-    ...Shadow.lg,
+  handleRow: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 4,
   },
-
-  // Category pill / featured badge
-  pill: {
+  handle: {
+    width: 36,
+    height: 4,
     borderRadius: BorderRadius.pill,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    alignSelf: 'flex-start',
-  },
-  pillText: {
-    fontFamily: FontFamily.caption,
-    fontSize: 10,
-    letterSpacing: 0.4,
+    backgroundColor: T.label4,
   },
 
-  // Venue name
+  // ── Header block ──
+  headerBlock: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: T.separator,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 6,
+  },
   venueName: {
+    flex: 1,
     fontFamily: FontFamily.display,
-    fontSize: 28,
-    color: Colors.label,
-    letterSpacing: -0.5,
-    // Bricolage runs taller than Nunito — give the line a little more room so
-    // tall ascenders/descenders on long venue names don't clip.
-    lineHeight: 34,
-    marginTop: 4,
+    fontSize: 22,
+    color: T.label,
+    letterSpacing: -0.4,
+    lineHeight: 27,
   },
-
-  // Rating row
+  verifiedPill: {
+    backgroundColor: ACCENT.light,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    flexShrink: 0,
+  },
+  verifiedText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 11,
+    color: ACCENT.accent,
+  },
+  typeText: {
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label3,
+    marginBottom: 8,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
   ratingValue: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
-    color: Colors.label,
+    color: T.label,
   },
   ratingMeta: {
     fontFamily: FontFamily.body,
-    fontSize: 13,
-    color: Colors.label3,
-  },
-  noReviewsMeta: {
-    fontFamily: FontFamily.body,
-    fontSize: 13,
-    color: Colors.label3,
+    fontSize: 14,
+    color: T.label3,
   },
 
-  // Stat strip tiles
+  // ── Stat strip (jsx: 3 centred tiles on T.bg) ──
+  statStrip: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+  },
   statTile: {
     flex: 1,
-    backgroundColor: Colors.warm,
-    borderRadius: BorderRadius.chip,
-    ...CardBorder.standard,
-    padding: 10,
-    flexDirection: 'column',
-    gap: 2,
-    alignItems: 'flex-start',
+    backgroundColor: T.bg,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: T.separator,
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    gap: 4,
   },
   statValue: {
     fontFamily: FontFamily.bodyStrong,
-    fontSize: 12,
-    color: Colors.label,
+    fontSize: 13,
+    color: T.label,
+    textAlign: 'center',
   },
   statLabel: {
     fontFamily: FontFamily.body,
-    fontSize: 10,
-    color: Colors.label3,
+    fontSize: 11,
+    color: T.label3,
+    textAlign: 'center',
+  },
+
+  // ── Info rows card (jsx) ──
+  infoCard: {
+    backgroundColor: T.bg,
+    marginTop: 16,
+    marginHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: T.separator,
+    overflow: 'hidden',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  infoRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: T.separator,
+  },
+  infoIcon: {
+    width: 20,
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  infoText: {
+    flex: 1,
+    fontFamily: FontFamily.body,
+    fontSize: 14,
+    color: T.label2,
+    lineHeight: 20,
   },
 
   // ── Sections ──
   section: {
-    paddingTop: 22,
-    paddingHorizontal: 4,
+    paddingTop: 20,
+    paddingHorizontal: 16,
   },
   sectionHeading: {
     fontFamily: FontFamily.heading,
-    fontSize: 18,
-    color: Colors.label,
-    letterSpacing: -0.3,
+    fontSize: 17,
+    color: T.label,
+    letterSpacing: -0.2,
     marginBottom: 10,
   },
 
   // About
   description: {
     fontFamily: FontFamily.body,
-    fontSize: 14,
-    color: Colors.label2,
-    lineHeight: 22,
+    fontSize: 15,
+    color: T.label2,
+    lineHeight: 24,
   },
   mutedText: {
     fontFamily: FontFamily.body,
     fontSize: 14,
-    color: Colors.label3,
+    color: T.label3,
   },
 
-  // Facilities grid
-  facilitiesGrid: {
+  // Facilities (jsx: text pill wrap)
+  facilityWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  facilityTile: {
-    width: '47%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: Colors.surface,
-    ...CardBorder.standard,
-    borderRadius: BorderRadius.chip,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  facilityIconCircle: {
-    width: 32,
-    height: 32,
+  facilityPill: {
+    backgroundColor: T.bg,
+    borderWidth: 1,
+    borderColor: T.separator,
     borderRadius: BorderRadius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 13,
+    paddingVertical: 7,
   },
-  facilityName: {
+  facilityPillText: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
-    color: Colors.label,
-    flex: 1,
+    color: T.label2,
+  },
+
+  // Photos rail
+  railPhoto: {
+    width: 100,
+    height: 76,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: T.bg,
   },
 
   // Opening hours
   hoursCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.chip,
-    ...CardBorder.standard,
+    backgroundColor: T.bg,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: T.separator,
     overflow: 'hidden',
   },
   hoursRow: {
@@ -892,16 +1040,16 @@ const styles = StyleSheet.create({
   hoursDay: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
-    color: Colors.label,
+    color: T.label,
   },
   hoursTime: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: Colors.label2,
+    color: T.label2,
   },
   hoursDivider: {
     height: 1,
-    backgroundColor: Colors.separator,
+    backgroundColor: T.separator,
     marginHorizontal: 16,
   },
 
@@ -910,66 +1058,63 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   writeReviewBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: Colors.accentLight,
-    borderWidth: 1,
-    borderColor: Colors.accentLight,
+    backgroundColor: ACCENT.light,
     borderRadius: BorderRadius.pill,
-    paddingHorizontal: 12,
+    paddingHorizontal: 13,
     paddingVertical: 6,
   },
   writeReviewText: {
     fontFamily: FontFamily.bodyStrong,
-    fontSize: 12,
-    color: Colors.accent,
+    fontSize: 13,
+    color: ACCENT.accent,
   },
 
-  // Report / Claim links
+  // Report link
   reportClaimRow: {
-    paddingTop: 16,
-    paddingBottom: 8,
-    paddingHorizontal: 4,
+    paddingTop: 20,
+    paddingBottom: 4,
     alignItems: 'center',
-    gap: 12,
   },
   reportLink: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: Colors.label3,
+    color: T.label3,
     textDecorationLine: 'underline',
   },
-  // claimLink style removed — claim flow disabled at launch.
 
-  // Address
-  addressText: {
-    fontFamily: FontFamily.body,
-    fontSize: 12,
-    color: Colors.label3,
-    lineHeight: 18,
-  },
+  // ODbL
   odblText: {
     fontFamily: FontFamily.body,
     fontSize: 11,
-    color: Colors.label3,
-    marginTop: 4,
+    color: T.label3,
     opacity: 0.7,
+    textAlign: 'center',
+    marginTop: 8,
   },
 
-  // Floating overlay buttons
+  // Floating glass buttons (jsx: 36px, rgba(0,0,0,0.38), hairline)
   floatingBack: {
     position: 'absolute',
-    left: 16,
+    left: 14,
   },
   floatingActions: {
     position: 'absolute',
-    right: 16,
+    right: 14,
     flexDirection: 'row',
     gap: 8,
+  },
+  glassBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: HERO_GLASS,
+    borderWidth: 1,
+    borderColor: HERO_GLASS_BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Sticky bottom bar
@@ -978,8 +1123,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingTop: 12,
-    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingHorizontal: 16,
   },
   bottomBarInner: {
     flexDirection: 'row',
@@ -987,34 +1132,31 @@ const styles = StyleSheet.create({
   },
   directionsBtn: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: Colors.surface,
-    borderWidth: 1.5,
-    borderColor: Colors.separator,
-    borderRadius: BorderRadius.card,
-    paddingVertical: 14,
+    backgroundColor: T.surface,
+    borderWidth: 1,
+    borderColor: T.separator,
+    borderRadius: 14,
+    paddingVertical: 15,
   },
   directionsBtnText: {
     fontFamily: FontFamily.bodyStrong,
-    fontSize: 14,
-    color: Colors.label,
+    fontSize: 16,
+    color: T.label,
   },
   planBtn: {
-    flex: 1.4,
-    flexDirection: 'row',
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: Colors.label,
-    borderRadius: BorderRadius.card,
-    paddingVertical: 14,
+    backgroundColor: ACCENT.accent,
+    borderRadius: 14,
+    paddingVertical: 15,
   },
   planBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 14,
-    color: Colors.surface,
+    fontFamily: FontFamily.caption,
+    fontSize: 16,
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
 });

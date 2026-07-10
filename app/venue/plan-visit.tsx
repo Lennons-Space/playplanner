@@ -35,29 +35,40 @@ import { supabase } from '@/lib/supabase';
 import { Icon } from '@/components/ui/Icon';
 import type { IconName } from '@/components/ui/Icon';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
+import { V2Background } from '@/components/ui/V2Background';
 import type { Venue } from '@/types';
+import { Themes, ocean, FontFamily, BorderRadius } from '@/constants/theme';
+
+const T = Themes.dark;
+const ACCENT = ocean;
+const OPEN_GREEN = '#34C77B'; // matches [id].tsx's OPEN_GREEN, used for "open now" text/dot in dark mode
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
+// Icon/checkmark glyphs drawn on top of a solid saturated accent circle must
+// stay white regardless of theme — they are not drawn on the card surface,
+// so they must NOT resolve to pp.paper (which is now a dark surface colour).
+const ON_ACCENT = '#FFFFFF';
+
 const pp = {
-  ink:      '#1D2630',
-  inkSoft:  '#4A5560',
-  mute:     '#7B8794',
-  line:     '#E6E2DB',
-  lineSoft: '#F1ECE2',
-  sand:     '#FBF6EC',
-  paper:    '#FFFFFF',
-  sky:      '#2FB8B0',
-  skyDeep:  '#1B8A85',
-  skySoft:  '#D4F0EE',
-  skyWash:  '#EEF9F8',
-  star:     '#F5A524',
-  starSoft: '#FFF1C7',
+  ink:      T.label,       // '#F4F4F6'
+  inkSoft:  T.label2,      // 'rgba(235,235,245,0.76)'
+  mute:     T.label3,      // 'rgba(235,235,245,0.44)'
+  line:     T.separator,   // 'rgba(255,255,255,0.08)'
+  lineSoft: T.fill,        // 'rgba(255,255,255,0.07)'
+  sand:     T.bg,          // '#0C0C11' — screen background
+  paper:    T.surface,     // '#17171F' — card surface
+  sky:      ACCENT.accent, // '#4C8DF6' Ocean
+  skyDeep:  ACCENT.accent,
+  skySoft:  'rgba(76,141,246,0.16)',
+  skyWash:  'rgba(76,141,246,0.16)',
+  star:     T.star,        // '#FFB23E'
+  starSoft: 'rgba(255,178,62,0.16)',
   coral:    '#FF6B6B',
-  coralSoft:'#FFE8E8',
+  coralSoft:'rgba(255,107,107,0.16)',
   leaf:     '#5BC08A',
-  leafSoft: '#DCF4E4',
+  leafSoft: 'rgba(91,192,138,0.16)',
   purple:   '#8E6BD8',
-  purpleSoft:'#ECE1FF',
+  purpleSoft:'rgba(142,107,216,0.16)',
 };
 
 // ─── Opening hours types ──────────────────────────────────────────────────────
@@ -371,9 +382,9 @@ function ActionTile({
     >
       <View style={[styles.actionIconCircle, { backgroundColor: active ? iconColor : iconBg }]}>
         {loading ? (
-          <ActivityIndicator size="small" color={active ? pp.paper : iconColor} />
+          <ActivityIndicator size="small" color={active ? ON_ACCENT : iconColor} />
         ) : (
-          <Icon name={icon} size={22} color={active ? pp.paper : iconColor} />
+          <Icon name={icon} size={22} color={active ? ON_ACCENT : iconColor} />
         )}
       </View>
       <Text style={styles.actionLabel}>{label}</Text>
@@ -400,7 +411,7 @@ function CheckItem({
       accessibilityLabel={label}
     >
       <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-        {checked && <Icon name="check" size={13} color={pp.paper} strokeWidth={2.5} />}
+        {checked && <Icon name="check" size={13} color={ON_ACCENT} strokeWidth={2.5} />}
       </View>
       <Text style={[styles.checkLabel, checked && styles.checkLabelDone]}>
         {label}
@@ -412,26 +423,32 @@ function CheckItem({
 // ─── Loading / Error screens ──────────────────────────────────────────────────
 function LoadingScreen() {
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      <View style={styles.centred}>
-        <ActivityIndicator size="large" color={pp.sky} />
-      </View>
-    </SafeAreaView>
+    <View style={{ flex: 1 }}>
+      <V2Background />
+      <SafeAreaView style={styles.root} edges={['top']}>
+        <View style={styles.centred}>
+          <ActivityIndicator size="large" color={pp.sky} />
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
 function ErrorScreen({ message }: { message: string }) {
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      <View style={styles.centred}>
-        <Icon name="info" size={44} color={pp.mute} />
-        <Text style={styles.errorTitle}>{message}</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Icon name="chevL" size={16} color={pp.sky} />
-          <Text style={styles.backBtnText}>Go back</Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+    <View style={{ flex: 1 }}>
+      <V2Background />
+      <SafeAreaView style={styles.root} edges={['top']}>
+        <View style={styles.centred}>
+          <Icon name="info" size={44} color={pp.mute} />
+          <Text style={styles.errorTitle}>{message}</Text>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+            <Icon name="chevL" size={16} color={pp.sky} />
+            <Text style={styles.backBtnText}>Go back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -599,7 +616,12 @@ export default function PlanVisitScreen() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <View style={{ flex: 1 }}>
+      {/* Shared v2 atmosphere layer — SAME component Home and Venue Detail
+          mount, reading the identical coarse/cached weather fetch, so the
+          background never diverges between screens. */}
+      <V2Background />
+      <SafeAreaView style={styles.root} edges={['top']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -659,8 +681,8 @@ export default function PlanVisitScreen() {
                 </View>
               )}
               <View style={[styles.openBadge, { backgroundColor: openNow ? pp.leafSoft : pp.lineSoft }]}>
-                <View style={[styles.openDot, { backgroundColor: openNow ? pp.leaf : pp.mute }]} />
-                <Text style={[styles.openBadgeText, { color: openNow ? '#2D7A4F' : pp.mute }]}>
+                <View style={[styles.openDot, { backgroundColor: openNow ? OPEN_GREEN : pp.mute }]} />
+                <Text style={[styles.openBadgeText, { color: openNow ? OPEN_GREEN : pp.mute }]}>
                   {openNow
                     ? todayRow?.closes_at ? `Closes ${formatTime(todayRow.closes_at)}` : 'Open now'
                     : todayRow && !todayRow.is_closed && todayRow.opens_at
@@ -758,7 +780,8 @@ export default function PlanVisitScreen() {
         </View>
 
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -766,7 +789,10 @@ export default function PlanVisitScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: pp.sand,
+    // Transparent so the shared <V2Background/> atmosphere (rendered as a
+    // sibling behind this SafeAreaView) shows through between the cards —
+    // matches Home/Venue Detail. Card surfaces (pp.paper) stay opaque on top.
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     paddingBottom: 110,
@@ -779,7 +805,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   errorTitle: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.heading,
     fontSize: 16,
     color: pp.ink,
     textAlign: 'center',
@@ -791,7 +817,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   backBtnText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
     color: pp.sky,
   },
@@ -807,7 +833,7 @@ const styles = StyleSheet.create({
   headerBack: {
     width: 40,
     height: 40,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
     backgroundColor: pp.paper,
     borderWidth: 1,
     borderColor: pp.line,
@@ -819,13 +845,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 20,
     color: pp.ink,
     letterSpacing: -0.3,
   },
   headerSub: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
     color: pp.mute,
     marginTop: 1,
@@ -844,11 +870,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: pp.line,
     padding: 14,
-    shadowColor: pp.ink,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 3,
     gap: 14,
   },
   venueThumbnail: {
@@ -864,13 +885,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   venueName: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 16,
     color: pp.ink,
     lineHeight: 21,
   },
   venueAddress: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
     color: pp.mute,
     lineHeight: 17,
@@ -887,14 +908,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     backgroundColor: pp.sand,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
     borderWidth: 1,
     borderColor: pp.line,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
   distancePillText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 11,
     color: pp.mute,
   },
@@ -902,17 +923,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
   openDot: {
     width: 6,
     height: 6,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
   },
   openBadgeText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 11,
   },
 
@@ -928,7 +949,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionHeading: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 18,
     color: pp.ink,
     letterSpacing: -0.3,
@@ -941,11 +962,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: pp.line,
     overflow: 'hidden',
-    shadowColor: pp.ink,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
   },
   tipCard: {
     flexDirection: 'row',
@@ -956,7 +972,7 @@ const styles = StyleSheet.create({
   tipIconCircle: {
     width: 40,
     height: 40,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -965,13 +981,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tipTitle: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 14,
     color: pp.ink,
     marginBottom: 3,
   },
   tipBody: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
     color: pp.inkSoft,
     lineHeight: 19,
@@ -999,21 +1015,16 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     alignItems: 'center',
     gap: 10,
-    shadowColor: pp.ink,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
   },
   actionIconCircle: {
     width: 52,
     height: 52,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionLabel: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
     color: pp.ink,
     textAlign: 'center',
@@ -1021,7 +1032,7 @@ const styles = StyleSheet.create({
 
   // ── Checklist ──
   checklistSub: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
     color: pp.mute,
     marginTop: -8,
@@ -1029,14 +1040,14 @@ const styles = StyleSheet.create({
   },
   packedBadge: {
     backgroundColor: pp.skyWash,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderWidth: 1,
     borderColor: pp.skySoft,
   },
   packedBadgeText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 11,
     color: pp.skyDeep,
   },
@@ -1046,11 +1057,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: pp.line,
     overflow: 'hidden',
-    shadowColor: pp.ink,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
   },
   checkItem: {
     flexDirection: 'row',
@@ -1062,7 +1068,7 @@ const styles = StyleSheet.create({
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
     borderWidth: 2,
     borderColor: pp.sky,
     alignItems: 'center',
@@ -1074,7 +1080,7 @@ const styles = StyleSheet.create({
     borderColor: pp.sky,
   },
   checkLabel: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
     color: pp.ink,
     flex: 1,

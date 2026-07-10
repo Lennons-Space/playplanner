@@ -14,7 +14,10 @@
  */
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, Linking, Alert } from 'react-native';
-import { Colors, FontFamily } from '@/constants/theme';
+import { Themes, ocean, FontFamily } from '@/constants/theme';
+
+// v2 dark tokens — this row renders only on the (dark) v2 venue detail screen.
+const T = Themes.dark;
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -123,13 +126,13 @@ const styles = StyleSheet.create({
   },
   callLabel: {
     fontFamily: FontFamily.bodyStrong,
-    fontSize: 12,
-    color: Colors.accent,
+    fontSize: 13,
+    color: ocean.accent,
   },
   phoneText: {
     fontFamily: FontFamily.body,
-    fontSize: 12,
-    color: Colors.label2,
-    lineHeight: 18,
+    fontSize: 13,
+    color: T.label2,
+    lineHeight: 19,
   },
 });

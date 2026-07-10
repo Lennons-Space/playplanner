@@ -2,13 +2,17 @@
 // components/venues/RecommendationExplanation.tsx
 //
 // "Why We Recommended This" card — shown on the venue detail screen between
-// the main info card and the About section.
+// the stat strip and the info rows card.
 //
-// DESIGN PRINCIPLES:
+// v2 STYLING (2026-07-09, pp2-venue.jsx `WhyRecommendedCard`): accent-tinted
+// card with a 3px accent bar on top, star + uppercase "WHY WE RECOMMENDED
+// THIS" overline, a headline, then check-circled reason rows. Dark-only —
+// this component renders only on the (dark) v2 venue detail screen.
+//
+// DESIGN PRINCIPLES (unchanged):
 //   • Calls generateRecommendationExplanation() internally; renders null when
 //     the engine returns null (no honest reason available).
 //   • Never renders any numeric score — only the title and reason strings.
-//   • Inline styles with the pp design tokens to match app/venue/[id].tsx.
 //   • Accessible: reasons are individually readable by screen readers.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -17,12 +21,10 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
 import type { Venue } from '@/types';
 import { generateRecommendationExplanation } from '@/lib/recommendations/recommendationExplanation';
-import { Colors, FontFamily, BorderRadius, Shadow } from '@/constants/theme';
+import { Themes, ocean, FontFamily } from '@/constants/theme';
 
-// Green tick that signals a positive, verified-fit reason. Retained as a local
-// exception (no design-system token) — mirrors the green open indicator kept on
-// app/venue/[id].tsx in Phase 6A.1.
-const POSITIVE_GREEN = '#5BC08A';
+const T = Themes.dark;
+const ACCENT = ocean;
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -48,35 +50,38 @@ export function RecommendationExplanation({ venue }: Props) {
   const { title, reasons } = explanation;
 
   return (
-    <View
-      style={styles.card}
-      accessible={false}
-    >
-      {/* Title row: star icon + bold title */}
-      <View style={styles.titleRow}>
-        <Icon name="star" size={16} color={Colors.star} />
-        <Text style={styles.title} accessibilityRole="header">
-          {title}
-        </Text>
-      </View>
+    <View style={styles.card} accessible={false}>
+      {/* jsx: 3px accent bar across the top of the card */}
+      <View style={styles.accentBar} />
 
-      {/* Subheading */}
-      <Text style={styles.subheading}>Why we recommended this</Text>
+      <View style={styles.body}>
+        {/* Overline row: star + uppercase label */}
+        <View style={styles.overlineRow}>
+          <Icon name="star" size={13} color={ACCENT.accent} />
+          <Text style={styles.overline} accessibilityRole="header">
+            Why we recommended this
+          </Text>
+        </View>
 
-      {/* Reasons list */}
-      <View style={styles.reasonsList}>
-        {reasons.map((reason) => (
-          <View
-            key={reason}
-            style={styles.reasonRow}
-            accessible={true}
-            accessibilityLabel={reason}
-          >
-            {/* Check icon in leaf/green to signal a positive attribute */}
-            <Icon name="check" size={14} color={POSITIVE_GREEN} strokeWidth={2.5} />
-            <Text style={styles.reasonText}>{reason}</Text>
-          </View>
-        ))}
+        {/* Headline from the explanation engine */}
+        <Text style={styles.headline}>{title}</Text>
+
+        {/* Reasons list — check circles */}
+        <View style={styles.reasonsList}>
+          {reasons.map((reason) => (
+            <View
+              key={reason}
+              style={styles.reasonRow}
+              accessible={true}
+              accessibilityLabel={reason}
+            >
+              <View style={styles.checkCircle}>
+                <Icon name="check" size={9} color="#FFFFFF" strokeWidth={3} />
+              </View>
+              <Text style={styles.reasonText}>{reason}</Text>
+            </View>
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -86,52 +91,67 @@ export function RecommendationExplanation({ venue }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.card,
-    borderWidth: 1,
-    borderColor: Colors.separator,
-    padding: 18,
-    marginTop: 22,
-    // Elevated card shadow from the design-system token set.
-    ...Shadow.md,
+    backgroundColor: ACCENT.light,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 16,
+  },
+  accentBar: {
+    height: 3,
+    backgroundColor: ACCENT.accent,
+    opacity: 0.55,
+  },
+  body: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 15,
   },
 
-  titleRow: {
+  overlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    marginBottom: 3,
+    marginBottom: 8,
+  },
+  overline: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 11,
+    color: ACCENT.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.99, // 0.09em @ 11px
   },
 
-  title: {
-    fontFamily: FontFamily.heading,
-    fontSize: 17,
-    color: Colors.label,
-    letterSpacing: -0.2,
-  },
-
-  subheading: {
+  headline: {
     fontFamily: FontFamily.body,
-    fontSize: 12,
-    color: Colors.label3,
-    marginBottom: 14,
-    marginLeft: 23, // aligns with text in titleRow (icon width 16 + gap 7)
+    fontSize: 14.5,
+    color: T.label2,
+    lineHeight: 21,
+    marginBottom: 11,
   },
 
   reasonsList: {
-    gap: 10,
+    gap: 7,
   },
-
   reasonRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 9,
   },
-
+  checkCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: ACCENT.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 1,
+  },
   reasonText: {
     fontFamily: FontFamily.body,
     fontSize: 14,
-    color: Colors.label2,
+    color: T.label2,
+    lineHeight: 20,
     flexShrink: 1,
   },
 });

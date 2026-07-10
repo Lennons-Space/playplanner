@@ -16,7 +16,14 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Review } from '@/types';
 import { formatMonthYear, getInitials, AVATAR_COLOURS } from '@/lib/utils';
-import { Colors, FontFamily, BorderRadius, CardBorder, Shadow } from '@/constants/theme';
+import { Themes, FontFamily, BorderRadius } from '@/constants/theme';
+
+// v2 dark tokens (2026-07-09) — ReviewCard renders only on the (dark) v2
+// venue detail screen (verified: no other importer). Cards sit on the dark
+// sheet (surface), so the card body uses the page bg tone with a hairline.
+const T = Themes.dark;
+// Initials always render dark-on-pastel: AVATAR_COLOURS are light pastels.
+const AVATAR_INK = '#16151A';
 
 interface ReviewCardProps {
   review: Review;
@@ -141,13 +148,12 @@ export const ReviewCard = React.memo(function ReviewCard({ review, onPressReview
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.surface,
+    backgroundColor: T.bg,
     borderRadius: BorderRadius.card,
-    ...CardBorder.standard,
+    borderWidth: 1,
+    borderColor: T.separator,
     padding: 16,
     marginBottom: 12,
-    // Subtle shadow so the card lifts off the sand background.
-    ...Shadow.sm,
   },
   topRow: {
     flexDirection: 'row',
@@ -167,7 +173,7 @@ const styles = StyleSheet.create({
   avatarInitials: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
-    color: Colors.label,
+    color: AVATAR_INK,
   },
   nameBlock: {
     flex: 1,
@@ -175,30 +181,30 @@ const styles = StyleSheet.create({
   displayName: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
-    color: Colors.label,
+    color: T.label,
   },
   dateMeta: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: Colors.label3,
+    color: T.label3,
     marginTop: 1,
   },
   stars: {
     fontSize: 16,
-    color: Colors.coral,
+    color: T.star,
     letterSpacing: 1,
     marginBottom: 6,
   },
   reviewTitle: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: Colors.label,
+    color: T.label,
     marginBottom: 4,
   },
   reviewBody: {
     fontFamily: FontFamily.body,
     fontSize: 14,
-    color: Colors.label2,
+    color: T.label2,
     lineHeight: 20,
   },
   bottomRow: {
@@ -209,9 +215,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pendingBadge: {
-    backgroundColor: Colors.surface2,   // low-contrast, unobtrusive
+    backgroundColor: T.surface2,   // low-contrast, unobtrusive
     borderWidth: 1,
-    borderColor: Colors.separator,
+    borderColor: T.separator,
     borderRadius: BorderRadius.pill,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -219,11 +225,11 @@ const styles = StyleSheet.create({
   pendingBadgeText: {
     fontFamily: FontFamily.body,
     fontSize: 11,
-    color: Colors.label3,
+    color: T.label3,
   },
   helpfulText: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: Colors.label3,
+    color: T.label3,
   },
 });

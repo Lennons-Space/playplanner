@@ -592,3 +592,117 @@ max(88, 52+34) under the mocks + paddingBottom ≥ 32 spacer).
 100 suites / 1826 tests, tsc 31 = baseline (0 new), ESLint clean. No commit/push/backend.
 
 **Next:** user re-reviews Home (round 5 — expected final). If accepted → user commits → Venue Detail.
+
+---
+
+## Session log: 2026-07-09 (later) — Home COMMITTED + Step 2 Venue Detail v2 built
+
+### Home v2 Step 1 — ACCEPTED and COMMITTED ✅
+- Commit **`194877d` "feat: implement v2 home experience"** on `feat/exact-v2-design` (33 files, no
+  trailers per user instruction). NOT pushed. Round-4 tab-safe viewport fix was the final blocker fix.
+- `.claude/memory/` shared files included per CLAUDE.md policy; `.design-v2-handoff/`, Supabase,
+  enrichment, migrations all excluded/absent.
+
+### Step 2 — Venue Detail v2 (UNCOMMITTED, awaiting on-device review) ← PICK UP HERE
+- `app/venue/[id].tsx` rewritten to pp2-venue.jsx dark spec (authority html > jsx > screenshots >
+  README; ground truth 02-venue-detail-dark.png). VISUAL LAYER ONLY — every hook/mutation/handler
+  (favourite toggle w/ cache guard, share, report, photo upload, plan-visit params, directions,
+  review route) byte-identical.
+- Layout: 300px hero (cover→Wikimedia+CC attribution→dark CategoryPlaceholder) + glass back/share/
+  heart (36px, rgba(0,0,0,0.38), NO BlurView) → dark sheet r20 −20 + handle → name + ✓Verified
+  (real is_verified) + Featured + type + rating ("No reviews yet" fallback) → 3 centred stat tiles
+  (distance/ages/open-till) → v2 WhyRecommended accent card (restyled RecommendationExplanation,
+  self-hides) → info rows card (address; "Price range · X" only when price_range present) → Call row
+  (VenueContactRow, self-hides) → What's-here chips → facility text pills → About → real-photos rail
+  100×76 (hidden when none) → Reviews + accent Write-a-review pill → 7-day hours table → upload →
+  report → ODbL → sticky Directions + ocean Plan-a-visit.
+- Prototype-only data OMITTED (never faked): indoor/outdoor badge, trust chips ("DBS checked"),
+  "£6.50 per child", "Free parking", fixture reviews, "See all" link.
+- Dark restyles (all verified venue-detail-only importers): ReviewCard (bg tile + amber stars),
+  FacilityChips (**also fixed its style-as-function Pressable — the NativeWind device bug**),
+  VenueContactRow, RecommendationExplanation.
+- Gates: **100 suites / 1826 tests pass**, tsc **31 = baseline (0 new)**, ESLint **0 errors**
+  (1 pre-existing `_myReview` warning).
+
+### Next session — START HERE
+1. User reviews Venue Detail on Android device (reload/`npx expo start -c` for fresh bundle).
+   Check especially: hero scrim over real photos, stat tiles with no-hours venues, no-photos venues.
+2. If accepted → commit Step 2 checkpoint (user instructs; suggested msg "feat: implement v2 venue
+   detail"). If not → fix against fresh screenshot vs pp2-venue.jsx.
+3. Then (only with explicit approval): next v2 screen — pp2-map.jsx or Saved (pp2-venue.jsx's
+   SavedScreen) / profile per user choice.
+- Standing rules: no commit/push unprompted; no Supabase/enrichment/migrations/RPC; no BlurView;
+  static Pressable styles only; no fake data; Home is done — do not redesign.
+
+---
+
+## Session log: 2026-07-09/10 — Venue Detail polish + Plan Visit dark + BACKGROUND CONSISTENCY (⏸ PAUSED)
+
+Still on `feat/exact-v2-design`, HEAD `194877d`, everything below UNCOMMITTED on top.
+
+**Venue Detail device-review fixes:** (1) sticky bottom bar overlap → ScrollView paddingBottom now
+measures the bar via `onLayout` = `bottomBarHeight + insets.bottom + 24` (was bare 120). (2) Directions
+opened "Unnamed location" → `handleGetDirections` now labels the pin: Android
+`geo:lat,lng?q=lat,lng(encodeURIComponent(name))`, iOS `maps.apple.com/?q=name&ll=lat,lng`; coords
+authoritative. (3) LoadingSkeleton + error state got `<V2Background/>` + transparent root.
+
+**Step 2b Plan Visit (`app/venue/plan-visit.tsx`) LIGHT→DARK:** retuned local `pp` palette to
+`Themes.dark`(T) + `ocean` ACCENT + `FontFamily.*`; removed cream/white/light shadows; rgba(…,0.16)
+badge tints; ON_ACCENT '#FFFFFF' + OPEN_GREEN '#34C77B' contrast fixes. All plan/ICS/hours/share/nav
+logic byte-identical.
+
+**BACKGROUND CONSISTENCY (took 3 rounds — real cause + final fix):** V2Background was mounted only on
+Home. Adding it to Venue Detail/Plan Visit wasn't enough because Venue Detail's ONE monolithic OPAQUE
+sheet (`styles.sheet`=`T.surface`, edge-to-edge below hero) buried it → looked flat dark. FIX = sheet
+now TRANSLUCENT `rgba(14,14,20,0.5)` + hairline; inner cards stay opaque islands (mirrors Home showing
+atmosphere in gaps). Then Liam flagged "Home changed" → PROVED Home byte-identical to 194877d (git diff
+= 0 on index/V2WeatherMotion/WeatherLayer/useAppTheme/weatherTheme/theme); apparent change was stale
+Metro cache + dynamic time-of-day atmosphere (sunny→night). Liam ruling: KEEP DYNAMIC, Home frozen,
+Venue/Plan adapt to Home. Final: NEW state-only `components/ui/V2AtmosphereProvider.tsx` at root
+(`app/_layout.tsx` wraps Stack) resolves atmosphere ONCE, shared via context; renders nothing (safe
+over /admin — no animated global mount, no Fabric crash). `V2Background` reads `useV2Atmosphere()`
+(fallback to own fetch if no provider); Home output byte-identical (verified + test).
+
+**Gates (I independently re-verified each round):** tsc 31 baseline · focused 27 suites/295 · full
+test:ci 1849 · eslint touched 0 err · 0 BlurView · 0 useLocation · consent intact.
+
+### Next session — START HERE
+1. Restart Metro clean (`npx expo start --dev-client -c`); Liam reloads Android dev build (no native
+   rebuild) → full pass Home→Venue Detail (watch load moment)→Plan Visit→back to Home: same dynamic
+   atmosphere everywhere, Home unchanged from accepted.
+2. If accepted → Liam instructs commit of Step 2/2b + background work (suggested "feat: implement v2
+   venue detail"; NO Co-Authored-By trailer per Liam). If not → fix against device screenshots.
+3. Then (explicit approval only) next v2 screen — Map (pp2-map.jsx) or Saved, Liam picks.
+- Standing rules unchanged (see above). Do NOT commit or start another screen until Liam approves.
+
+## Session 15 — 2026-07-10: V2AtmosphereProvider REMOVED — Home background path restored to 194877d bytes
+
+Liam ruling (overrides the "keep provider" outcome above): background still wrong on device; restore
+Home background to EXACTLY the accepted 194877d checkpoint, no reinterpretation, no time-of-day
+"improvements", no shared atmosphere if it changes Home; Venue Detail/Plan Visit must match by
+adapting to Home, never the reverse.
+
+**Done:** `git checkout 194877d -- components/ui/V2Background.tsx app/_layout.tsx` (both now byte-
+identical to the accepted commit — V2Background back to its own `useWeather(FALLBACK_LOCATION)` +
+`resolveAtmosphere()`; root layout no longer wraps the Stack in any provider). DELETED
+`components/ui/V2AtmosphereProvider.tsx` + `components/ui/__tests__/V2AtmosphereProvider.test.tsx`.
+Zero code references remain (grep-verified). Venue Detail/Plan Visit unchanged this session — they
+already mount plain `<V2Background/>` (translucent-sheet fix, sticky bar, Directions-name fix, Plan
+Visit dark styling all intact); cross-screen consistency still guaranteed by the shared React Query
+cache key + pure `resolveAtmosphere()`, exactly as at 194877d.
+
+**Home's full background render path is now byte-for-byte 194877d** (index.tsx, V2Background,
+V2WeatherMotion, WeatherLayer, weatherTheme, useWeather — all at commit bytes). If the device still
+shows a difference after `npx expo start -c`, it can only be stale bundle cache or the dynamic
+weather/time behaviour that was already IN the accepted commit.
+
+**Gates:** tsc 31-error baseline (0 new) · full `npx jest --ci` 103 suites / 1841 tests ALL PASS ·
+eslint on 4 background-path files: 0 errors, 1 pre-existing `_myReview` warning · no worktrees ·
+no commit/push/backend/Supabase/migration/RPC work · no useLocation anywhere in the path.
+
+### Next session — START HERE
+1. Metro clean start (`npx expo start -c`); Liam reloads → full pass Home → Venue Detail → Plan Visit
+   → back to Home. Home must look like the accepted checkpoint; other two must match it.
+2. Accepted → Liam commits Step 2/2b + background work. Not accepted → fix from device screenshot,
+   changing ONLY Venue Detail/Plan Visit wrappers, never Home files.
+3. Then (explicit approval only) next v2 screen.

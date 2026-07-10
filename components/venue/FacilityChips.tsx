@@ -31,7 +31,11 @@ import {
   type FacilitySlug,
   type FacilityStat,
 } from '@/hooks/useFacilities';
-import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
+import { Themes, ocean, FontFamily, BorderRadius } from '@/constants/theme';
+
+// v2 dark tokens (2026-07-09) — FacilityChips renders only on the (dark) v2
+// venue detail screen.
+const T = Themes.dark;
 
 interface ChipDef {
   slug: FacilitySlug;
@@ -162,16 +166,16 @@ function FacilityChip({ def, stat, onPress }: FacilityChipProps) {
   }
 
   return (
+    // STATIC style array only — the dev build's NativeWind 4 interop silently
+    // drops Pressable style-as-function props (see Home, 2026-07-09); press
+    // feedback comes from android_ripple instead of the old opacity style.
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${def.label}. ${stateLabel}`}
       accessibilityHint="Confirms whether this facility is available at this venue"
-      style={({ pressed }) => [
-        styles.chip,
-        filled ? styles.chipFilled : styles.chipOutline,
-        pressed && styles.chipPressed,
-      ]}
+      android_ripple={{ color: 'rgba(255,255,255,0.10)', foreground: true }}
+      style={[styles.chip, filled ? styles.chipFilled : styles.chipOutline]}
     >
       {display}
     </Pressable>
@@ -180,20 +184,20 @@ function FacilityChip({ def, stat, onPress }: FacilityChipProps) {
 
 const styles = StyleSheet.create({
   section: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16, // v2 sheet gutter
     paddingTop: 4,
     paddingBottom: 16,
   },
   heading: {
     fontFamily: FontFamily.heading,
     fontSize: 17,
-    color: Colors.label,
+    color: T.label,
     marginBottom: 2,
   },
   subheading: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: Colors.label3,
+    color: T.label3,
     marginBottom: 12,
   },
   row: {
@@ -208,18 +212,16 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: BorderRadius.pill,
     gap: 6,
+    overflow: 'hidden',
   },
   chipOutline: {
-    backgroundColor: Colors.surface,
+    backgroundColor: T.bg,
     borderWidth: 1,
-    borderColor: Colors.separator,
+    borderColor: T.separator,
   },
   chipFilled: {
-    backgroundColor: Colors.accent,
+    backgroundColor: ocean.accent,
     borderWidth: 0,
-  },
-  chipPressed: {
-    opacity: 0.7,
   },
   emoji: {
     fontSize: 15,
@@ -229,7 +231,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   chipTextOutline: {
-    color: Colors.label,
+    color: T.label,
   },
   chipTextFilled: {
     color: '#FFFFFF',
