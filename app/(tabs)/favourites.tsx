@@ -1,5 +1,10 @@
 /**
- * Favourites tab — 2-column card grid of saved venues.
+ * Saved tab — Play Planner v2 dark screen (prototype: SavedScreen in
+ * .design-v2-handoff/pp2-venue.jsx, screens/04-saved-dark.png).
+ *
+ * Structure: eyebrow "Saved places" + display title "Your favourites" +
+ * "{n} saved" count, then a 2-column grid of square photo cards (bottom
+ * scrim, category badge top-left, name + ★ rating, glass heart = unsave).
  *
  * RLS note: .eq('user_id', user.id) is belt-and-braces — RLS on the
  * `favourites` table is the authoritative security boundary.
@@ -7,6 +12,12 @@
  * Data minimisation: we only select columns the UI actually needs.
  * venue_photos is joined and resolved to a single cover_photo_url
  * client-side; the raw array is never stored in component state.
+ *
+ * Prototype-only data intentionally NOT ported: the distance chip ("0.4 mi")
+ * — Saved never reads location (consent rules; only Home's results may), and
+ * the open/closed dot — opening hours are not part of this screen's query.
+ * The badge dot uses the category colour instead (same language as Home's
+ * VenueCard2). No fabricated venues anywhere.
  */
 
 import { useCallback } from 'react';
@@ -20,16 +31,22 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
-import { useUser, useProfile } from '@/hooks/useAuth';
-import { Icon, ScreenTitle, CategoryPlaceholder } from '@/components/ui';
+import { useUser } from '@/hooks/useAuth';
+import { Icon, CategoryPlaceholder } from '@/components/ui';
+import { V2Background } from '@/components/ui/V2Background';
 import { SavedEmptyState } from '@/components/favourites/SavedEmptyState';
 import { getCategoryMeta } from '@/constants/categories';
+import { Themes, ocean, FontFamily } from '@/constants/theme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type FavVenue = {
@@ -45,120 +62,140 @@ type FavVenue = {
   } | null;
 };
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
-const C = {
-  ink:      '#1D2630',
-  inkSoft:  '#4A5560',
-  mute:     '#7B8794',
-  line:     '#E6E2DB',
-  lineSoft: '#F1ECE2',
-  sand:     '#FBF6EC',
-  paper:    '#FFFFFF',
-  sky:      '#2FB8B0',
-  skyDeep:  '#1B8A85',
-  coral:    '#FF6B6B',
-  sun:      '#FFD66B',
-  sunSoft:  '#FFF1C7',
-  coralSoft:'#FFE8E8',
-  star:     '#F5A524',
-} as const;
+// ─── Design tokens (v2 dark) ──────────────────────────────────────────────────
+const T = Themes.dark;
+const ACCENT = ocean;
+// Prototype literals for the on-photo overlays (not theme tokens by design —
+// they sit on photographs, not on the theme surface).
+const CARD_STAR = '#FFD166';
+const HEART_RED = '#FF6B6B';
+// Prototype uses rgba(0,0,0,0.44)/0.38 + backdrop blur(8px). BlurView is
+// banned (native module missing from the installed dev build), so the alpha
+// is nudged up slightly — the accepted Android-safe glass approximation.
+const BADGE_GLASS = 'rgba(0,0,0,0.5)';
+const HEART_GLASS = 'rgba(0,0,0,0.45)';
 
-const H_PAD    = 20;
+const H_PAD    = 16; // prototype: grid + header padding '0 16px'
 const CARD_GAP = 10;
-const IMG_H    = 104;
 
 // ─── FavCard ──────────────────────────────────────────────────────────────────
-// Each card in the 2-col grid: image area + info area + unsave button overlay.
+// One square photo card in the 2-col grid (prototype: aspectRatio 1/1, r18,
+// bottom scrim, badge top-left, name + rating bottom-left, heart top-right).
+// `size` is the computed grid cell (see cardSize in the screen component) —
+// an EXPLICIT width/height, never flex:1: with numColumns a flexed card in a
+// one-item row stretches to full width, breaking the square grid.
 function FavCard({
   item,
+  size,
   onPress,
   onUnsave,
 }: {
   item: FavVenue;
+  size: number;
   onPress: () => void;
   onUnsave: () => void;
 }) {
   const venue = item.venue;
   // Empty slot to preserve grid column layout when venue data is null.
-  if (!venue) return <View style={styles.cardPlaceholderSlot} />;
+  if (!venue) return <View style={{ width: size, height: size }} />;
 
   const catMeta  = getCategoryMeta(venue.category?.slug);
   const hasPhoto = !!venue.cover_photo_url;
+  const rating   = Number(venue.average_rating);
 
   return (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={onPress}
-      activeOpacity={0.88}
-      accessibilityRole="button"
-      accessibilityLabel={venue.name}
-    >
-      {/* ── Image area ─────────────────────────────────────────── */}
-      <View style={styles.imageArea}>
-        {hasPhoto ? (
-          <Image
-            source={{ uri: venue.cover_photo_url! }}
-            style={StyleSheet.absoluteFill}
-            resizeMode="cover"
-          />
-        ) : (
-          // CategoryPlaceholder expects square dimensions; we stretch it to fill
-          // the image area by wrapping it in an absoluteFill container.
-          <View style={[StyleSheet.absoluteFill, styles.placeholderWrap]}>
-            <CategoryPlaceholder
-              categorySlug={venue.category?.slug ?? 'other'}
-              size={IMG_H}
-              borderRadius={0}
-            />
+    // The SIZED element is a plain View — the most primitive RN layout path.
+    // Belt-and-braces vs the known on-device style interop trouble with
+    // touchable components (see nativewind-function-style-bug): even if the
+    // inner touchable's style were mangled on device, the card physically
+    // cannot exceed this wrapper (fixed width/height + overflow hidden).
+    <View style={[styles.card, { width: size, height: size }]} testID={`saved-card-${venue.id}`}>
+      <TouchableOpacity
+        style={styles.cardTouch}
+        onPress={onPress}
+        activeOpacity={0.88}
+        accessibilityRole="button"
+        accessibilityLabel={venue.name}
+      >
+      {/* ── Photo (or dark category placeholder) ───────────────── */}
+      {hasPhoto ? (
+        <Image
+          source={{ uri: venue.cover_photo_url! }}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+        />
+      ) : (
+        <CategoryPlaceholder
+          categorySlug={venue.category?.slug ?? 'other'}
+          fill
+          variant="dark"
+        />
+      )}
+
+      {/* Bottom scrim so the white name/rating stay legible on any photo. */}
+      <LinearGradient
+        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.75)']}
+        locations={[0.28, 1]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+
+      {/* Category badge — top-left (dot = category colour, see header note). */}
+      {venue.category && (
+        <View style={styles.typeBadge} pointerEvents="none">
+          <View style={[styles.typeDot, { backgroundColor: catMeta.color }]} />
+          <Text style={styles.typeText} numberOfLines={1}>
+            {catMeta.label}
+          </Text>
+        </View>
+      )}
+
+      {/* Name + rating — bottom-left, clear of the heart button. The star
+          row only renders when a real numeric rating exists: no reviews →
+          no row (never a fabricated value or an awkward "★ –"). */}
+      <View style={styles.cardFooter} pointerEvents="none">
+        <Text style={styles.venueName} numberOfLines={1}>{venue.name}</Text>
+        {rating > 0 && (
+          <View style={styles.metaRow}>
+            <Icon name="star" size={10} color={CARD_STAR} />
+            <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
           </View>
         )}
+      </View>
 
-        {/* Unsave button — top-right overlay */}
+      {/* Unsave — 27px glass heart, top-right. Static style + ripple only
+          (NativeWind interop drops Pressable style-functions on device). */}
         <Pressable
           style={styles.unsaveBtn}
+          android_ripple={{ color: 'rgba(255,255,255,0.18)', borderless: true }}
           onPress={onUnsave}
           accessibilityRole="button"
           accessibilityLabel={`Remove ${venue.name} from favourites`}
           hitSlop={8}
         >
-          <Icon name="heartFill" size={14} color={C.coral} />
+          <Icon name="heartFill" size={13} color={HEART_RED} />
         </Pressable>
-      </View>
-
-      {/* ── Info area ──────────────────────────────────────────── */}
-      <View style={styles.infoArea}>
-        <Text style={styles.venueName} numberOfLines={2}>{venue.name}</Text>
-
-        <View style={styles.metaRow}>
-          <Icon name="star" size={10} color={C.star} />
-          <Text style={styles.ratingText}>
-            {Number(venue.average_rating) > 0
-              ? Number(venue.average_rating).toFixed(1)
-              : '–'}
-          </Text>
-          <Text style={styles.distanceText}>· nearby</Text>
-        </View>
-
-        {venue.category && (
-          <View style={[styles.catPill, { backgroundColor: catMeta.soft }]}>
-            <Text style={[styles.catPillText, { color: catMeta.color }]}>
-              {catMeta.label.toUpperCase()}
-            </Text>
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 // ─── FavouritesScreen ─────────────────────────────────────────────────────────
 export default function FavouritesScreen() {
   const user         = useUser();
-  const profile      = useProfile();
   const queryClient  = useQueryClient();
+  const insets       = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  // Same tab-safe viewport rule as accepted Home: the scrollable area ends
+  // above the tab bar, so content can never sit beneath it — the bar only
+  // ever overlays the V2Background layer.
+  const tabSafeZone = Math.max(tabBarHeight, 52 + insets.bottom);
 
-  // First name from full_name for the eyebrow — same derivation as before.
-  const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? null;
+  // 2-column grid cell: half the width left after the two outer gutters and
+  // the single inter-card gap. Explicit size (not flex) so a lone card in a
+  // row keeps its grid width instead of stretching full-bleed.
+  const { width: windowWidth } = useWindowDimensions();
+  const cardSize = Math.floor((windowWidth - H_PAD * 2 - CARD_GAP) / 2);
 
   // ── Data query (preserved verbatim) ────────────────────────────────────────
   const { data: favRows = [], isLoading, isError } = useQuery<FavVenue[]>({
@@ -234,87 +271,104 @@ export default function FavouritesScreen() {
 
   // ── Derived display state ───────────────────────────────────────────────────
   const showEmpty = favRows.length === 0;
+  const savedCount = favRows.filter((r) => r.venue !== null).length;
 
-  // ── List header ─────────────────────────────────────────────────────────────
+  // ── Header (prototype: eyebrow / title / "{n} saved", aligned flex-end) ────
   const listHeader = (
-    <View>
-      <ScreenTitle
-        eyebrow={firstName ? `${firstName}'s` : undefined}
-        title="Saved places"
-      />
+    <View style={styles.header}>
+      <View style={styles.headerLeft}>
+        <Text style={styles.eyebrow}>Saved places</Text>
+        <Text style={styles.title} maxFontSizeMultiplier={1.2}>Your favourites</Text>
+      </View>
+      <Text style={styles.savedCount}>{savedCount} saved</Text>
     </View>
   );
-
-  // ── List footer ─────────────────────────────────────────────────────────────
-  const listFooter = <View style={styles.bottomPad} />;
 
   // ── Not signed in ─────────────────────────────────────────────────────────
   if (!user) {
     return (
-      <SafeAreaView style={styles.root} edges={['top']}>
-        <View style={styles.centred}>
-          <Text style={styles.notSignedInEmoji}>💛</Text>
-          <Text style={styles.emptyTitle}>Save your favourite places</Text>
-          <Text style={styles.emptySub}>
-            Sign in to keep a personal list of venues your family loves.
-          </Text>
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => router.push('/(auth)/login')}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in to save favourites"
-          >
-            <Text style={styles.primaryBtnText}>Sign in</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.secondaryBtnWrap}
-            onPress={() => router.push('/(auth)/register')}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryBtnText}>Create an account</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <View style={styles.root}>
+        <V2Background />
+        <StatusBar style="light" />
+        <SafeAreaView style={styles.safe} edges={['top']}>
+          <View style={styles.centred}>
+            <View style={styles.iconTile}>
+              <Icon name="heartFill" size={34} color={HEART_RED} />
+            </View>
+            <Text style={styles.stateTitle}>Save your favourite places</Text>
+            <Text style={styles.stateSub}>
+              Sign in to keep a personal list of venues your family loves.
+            </Text>
+            <Pressable
+              style={styles.primaryBtn}
+              android_ripple={{ color: 'rgba(255,255,255,0.18)' }}
+              onPress={() => router.push('/(auth)/login')}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in to save favourites"
+            >
+              <Text style={styles.primaryBtnText}>Sign in</Text>
+            </Pressable>
+            <Pressable
+              style={styles.secondaryBtnWrap}
+              android_ripple={{ color: 'rgba(255,255,255,0.12)' }}
+              onPress={() => router.push('/(auth)/register')}
+              accessibilityRole="button"
+            >
+              <Text style={styles.secondaryBtnText}>Create an account</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.root} edges={['top']}>
-        <View style={styles.centred}>
-          <ActivityIndicator color={C.sky} size="large" />
-        </View>
-      </SafeAreaView>
+      <View style={styles.root}>
+        <V2Background />
+        <StatusBar style="light" />
+        <SafeAreaView style={styles.safe} edges={['top']}>
+          <View style={styles.centred}>
+            <ActivityIndicator color={ACCENT.accent} size="large" />
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   // ── Error ─────────────────────────────────────────────────────────────────
   if (isError) {
     return (
-      <SafeAreaView style={styles.root} edges={['top']}>
-        <View style={styles.centred}>
-          <Text style={styles.errorEmoji}>⚠️</Text>
-          <Text style={styles.emptyTitle}>Could not load favourites</Text>
-          <Text style={styles.emptySub}>Check your connection and try again.</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.root}>
+        <V2Background />
+        <StatusBar style="light" />
+        <SafeAreaView style={styles.safe} edges={['top']}>
+          <View style={styles.centred}>
+            <Text style={styles.errorEmoji}>⚠️</Text>
+            <Text style={styles.stateTitle}>Could not load favourites</Text>
+            <Text style={styles.stateSub}>Check your connection and try again.</Text>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   // ── Signed-in grid view ───────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      {showEmpty ? (
-        // When the active tab has nothing to show, render header + empty state
-        // in a plain ScrollView (no FlatList needed).
-        <View style={{ flex: 1 }}>
-          {/* Favourites-only soft cream scrim — calms the global sunny weather
-              circles behind the empty state so the content stays the focus.
-              Non-interactive, absolute-fill (no layout impact); keeps the warm
-              ambience rather than removing it. Does NOT touch the weather layer. */}
-          <View pointerEvents="none" style={styles.emptyScrim} />
+    <View style={styles.root}>
+      {/* Same accepted v2 atmosphere as Home/Venue Detail/Plan Visit — the
+          shared weather cache key + pure resolveAtmosphere() keep it
+          identical across screens. Covers the tabs layout's legacy ambient
+          layer exactly like Home does. */}
+      <V2Background />
+      {/* Local override of the tabs layout's shared "dark" status bar —
+          same stacking pattern as Home; reverts on the legacy light tabs. */}
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        {showEmpty ? (
           <ScrollView
+            style={{ marginBottom: tabSafeZone }}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.emptyScrollContent}
           >
@@ -322,28 +376,30 @@ export default function FavouritesScreen() {
             <SavedEmptyState />
             <View style={styles.bottomPad} />
           </ScrollView>
-        </View>
-      ) : (
-        <FlatList
-          data={favRows}
-          keyExtractor={(item) => item.id}
-          numColumns={2}
-          columnWrapperStyle={styles.columnWrapper}
-          contentContainerStyle={styles.listContent}
-          ListHeaderComponent={listHeader}
-          ListFooterComponent={listFooter}
-          renderItem={({ item }) => (
-            <FavCard
-              item={item}
-              onPress={() => handlePress(item.venue_id)}
-              onUnsave={() => unsaveMutation.mutate(item.id)}
-            />
-          )}
-          removeClippedSubviews
-          showsVerticalScrollIndicator={false}
-        />
-      )}
-    </SafeAreaView>
+        ) : (
+          <FlatList
+            data={favRows}
+            keyExtractor={(item) => item.id}
+            numColumns={2}
+            style={{ marginBottom: tabSafeZone }}
+            columnWrapperStyle={styles.columnWrapper}
+            contentContainerStyle={styles.listContent}
+            ListHeaderComponent={listHeader}
+            ListFooterComponent={<View style={styles.bottomPad} />}
+            renderItem={({ item }) => (
+              <FavCard
+                item={item}
+                size={cardSize}
+                onPress={() => handlePress(item.venue_id)}
+                onUnsave={() => unsaveMutation.mutate(item.id)}
+              />
+            )}
+            removeClippedSubviews
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -351,7 +407,11 @@ export default function FavouritesScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    // Transparent so the global weather layer (app/(tabs)/_layout) shows through.
+    // Transparent — V2Background (first child) is the screen's backdrop.
+    backgroundColor: 'transparent',
+  },
+  safe: {
+    flex: 1,
     backgroundColor: 'transparent',
   },
   centred: {
@@ -361,7 +421,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
 
-  // ── FlatList layout ───────────────────────────────────────────────
+  // ── Header (prototype: padding '52px 16px 14px', flex-end) ───────────
+  header: {
+    paddingTop: 6, // status bar height comes from SafeArea, like Home
+    paddingBottom: 14,
+    paddingHorizontal: H_PAD,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    flexShrink: 1,
+    paddingRight: 12,
+  },
+  eyebrow: {
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: ACCENT.accent,
+  },
+  title: {
+    marginTop: 2,
+    fontFamily: FontFamily.display,
+    fontSize: 28,
+    lineHeight: 32, // 1.15
+    letterSpacing: -0.5,
+    color: T.label,
+  },
+  savedCount: {
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: T.label3,
+    marginBottom: 4, // optically aligns with the title baseline (flex-end row)
+  },
+
+  // ── List layout ───────────────────────────────────────────────────
   listContent: {
     paddingBottom: 32,
   },
@@ -373,132 +466,137 @@ const styles = StyleSheet.create({
   emptyScrollContent: {
     flexGrow: 1,
   },
-  // Soft cream wash over the global sunny background — empty state only.
-  emptyScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(251,246,236,0.42)',
-  },
   bottomPad: {
-    height: 110, // clear tab bar
+    height: 32, // viewport already ends above the tab bar (tabSafeZone)
   },
 
-  // ── Venue card ────────────────────────────────────────────────────
+  // ── Venue card (prototype: square, r18, hairline separator ring).
+  // Width/height come from the computed cardSize (see FavCard) — no flex,
+  // so a single saved venue keeps its grid cell instead of going full-width.
   card: {
-    flex: 1,
-    backgroundColor: C.paper,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: C.line,
+    borderColor: T.separator,
     overflow: 'hidden',
+    backgroundColor: T.surface, // brief flash colour while a photo decodes
   },
-  // Zero-width spacer in the grid column when venue data is null,
-  // so the sibling card still occupies its correct column.
-  cardPlaceholderSlot: {
+  // Fills the sized card wrapper — deliberately the ONLY dimension style on
+  // the touchable (the plain-View wrapper owns width/height).
+  cardTouch: {
     flex: 1,
   },
-  imageArea: {
-    height: IMG_H,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  placeholderWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  unsaveBtn: {
+  typeBadge: {
     position: 'absolute',
     top: 8,
-    right: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    left: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: BADGE_GLASS,
+    borderRadius: 7,
+    paddingVertical: 3,
+    paddingHorizontal: 7,
+    maxWidth: '70%', // never collides with the heart button
   },
-  infoArea: {
-    padding: 10,
+  typeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  typeText: {
+    fontFamily: FontFamily.caption,
+    fontSize: 10,
+    color: '#FFFFFF',
+  },
+  cardFooter: {
+    position: 'absolute',
+    bottom: 8,
+    left: 9,
+    right: 36, // clear of the heart button (prototype: right 32)
   },
   venueName: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 13,
-    color: C.ink,
-    lineHeight: 13 * 1.2,
+    fontFamily: FontFamily.caption,
+    fontSize: 12.5,
+    lineHeight: 15,
+    color: '#FFFFFF',
+    marginBottom: 2,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
+    gap: 3,
   },
   ratingText: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 11,
-    color: C.ink,
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 10.5,
+    color: CARD_STAR,
   },
-  distanceText: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 11,
-    color: C.mute,
-  },
-  catPill: {
-    alignSelf: 'flex-start',
-    marginTop: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 7,
+  unsaveBtn: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 27,
+    height: 27,
     borderRadius: 999,
-  },
-  catPillText: {
-    fontFamily: 'Nunito-ExtraBold',
-    fontSize: 9,
-    letterSpacing: 0.3,
+    backgroundColor: HEART_GLASS,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  // ── Shared empty/error copy (used by not-signed-in + error states) ──
-  emptyTitle: {
-    fontFamily: 'Nunito-ExtraBold',
-    fontSize: 20,
-    color: C.ink,
+  // ── Shared state styles (signed-out / error) ──────────────────────
+  iconTile: {
+    width: 80,
+    height: 80,
+    borderRadius: 26,
+    backgroundColor: T.surface,
+    borderWidth: 1,
+    borderColor: T.separator,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  stateTitle: {
+    fontFamily: FontFamily.display,
+    fontSize: 22,
+    letterSpacing: -0.5,
+    color: T.label,
     textAlign: 'center',
   },
-  emptySub: {
-    fontFamily: 'Nunito-Regular',
-    fontSize: 14,
-    color: C.mute,
+  stateSub: {
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label3,
     textAlign: 'center',
-    marginTop: 6,
-    lineHeight: 14 * 1.5,
-  },
-
-  // ── Not signed in ─────────────────────────────────────────────────
-  notSignedInEmoji: {
-    fontSize: 56,
-    marginBottom: 16,
+    marginTop: 10,
+    lineHeight: 24,
+    maxWidth: 280,
   },
   errorEmoji: {
     fontSize: 44,
     marginBottom: 12,
   },
   primaryBtn: {
-    backgroundColor: C.sky,
-    borderRadius: 999,
+    backgroundColor: ACCENT.accent,
+    borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 36,
-    marginTop: 8,
+    marginTop: 26,
   },
   primaryBtnText: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 15,
+    fontFamily: FontFamily.caption,
+    fontSize: 15.5,
+    letterSpacing: -0.2,
     color: '#FFFFFF',
   },
   secondaryBtnWrap: {
-    marginTop: 12,
+    marginTop: 14,
     paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
   },
   secondaryBtnText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 14,
-    color: C.sky,
+    color: ACCENT.accent,
   },
 });

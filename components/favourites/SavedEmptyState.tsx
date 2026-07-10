@@ -1,40 +1,37 @@
 // ─────────────────────────────────────────────────────────────────────────
-// SavedEmptyState — the empty state for the Favourites tab (no saved venues).
+// SavedEmptyState — the empty state for the Saved tab (no saved venues).
 //
-// One intentional central composition: a soft heart medallion (PlayPlanner's
-// own heart icon, not a system emoji), the title, a short line, and ONE recovery
-// CTA into Discover. This is an empty-state recovery path (not a duplicate Home
-// action), so the CTA is appropriate. Presentational only — no data, no
-// fabricated venues. Extracted to its own file so it is unit-testable without
-// pulling in the Favourites screen's Supabase / auth import graph.
+// Play Planner v2 dark spec (prototype: SavedScreen empty branch in
+// .design-v2-handoff/pp2-venue.jsx): 80×80 surface tile with an outline
+// heart, display title, one line of copy, and ONE solid-accent recovery CTA
+// into Discover. Presentational only — no data, no fabricated venues.
+// Extracted to its own file so it is unit-testable without pulling in the
+// Saved screen's Supabase / auth import graph.
+//
+// NO function styles: the installed dev build's NativeWind 4 interop silently
+// drops style-as-function props on Pressable — static styles + android_ripple
+// only (see memory: nativewind-function-style-bug).
 // ─────────────────────────────────────────────────────────────────────────
 
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Icon } from '@/components/ui';
+import { Themes, ocean, FontFamily } from '@/constants/theme';
 
-const C = {
-  ink: '#1D2630',
-  mute: '#7B8794',
-  coral: '#FF6B6B',
-  coralSoft: '#FFE8E8',
-  // CTA: soft translucent cream pill + dark warm-amber text — a clear but
-  // restrained action (deliberately quieter than Home's solid accent CTA).
-  amber: '#9A5A14',
-  cream: 'rgba(255,252,246,0.82)',
-  creamBorder: 'rgba(28,20,8,0.09)',
-} as const;
+const T = Themes.dark;
+const ACCENT = ocean;
 
 export function SavedEmptyState() {
   return (
     <View style={s.wrap}>
-      <View style={s.iconCircle}>
-        <Icon name="heartFill" size={34} color={C.coral} />
+      <View style={s.iconTile}>
+        <Icon name="heart" size={36} color={T.label3} />
       </View>
       <Text style={s.title}>Nothing saved yet</Text>
-      <Text style={s.sub}>Tap the heart on any place to keep it here.</Text>
+      <Text style={s.sub}>Tap the heart on any venue to save it here for later.</Text>
       <Pressable
-        style={({ pressed }) => [s.cta, { opacity: pressed ? 0.85 : 1 }]}
+        style={s.cta}
+        android_ripple={{ color: 'rgba(255,255,255,0.18)' }}
         onPress={() => router.push('/discover')}
         accessibilityRole="button"
         accessibilityLabel="Explore places"
@@ -46,29 +43,51 @@ export function SavedEmptyState() {
 }
 
 const s = StyleSheet.create({
-  // flex:1 keeps the composition centred on both short and tall screens.
-  // paddingBottom nudges it slightly ABOVE dead-centre so it isn't perfectly
-  // framed inside the sunny background circle behind it.
-  wrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 56 },
-  iconCircle: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: C.coralSoft,
+  // Prototype: padding '52px 32px', centred column.
+  wrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
+    paddingVertical: 52,
+    paddingHorizontal: 32,
   },
-  title: { fontFamily: 'Nunito-ExtraBold', fontSize: 20, color: C.ink, textAlign: 'center' },
-  sub: { fontFamily: 'Nunito-Regular', fontSize: 14, color: C.mute, textAlign: 'center', marginTop: 6, lineHeight: 21 },
-  cta: {
-    marginTop: 22,
-    backgroundColor: C.cream,
+  iconTile: {
+    width: 80,
+    height: 80,
+    borderRadius: 26,
+    backgroundColor: T.surface,
     borderWidth: 1,
-    borderColor: C.creamBorder,
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    borderColor: T.separator,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
-  ctaText: { fontFamily: 'Nunito-Bold', fontSize: 14, color: C.amber },
+  title: {
+    fontFamily: FontFamily.display,
+    fontSize: 22,
+    letterSpacing: -0.5,
+    color: T.label,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  sub: {
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label3,
+    textAlign: 'center',
+    lineHeight: 25, // prototype 1.65
+    maxWidth: 260,
+    marginBottom: 26,
+  },
+  cta: {
+    backgroundColor: ACCENT.accent,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+  },
+  ctaText: {
+    fontFamily: FontFamily.caption,
+    fontSize: 15.5,
+    letterSpacing: -0.2,
+    color: '#FFFFFF',
+  },
 });

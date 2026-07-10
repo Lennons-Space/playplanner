@@ -700,9 +700,82 @@ weather/time behaviour that was already IN the accepted commit.
 eslint on 4 background-path files: 0 errors, 1 pre-existing `_myReview` warning · no worktrees ·
 no commit/push/backend/Supabase/migration/RPC work · no useLocation anywhere in the path.
 
+### Same day (2026-07-10, later): STEP 2 ACCEPTED + COMMITTED ✅ `fd642b9`
+
+Liam visually ACCEPTED Home + Venue Detail backgrounds and ruled the background FROZEN: do not alter
+`V2Background` / `V2WeatherMotion` / `WeatherLayer` / root background plumbing again unless a new
+clear bug appears (V2AtmosphereProvider stays deleted). Final checks passed: Plan Visit mounts
+`<V2Background/>` in loading/error/main; sticky bar clearance = measured `bottomBarHeight +
+insets.bottom + 24`; Directions opens with venue name; Plan Visit dark v2 (`Themes.dark` + ocean).
+Commit `fd642b9` "feat: implement v2 venue detail" (no trailers), 13 files: [id].tsx, plan-visit.tsx,
+ReviewCard, FacilityChips, VenueContactRow, RecommendationExplanation, 3 background tests,
+4 .claude/memory files. Excluded: assets/design/PP2.png + PP3.png (untracked reference images —
+Liam to decide), no Supabase/enrichment/migration/RPC/handoff/Expo-generated files anywhere in scope.
+Gates at commit: focused app/venue 5 suites/43 pass · test:ci 103 suites/1841 pass · tsc 31 baseline ·
+eslint 0 errors (8 documented pre-existing warnings). NOT pushed.
+
+### Same day (2026-07-10): STEP 3 SAVED SCREEN v2 BUILT — UNCOMMITTED, awaiting device review
+
+Liam approved Step 3 = Saved only. Source: SavedScreen in `.design-v2-handoff/pp2-venue.jsx`
+(no pp2-saved.jsx exists) + `screens/04-saved-dark.png`. Built:
+- `app/(tabs)/favourites.tsx` v2 dark rewrite: screen-local `<V2Background/>` + `<StatusBar
+  style="light"/>` in ALL states (Home's pattern — tabs `_layout.tsx` NOT touched, background
+  plumbing untouched per freeze). Header = ocean eyebrow "Saved places" / 28px display "Your
+  favourites" / "{n} saved". 2-col square photo cards r18 (cover photo or CategoryPlaceholder
+  fill+dark), bottom scrim gradient, glass category badge (category-colour dot — NOT open-status:
+  hours aren't in the query), name + ★ rating (#FFD166, '–' when 0), 27px glass heart = unsave.
+  Query/unsave-mutation/navigation/cover-photo resolution byte-identical. Tab clearance = Home's
+  `max(tabBarHeight, 52+insets.bottom)` viewport marginBottom. Signed-out/loading/error restyled
+  dark, same copy/routes. Prototype-only distance chip OMITTED (Saved never reads location).
+- `components/favourites/SavedEmptyState.tsx` v2 dark per prototype (surface heart tile, prototype
+  copy "…save it here for later.", solid ocean "Explore places →" still → /discover). ALSO fixed
+  its function-style Pressable (nativewind-function-style-bug).
+- NEW `app/(tabs)/__tests__/favourites.test.tsx` (8 tests: background in grid/empty/signed-out,
+  header+count, cards from real rows, card → /venue/:id, unsave delete chain w/ user_id
+  belt-and-braces, no useLocation, empty copy, signed-out login route + no fetch).
+Gates: focused favourites|SavedEmptyState 2 suites/10 pass · full test:ci **104 suites / 1849**
+all pass · tsc 31 baseline (0 new) · eslint 0 errors (1 display-name warning in test helper,
+accepted pattern). Privacy: no location, no PII logging, RLS belt-and-braces preserved, data
+minimisation unchanged. PP2.png/PP3.png left untracked per instruction.
+
+**Saved fix round 1 (same day, after device review):** empty state + background ACCEPTED; card
+layout was NOT — 1 saved venue rendered full-width (numColumns + flex:1 stretches a lone card
+across the row). FIX: explicit grid cell `cardSize = floor((windowWidth − 16*2 − 10) / 2)` via
+`useWindowDimensions`, passed to FavCard as width+height (no flex/aspectRatio on the card style);
+null-venue spacer uses the same size. Rating display: star row now renders ONLY when
+`average_rating > 0` (no "★ –", nothing fabricated). +2 tests (fixed cell size formula; single
+venue keeps grid cell, `flex` undefined, width < content width) and the '–' assertion replaced
+with queryByText null checks. Gates: focused 2 suites/12 pass · test:ci **104 / 1851** all pass ·
+tsc 31 baseline · eslint 0 errors (same 1 display-name warning). Note: the 6 IDE TS diagnostics in
+favourites.tsx's queryFn (venue inferred as array) are PRE-EXISTING baseline errors — present in
+fd642b9, counted in the 31.
+
+**Saved fix round 2 (same day):** device screenshot STILL showed full-width card after round-1 fix.
+Code re-verified correct (width/height literal on card root, no flex/100% anywhere in the card
+path) → prime suspect = STALE BUNDLE on device. Hardening + diagnostics added:
+- Card sizing moved to a PLAIN VIEW wrapper (`testID saved-card-{id}`, width+height+overflow
+  hidden) with the TouchableOpacity inside as `flex:1` — even if a touchable's style is mangled
+  on device (cf. nativewind-function-style-bug), children physically cannot exceed the cell.
+- TEMP dev-only marker under the header: `dev: grid cell {N}px · r3` (+ matching Metro
+  console.log, __DEV__-gated, layout constants only — no PII/location). If the marker is MISSING
+  on device → stale bundle (Metro must be started `npx expo start --dev-client --clear`). If
+  marker shows and card is still huge → real layout bug, marker tells us the computed size.
+  REMOVE marker + log + their styles/comments once Saved is accepted (eslint no-console warning
+  is this log, intentional).
+Tests updated to assert the sized wrapper via testID (square = EXPECTED, overflow hidden, no
+flex, no '100%'). Gates: focused 12 pass · test:ci 104/1851 · tsc 31 baseline · eslint 0 errors
+(2 warnings: display-name pre-existing + TEMP no-console).
+
+**Saved ACCEPTED + COMMITTED (same day):** grid fix confirmed on device — one saved venue renders
+as a square 2-col grid cell (the round-2 plain-View-wrapper sizing + fresh bundle resolved it).
+Temp diagnostics fully removed before commit (header marker, devMarker style, Metro console.log,
+useEffect import) — grep-verified zero remnants; no other visual change. Gates at commit: focused
+12 pass · test:ci 104/1851 · tsc 31 baseline · eslint 0 errors (1 pre-existing display-name
+warning in test helper). Committed as "feat: implement v2 saved screen" (no trailers):
+favourites.tsx, SavedEmptyState.tsx, new favourites.test.tsx, this memory file. PP2/PP3 still
+untracked by instruction.
+
 ### Next session — START HERE
-1. Metro clean start (`npx expo start -c`); Liam reloads → full pass Home → Venue Detail → Plan Visit
-   → back to Home. Home must look like the accepted checkpoint; other two must match it.
-2. Accepted → Liam commits Step 2/2b + background work. Not accepted → fix from device screenshot,
-   changing ONLY Venue Detail/Plan Visit wrappers, never Home files.
-3. Then (explicit approval only) next v2 screen.
+1. Next v2 screen ONLY with explicit approval — Map (pp2-map.jsx) or Profile, Liam picks.
+2. Background remains FROZEN. Map/Profile/Auth not started.
+3. v2 committed: Home (`194877d`) · Venue Detail + Plan Visit (`fd642b9`) · Saved (this commit).
