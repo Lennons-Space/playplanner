@@ -343,9 +343,12 @@ export default function HomeScreen() {
 
   // Area label — real data only, never prompts (useAreaLabel checks
   // permission, never requests it). Falls back to saved postcode, then a
-  // "Choose area" CTA.
+  // PASSIVE "Near you" label. There is no manual area-picker flow: the row's
+  // only action is to open the Map (the location surface), so the fallback
+  // must NOT read as a "Choose area" CTA (which would imply a picker that
+  // does not exist and cannot fake a chosen town).
   const geoArea = useAreaLabel();
-  const areaLabel = geoArea || profile?.postcode?.trim() || 'Choose area';
+  const areaLabel = geoArea || profile?.postcode?.trim() || 'Near you';
 
   // Home's local filter state (independent of the global FilterSheet store).
   const [activeIntent, setActiveIntent] = useState<IntentKey | null>(null);

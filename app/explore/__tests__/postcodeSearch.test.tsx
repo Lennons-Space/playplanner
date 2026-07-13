@@ -52,6 +52,11 @@ jest.mock('@/hooks/useVenues', () => ({
     isLoading: false,
     error: null,
   })),
+  useCategories: jest.fn(() => ({
+    data: [],
+    isLoading: false,
+    error: null,
+  })),
 }));
 
 jest.mock('@/store/filterStore', () => ({

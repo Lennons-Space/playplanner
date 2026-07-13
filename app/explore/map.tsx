@@ -4,13 +4,15 @@
  * ARCHITECTURE:
  * The screen has two modes, controlled by `viewMode` state in ExploreScreen:
  *
- *   map mode  — Sand-background scrollable feed. Top to bottom:
- *               greeting header → search pill → location row → 240px mini-map
- *               preview → category chips → "Open right now" section → VenueCard list.
+ *   map mode  — v2 dark scrollable feed over the shared V2Background
+ *               atmosphere (pp2-map.jsx AreaMapScreen). Top to bottom:
+ *               greeting header → search pill → location row → 226px mini-map
+ *               preview (dark Google style) → category chips → "Open right now"
+ *               section → AreaVenueCard list.
  *               The mini-map reuses the full ClusterMapView at a constrained height
  *               so real pins, clustering, and permissions logic are all preserved.
  *
- *   list mode — Full-screen white venue list (unchanged from pre-Phase-2).
+ *   list mode — Full-screen dark venue list (same logic as pre-Phase-2).
  *
  * CONSENT / PERMISSION FLOW (unchanged):
  *   State 1: consentChecked=false   → blank splash guard (no flash of consent prompt)
@@ -33,7 +35,7 @@
  * LIST MODE: ClusterMapView fully unmounts to reclaim memory and battery.
  */
 
-import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
+import { useState, useEffect, useCallback, useContext, useRef, memo, useMemo } from 'react';
 import {
   View,
   Text,
@@ -50,33 +52,64 @@ import {
   Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import ClusterMapView from 'react-native-map-clustering';
 import { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Svg, { Circle as SvgCircle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useLocation } from '@/hooks/location';
-import { useNearbyVenues } from '@/hooks/useVenues';
+import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { useWeather } from '@/hooks/useWeather';
 import { getWeatherBadge, getWeatherBanner, scoreVenueForWeather } from '@/lib/weather';
 import { useFilterStore } from '@/store/filterStore';
 import { useShallow } from 'zustand/react/shallow';
 import { LocationConsentPrompt } from '@/components/consent';
-import { WeatherBackground } from '@/components/weather/WeatherBackground';
+import { V2Background } from '@/components/ui/V2Background';
 import FilterSheet from '@/components/filters/FilterSheet';
-import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
-import { VenueCard, Icon, IconBtn, Chip } from '@/components/ui';
+import { Icon } from '@/components/ui';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { FALLBACK_LOCATION } from '@/constants/location';
-import { Colors, FontFamily } from '@/constants/theme';
+import { Themes, ocean, FontFamily } from '@/constants/theme';
+import { getCategoryMeta } from '@/constants/categories';
+import { resolveVenueCategory, buildCategoryLookup } from '@/lib/venues/resolveVenueCategory';
 import { useMapStore } from '@/store/mapStore';
 import { supabase } from '@/lib/supabase';
 import type { Venue, Coordinates } from '@/types';
 
+// ─── v2 dark design tokens ──────────────────────────────────────────────────
+// The whole screen chrome themes against Themes.dark + the Ocean accent —
+// identical tokens to the accepted Home / Venue Detail / Saved screens.
+const T = Themes.dark;
+const ACCENT = ocean.accent; // '#4C8DF6'
+const OPEN_GREEN = '#34C77B'; // matches [id].tsx / plan-visit.tsx open state
 
 // Height of the bottom sheet peek bar (handle + header row).
 const PEEK_HEIGHT = 84;
+
+// ─── Dark map style (Google provider) ───────────────────────────────────────
+// Documented limitation: the native Google map cannot be styled pixel-for-
+// pixel like the prototype's illustrative SVG map (pp2-map.jsx mc.dark:
+// base #1A1A22 / blocks #1E1E28 / park #1C2A1D). This style JSON is the
+// closest honest approximation — same base hue family, roads as faint light
+// strokes, parks in the muted dark green. Purely visual; no behaviour change.
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#1A1A22' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#8E8E9A' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#1A1A22' }] },
+  { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1E1E28' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1C2A1D' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#26262F' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#2E2E38' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#12121A' }] },
+];
 
 // ─── renderCluster ─────────────────────────────────────────────────────────
 // Layered ring design: outer ring at 30% opacity + solid inner circle.
@@ -100,14 +133,14 @@ function renderCluster(cluster: {
     >
       <View style={{
         width: outer, height: outer, borderRadius: outer / 2,
-        backgroundColor: Colors.accent + '30',
+        backgroundColor: ACCENT + '30',
         alignItems: 'center', justifyContent: 'center',
       }}>
         <View style={{
           width: inner, height: inner, borderRadius: inner / 2,
-          backgroundColor: Colors.accent,
+          backgroundColor: ACCENT,
           alignItems: 'center', justifyContent: 'center',
-          shadowColor: Colors.accent, shadowOpacity: 0.45, shadowRadius: 6,
+          shadowColor: ACCENT, shadowOpacity: 0.45, shadowRadius: 6,
           shadowOffset: { width: 0, height: 3 }, elevation: 6,
         }}>
           <Text style={{
@@ -141,9 +174,9 @@ const VenueRow = memo(function VenueRow({
       style={{
         flexDirection: 'row', alignItems: 'center',
         paddingHorizontal: 16, paddingVertical: 11,
-        backgroundColor: selected ? Colors.accent + '0F' : 'transparent',
+        backgroundColor: selected ? ACCENT + '1A' : 'transparent',
         borderLeftWidth: selected ? 3 : 0,
-        borderLeftColor: Colors.accent,
+        borderLeftColor: ACCENT,
       }}
       onPress={() => onPress(venue)}
       activeOpacity={0.7}
@@ -160,7 +193,7 @@ const VenueRow = memo(function VenueRow({
       ) : (
         <View style={{
           width: 44, height: 44, borderRadius: 12,
-          backgroundColor: venue.is_premium ? Colors.star + '55' : Colors.accent + '20',
+          backgroundColor: venue.is_premium ? T.star + '33' : ACCENT + '24',
           alignItems: 'center', justifyContent: 'center', marginRight: 12,
         }}>
           <Text style={{ fontSize: 20 }}>{venue.category?.icon ?? '📍'}</Text>
@@ -169,35 +202,42 @@ const VenueRow = memo(function VenueRow({
 
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: Colors.label, flexShrink: 1 }}
+          <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: T.label, flexShrink: 1 }}
             numberOfLines={1}>
             {venue.name}
           </Text>
           {venue.is_premium && (
-            <View style={{ backgroundColor: Colors.star, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
-              <Text style={{ fontFamily: FontFamily.caption, fontSize: 9, color: '#7A5800' }}>FEATURED</Text>
+            <View style={{ backgroundColor: 'rgba(255,178,62,0.16)', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
+              <Text style={{ fontFamily: FontFamily.caption, fontSize: 9, color: T.star }}>FEATURED</Text>
             </View>
           )}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
-          <Ionicons name="star" size={11} color={Colors.coral} />
-          <Text style={{ fontFamily: FontFamily.caption, fontSize: 12, color: Colors.coral }}>
-            {(venue.average_rating ?? 0).toFixed(1)}
-          </Text>
-          <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
-            · {venue.category?.name ?? 'Venue'}
+          {/* Only show a rating when it is real (has reviews AND a non-zero
+              average) — never a fabricated "0.0". Category always shows. */}
+          {(venue.review_count ?? 0) > 0 && Number(venue.average_rating ?? 0) > 0 && (
+            <>
+              <Ionicons name="star" size={11} color={T.star} />
+              <Text style={{ fontFamily: FontFamily.caption, fontSize: 12, color: T.star }}>
+                {Number(venue.average_rating).toFixed(1)}
+              </Text>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: T.label3 }}>·</Text>
+            </>
+          )}
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: T.label3 }}>
+            {venue.category?.name ?? 'Venue'}
           </Text>
         </View>
       </View>
 
-      <Ionicons name="chevron-forward" size={18} color={Colors.separator} />
+      <Ionicons name="chevron-forward" size={18} color={T.label3} />
     </TouchableOpacity>
   );
 });
 
 // Stable separator — module-level so FlatList never sees it as changed.
 function VenueRowSeparator() {
-  return <View style={{ height: 1, backgroundColor: Colors.separator, marginLeft: 72 }} />;
+  return <View style={{ height: 1, backgroundColor: T.separator, marginLeft: 72 }} />;
 }
 
 // ─── VenueMarker ──────────────────────────────────────────────────────────
@@ -234,7 +274,7 @@ const VenueMarker = memo(function VenueMarker({
 
   if (!validCoords) return null;
 
-  const categoryColor = venue.category?.color ?? Colors.accent;
+  const categoryColor = venue.category?.color ?? ACCENT;
 
   return (
     <Marker coordinate={coordinate} tracksViewChanges={!ready || isSelected} onPress={handlePress} anchor={{ x: 0.5, y: 0.5 }}>
@@ -258,19 +298,19 @@ const markerStyles = StyleSheet.create({
     width: 32, height: 32, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2,
-    shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 4,
+    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 }, elevation: 3,
   },
   selectedOuter: {
     width: 44, height: 44, borderRadius: 22,
-    backgroundColor: Colors.coral + '28',
+    backgroundColor: '#FF6B6B28',
     alignItems: 'center', justifyContent: 'center',
   },
   selectedInner: {
     width: 34, height: 34, borderRadius: 17,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: Colors.coral,
-    shadowColor: Colors.coral, shadowOpacity: 0.4, shadowRadius: 6,
+    borderWidth: 2, borderColor: '#FF6B6B',
+    shadowColor: '#FF6B6B', shadowOpacity: 0.4, shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 }, elevation: 6,
   },
   icon: { fontSize: 15 },
@@ -283,6 +323,233 @@ function getGreetingWord(): string {
   if (h < 12) return 'Morning';
   if (h < 18) return 'Afternoon';
   return 'Evening';
+}
+
+// ─── isOpenNow ──────────────────────────────────────────────────────────────
+// Real opening-hours check — EXACTLY the same formula the openVenueCount memo
+// has always used (including the past-midnight close case). Factored out so
+// the peek card can show an honest Open/Closed state for the selected venue.
+function isOpenNow(venue: Venue): boolean | null {
+  if (!venue.opening_hours || venue.opening_hours.length === 0) return null; // unknown — show nothing
+  const now = new Date();
+  const todayRow = venue.opening_hours.find((h) => h.day_of_week === now.getDay());
+  if (!todayRow || todayRow.is_closed || !todayRow.opens_at || !todayRow.closes_at) return false;
+  const toMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+  const nowMins   = now.getHours() * 60 + now.getMinutes();
+  const openMins  = toMins(todayRow.opens_at);
+  const closeMins = toMins(todayRow.closes_at);
+  if (closeMins < openMins) return nowMins >= openMins || nowMins < closeMins;
+  return nowMins >= openMins && nowMins < closeMins;
+}
+
+// ─── GlassBtn ───────────────────────────────────────────────────────────────
+// v2 dark icon button (prototype: surface square, r10–12, separator ring).
+// Static Pressable style + android_ripple only — never style-as-function
+// (NativeWind interop drops those on device).
+function GlassBtn({
+  size,
+  radius,
+  onPress,
+  accessibilityLabel,
+  children,
+}: {
+  size: number;
+  radius: number;
+  onPress: () => void;
+  accessibilityLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Pressable
+      style={{
+        width: size, height: size, borderRadius: radius,
+        backgroundColor: T.surface,
+        borderWidth: 1, borderColor: T.separator,
+        alignItems: 'center', justifyContent: 'center',
+      }}
+      android_ripple={{ color: 'rgba(255,255,255,0.14)', borderless: true }}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={4}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+// ─── DarkChip ───────────────────────────────────────────────────────────────
+// v2 dark category chip (surface + separator ring; active = tinted + coloured
+// ring). Local to Map — the shared Chip stays light for the legacy screens.
+function DarkChip({
+  active,
+  color,
+  onPress,
+  accessibilityLabel,
+  children,
+}: {
+  active: boolean;
+  color: string;
+  onPress: () => void;
+  accessibilityLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Pressable
+      style={{
+        borderRadius: 999,
+        paddingHorizontal: 13,
+        paddingVertical: 7,
+        backgroundColor: active ? color + '29' : T.surface,
+        borderWidth: 1,
+        borderColor: active ? color + '80' : T.separator,
+      }}
+      android_ripple={{ color: 'rgba(255,255,255,0.14)' }}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected: active }}
+    >
+      <Text style={{
+        fontFamily: active ? FontFamily.bodyStrong : FontFamily.body,
+        fontSize: 13,
+        color: active ? T.label : T.label2,
+      }}>
+        {children}
+      </Text>
+    </Pressable>
+  );
+}
+
+// ─── SkeletonRow ────────────────────────────────────────────────────────────
+// Static dark loading placeholder (no animation) shaped like AreaVenueCard.
+// Local because the shared VenueRowSkeleton is light-themed and used by the
+// legacy screens.
+function SkeletonRow() {
+  return (
+    <View
+      testID="venue-row-skeleton"
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 14,
+        backgroundColor: T.surface, borderRadius: 18, padding: 13,
+        borderWidth: 1, borderColor: T.separator,
+      }}
+    >
+      <View style={{ width: 66, height: 66, borderRadius: 14, backgroundColor: T.fill }} />
+      <View style={{ flex: 1, gap: 8 }}>
+        <View style={{ height: 14, borderRadius: 7, backgroundColor: T.fill, width: '70%' }} />
+        <View style={{ height: 11, borderRadius: 6, backgroundColor: T.fill, width: '45%' }} />
+      </View>
+    </View>
+  );
+}
+
+// ─── AreaVenueCard ──────────────────────────────────────────────────────────
+// v2 venue row (prototype AreaVenueCard in pp2-map.jsx): 66px category-tinted
+// thumb (real photo when available), name, category badge + real ages,
+// real reviews line + real RPC distance, chevron. No fabricated values:
+// each optional field renders only when the venue actually has the data.
+function AreaVenueCard({
+  venue,
+  weatherBadge,
+  onPress,
+}: {
+  venue: Venue;
+  weatherBadge: string | null;
+  onPress: () => void;
+}) {
+  const catMeta = getCategoryMeta(venue.category?.slug);
+  const tint = venue.category?.color ?? ACCENT;
+  const rating = Number(venue.average_rating ?? 0);
+  const reviews = venue.review_count ?? 0;
+  const hasAges = venue.min_age != null && venue.max_age != null && venue.max_age > 0;
+  const distKm = venue.distance_km;
+  const distMiles = typeof distKm === 'number' && Number.isFinite(distKm)
+    ? (distKm * 0.621371)
+    : null;
+
+  return (
+    <TouchableOpacity
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 14,
+        backgroundColor: T.surface, borderRadius: 18,
+        paddingVertical: 12, paddingHorizontal: 13,
+        borderWidth: 1, borderColor: T.separator,
+      }}
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={venue.name}
+    >
+      {/* Thumb: real cover photo when present, category-tinted icon tile otherwise */}
+      <View style={{
+        width: 66, height: 66, borderRadius: 14, flexShrink: 0,
+        backgroundColor: tint + '24',
+        alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+      }}>
+        {venue.cover_photo_url ? (
+          <Image
+            source={{ uri: venue.cover_photo_url }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+          />
+        ) : (
+          <Text style={{ fontSize: 26 }}>{venue.category?.icon ?? '📍'}</Text>
+        )}
+      </View>
+
+      {/* Info */}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          style={{
+            fontFamily: FontFamily.heading, fontSize: 16, color: T.label,
+            letterSpacing: -0.3, marginBottom: 5,
+          }}
+          numberOfLines={1}
+        >
+          {venue.name}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 5, flexWrap: 'wrap' }}>
+          <View style={{ backgroundColor: tint + '24', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+            <Text style={{ fontFamily: FontFamily.caption, fontSize: 11, color: tint, letterSpacing: 0.55 }}>
+              {/* Real DB category label (Park, Museum, Playground, Nature
+                  Reserve, …) when the venue has one; catMeta.label only
+                  supplies the generic 'Venue' when there is NO category at
+                  all. Never show generic 'VENUE' for a categorised venue. */}
+              {(venue.category?.name ?? catMeta.label).toUpperCase()}
+            </Text>
+          </View>
+          {hasAges && (
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3 }}>
+              Ages {venue.min_age}–{venue.max_age}
+            </Text>
+          )}
+          {weatherBadge && (
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: T.label3 }}>
+              {weatherBadge}
+            </Text>
+          )}
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3 }}>
+            {reviews > 0 && rating > 0
+              ? `★ ${rating.toFixed(1)} · ${reviews} review${reviews === 1 ? '' : 's'}`
+              : 'No reviews yet'}
+          </Text>
+          {distMiles != null && (
+            <>
+              <Text style={{ color: T.label3 }}>·</Text>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3 }}>
+                {distMiles < 10 ? distMiles.toFixed(1) : Math.round(distMiles)} mi
+              </Text>
+            </>
+          )}
+        </View>
+      </View>
+
+      <Ionicons name="chevron-forward" size={16} color={T.label3} />
+    </TouchableOpacity>
+  );
 }
 
 // ─── MapScreen ─────────────────────────────────────────────────────────────
@@ -311,6 +578,13 @@ function MapScreen({
 }: MapScreenProps) {
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  // This screen renders BOTH inside the tab navigator (Map tab) and as a
+  // pushed stack route (/explore/map from Home). useBottomTabBarHeight()
+  // throws outside a tab context, so read the context directly — undefined
+  // (no tab bar) safely resolves to 0 and the feed uses plain safe-area
+  // padding instead.
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
+  const tabSafeZone = tabBarHeight > 0 ? Math.max(tabBarHeight, 52 + insets.bottom) : 0;
   const EXPANDED_HEIGHT = Math.round(screenHeight * 0.52);
   const COLLAPSED_OFFSET = EXPANDED_HEIGHT - PEEK_HEIGHT;
 
@@ -420,10 +694,23 @@ function MapScreen({
 
   // Pass enabled=false while GPS is still loading — prevents a wasted London
   // fallback request that would flash pins before real results arrive.
-  const { data: venues = [], isLoading: venuesLoading, isFetching: venuesFetching, error: venuesError } = useNearbyVenues(
+  const { data: rawVenues = [], isLoading: venuesLoading, isFetching: venuesFetching, error: venuesError } = useNearbyVenues(
     mapCenter,
     filters,
     trackLocation ? !locLoading : true,
+  );
+
+  // The get_nearby_venues RPC returns a FLAT category_id only (no joined
+  // category object), so we resolve each venue's real category here from the
+  // small, 24h-cached categories table. Without this every card showed the
+  // generic "VENUE" even though the venue has a real category (e.g. Waterway
+  // Park → "Park & Playground"). Pure resolver, no venue-fetch change, no
+  // fabricated categories — unmatched ids simply stay null → "Venue".
+  const { data: allCategories = [] } = useCategories();
+  const categoryById = useMemo(() => buildCategoryLookup(allCategories), [allCategories]);
+  const venues = useMemo(
+    () => rawVenues.map((v) => ({ ...v, category: resolveVenueCategory(v, categoryById) ?? undefined })),
+    [rawVenues, categoryById],
   );
 
   // Preserve venue object references when the same IDs come back in the same order.
@@ -442,9 +729,9 @@ function MapScreen({
   }, [venues]);
 
   // Unique categories present in the current result set — drives the chip row.
-  // We derive this from the joined `category` object on each venue rather than
-  // calling useCategories() separately. This avoids an extra query and keeps the
-  // test mock surface minimal (only useNearbyVenues needs to be mocked).
+  // `stableVenues` already carries the RESOLVED category object (from the
+  // categoryById lookup above), so the RPC's flat category_id is reflected here
+  // too — this is what makes the chips appear at all for nearby results.
   const availableCategories = useMemo(() => {
     const seen = new Set<string>();
     const cats: { id: string; name: string; icon: string; color: string }[] = [];
@@ -452,7 +739,7 @@ function MapScreen({
       const cat = v.category;
       if (cat && !seen.has(cat.id)) {
         seen.add(cat.id);
-        cats.push({ id: cat.id, name: cat.name, icon: cat.icon, color: cat.color ?? Colors.accent });
+        cats.push({ id: cat.id, name: cat.name, icon: cat.icon, color: cat.color ?? ACCENT });
       }
     }
     return cats;
@@ -696,8 +983,9 @@ function MapScreen({
       pointerEvents="box-none"
     >
       <View style={{
-        flexDirection: 'row', backgroundColor: '#fff', borderRadius: 999, padding: 3,
-        shadowColor: '#000', shadowOpacity: 0.13, shadowRadius: 8,
+        flexDirection: 'row', backgroundColor: T.surface, borderRadius: 999, padding: 4,
+        borderWidth: 1, borderColor: T.separator,
+        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8,
         shadowOffset: { width: 0, height: 2 }, elevation: 6,
       }}>
         <TouchableOpacity
@@ -727,16 +1015,16 @@ function MapScreen({
     <TouchableOpacity
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 6,
-        backgroundColor: activeFilterCount > 0 ? Colors.accent : Colors.surface2,
-        borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7,
-        borderWidth: activeFilterCount > 0 ? 0 : 1.5, borderColor: Colors.separator,
+        backgroundColor: activeFilterCount > 0 ? ACCENT : T.surface,
+        borderRadius: 999, paddingHorizontal: 13, paddingVertical: 7,
+        borderWidth: activeFilterCount > 0 ? 0 : 1, borderColor: T.separator,
       }}
       onPress={onFiltersPress}
       accessibilityRole="button"
       accessibilityLabel={activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : 'Filters'}
     >
-      <Ionicons name="options-outline" size={14} color={activeFilterCount > 0 ? '#fff' : Colors.label} />
-      <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: activeFilterCount > 0 ? '#fff' : Colors.label }}>
+      <Ionicons name="options-outline" size={14} color={activeFilterCount > 0 ? '#fff' : T.label2} />
+      <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: activeFilterCount > 0 ? '#fff' : T.label2 }}>
         {activeFilterCount > 0 ? `Filters · ${activeFilterCount}` : 'Filters'}
       </Text>
     </TouchableOpacity>
@@ -751,29 +1039,27 @@ function MapScreen({
       style={{ flexShrink: 0 }}
     >
       {/* "All" chip */}
-      <Chip
+      <DarkChip
         active={selectedCategoryId === null}
-        color={Colors.accent}
+        color={ACCENT}
         onPress={() => setSelectedCategoryId(null)}
         accessibilityLabel="All categories"
-        accessibilityState={{ selected: selectedCategoryId === null }}
       >
         All
-      </Chip>
+      </DarkChip>
 
       {availableCategories.map((cat) => {
         const active = selectedCategoryId === cat.id;
         return (
-          <Chip
+          <DarkChip
             key={cat.id}
             active={active}
             color={cat.color}
             onPress={() => setSelectedCategoryId(active ? null : cat.id)}
             accessibilityLabel={cat.name}
-            accessibilityState={{ selected: active }}
           >
             {cat.icon ? `${cat.icon} ${cat.name}` : cat.name}
-          </Chip>
+          </DarkChip>
         );
       })}
     </ScrollView>
@@ -788,20 +1074,21 @@ function MapScreen({
       pointerEvents="box-none"
     >
       <View style={{
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+        flexDirection: 'row', alignItems: 'center', backgroundColor: T.surface,
         borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9,
-        shadowColor: '#000', shadowOpacity: 0.13, shadowRadius: 8,
+        borderWidth: 1, borderColor: T.separator,
+        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8,
         shadowOffset: { width: 0, height: 2 }, elevation: 5, gap: 8,
       }} pointerEvents="auto">
         {geocoding ? (
-          <ActivityIndicator size="small" color={Colors.accent} />
+          <ActivityIndicator size="small" color={ACCENT} />
         ) : (
-          <Ionicons name="location-outline" size={18} color={Colors.accent} />
+          <Ionicons name="location-outline" size={18} color={ACCENT} />
         )}
         <TextInput
-          style={{ flex: 1, fontFamily: FontFamily.body, fontSize: 14, color: Colors.label, paddingVertical: 0 }}
+          style={{ flex: 1, fontFamily: FontFamily.body, fontSize: 14, color: T.label, paddingVertical: 0 }}
           placeholder="Search by postcode…"
-          placeholderTextColor={Colors.label3}
+          placeholderTextColor={T.label3}
           value={postcodeInput}
           onChangeText={setPostcodeInput}
           returnKeyType="search"
@@ -820,32 +1107,17 @@ function MapScreen({
             accessibilityLabel="Clear postcode search"
             accessibilityRole="button"
           >
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3 }}>✕</Text>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3 }}>✕</Text>
           </TouchableOpacity>
         )}
       </View>
       {postcodeError && (
-        <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.coral, marginTop: 6, marginLeft: 14 }}>
+        <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: '#FF6B6B', marginTop: 6, marginLeft: 14 }}>
           {postcodeError}
         </Text>
       )}
     </View>
   );
-
-  // Must be above the list-mode early return — Rules of Hooks require all hooks
-  // to be called unconditionally on every render path.
-  const openVenueCount = useMemo(() => filteredVenues.filter((v) => {
-    if (!v.opening_hours || v.opening_hours.length === 0) return false;
-    const now = new Date();
-    const todayRow = v.opening_hours.find((h) => h.day_of_week === now.getDay());
-    if (!todayRow || todayRow.is_closed || !todayRow.opens_at || !todayRow.closes_at) return false;
-    const toMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-    const nowMins   = now.getHours() * 60 + now.getMinutes();
-    const openMins  = toMins(todayRow.opens_at);
-    const closeMins = toMins(todayRow.closes_at);
-    if (closeMins < openMins) return nowMins >= openMins || nowMins < closeMins;
-    return nowMins >= openMins && nowMins < closeMins;
-  }).length, [filteredVenues]);
 
   // ── Weather (progressive enhancement) ──────────────────────────────────
   // Non-blocking: if the fetch fails or coords aren't ready, weather is null
@@ -885,15 +1157,17 @@ function MapScreen({
   // sheet, FAB, preview card, and ODbL attribution are all excluded.
   if (viewMode === 'list') {
     return (
-      <View style={{ flex: 1, backgroundColor: '#fff' }}>
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+        <V2Background />
+        <StatusBar style="light" />
         <View style={{
           paddingTop: insets.top + 52, paddingHorizontal: 16, paddingBottom: 10,
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
         }}>
           {venuesLoading ? (
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3 }}>Finding venues…</Text>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3 }}>Finding venues…</Text>
           ) : (
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: Colors.label }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: T.label }}>
               {filteredVenues.length === 0
                 ? 'No venues found'
                 : `${filteredVenues.length} venue${filteredVenues.length === 1 ? '' : 's'} nearby`}
@@ -906,9 +1180,12 @@ function MapScreen({
           <View style={{
             marginHorizontal: 16, marginBottom: 8,
             paddingHorizontal: 14, paddingVertical: 9,
-            borderRadius: 12, backgroundColor: weatherBanner.tint,
+            borderRadius: 12, backgroundColor: T.surface,
+            borderWidth: 1, borderColor: T.separator,
+            flexDirection: 'row', alignItems: 'center', gap: 8,
           }}>
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: '#1D2630' }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: weatherBanner.tint }} />
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: T.label, flex: 1 }}>
               {weatherBanner.text}
             </Text>
           </View>
@@ -919,20 +1196,20 @@ function MapScreen({
             {categoryChipRow}
           </View>
         )}
-        <View style={{ height: 1, backgroundColor: Colors.separator }} />
+        <View style={{ height: 1, backgroundColor: T.separator }} />
 
         {venuesLoading ? (
-          <View style={{ paddingTop: 4 }}>
-            <VenueRowSkeleton /><VenueRowSkeleton /><VenueRowSkeleton />
-            <VenueRowSkeleton /><VenueRowSkeleton />
+          <View style={{ paddingTop: 12, paddingHorizontal: 16, gap: 10 }}>
+            <SkeletonRow /><SkeletonRow /><SkeletonRow />
+            <SkeletonRow /><SkeletonRow />
           </View>
         ) : filteredVenues.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-            <Ionicons name="map-outline" size={38} color={Colors.separator} />
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: Colors.label, textAlign: 'center', marginTop: 12 }}>
+            <Ionicons name="map-outline" size={38} color={T.label3} />
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: T.label, textAlign: 'center', marginTop: 12 }}>
               No venues found
             </Text>
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, textAlign: 'center', marginTop: 6 }}>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3, textAlign: 'center', marginTop: 6 }}>
               Adjust your filters or move the map to find venues nearby.
             </Text>
           </View>
@@ -944,6 +1221,8 @@ function MapScreen({
             ItemSeparatorComponent={VenueRowSeparator}
             showsVerticalScrollIndicator={false}
             removeClippedSubviews
+            style={{ marginBottom: tabSafeZone }}
+            contentContainerStyle={{ paddingBottom: 24 + (tabSafeZone === 0 ? insets.bottom : 0) }}
           />
         )}
 
@@ -962,74 +1241,77 @@ function MapScreen({
   const radiusMiles = Math.round(filters.maxDistanceKm * 0.621371);
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <WeatherBackground condition={weather?.condition} />
-      {/* ── Sand-background scrollable feed ─────────────────────────────── */}
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+      {/* Same accepted v2 atmosphere as Home/Venue Detail/Saved — frozen
+          component, plain mount (never the map-centre weather, which would
+          make this screen's backdrop diverge from the other v2 screens). */}
+      <V2Background />
+      <StatusBar style="light" />
+      {/* ── v2 dark scrollable feed ─────────────────────────────────────── */}
       <ScrollView
-        style={{ flex: 1, backgroundColor: 'transparent' }}
-        contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: 32 }}
+        style={{ flex: 1, backgroundColor: 'transparent', marginBottom: tabSafeZone }}
+        contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: 32 + (tabSafeZone === 0 ? insets.bottom : 0) }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Header: greeting + bell ─────────────────────────────────── */}
+        {/* ── Header: greeting + bell (jsx: 14/29 display −0.8) ────────── */}
         <View style={{
           paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14,
           flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
         }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label3 }}>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3 }}>
               {getGreetingWord()} 👋
             </Text>
-            <Text style={{ fontFamily: FontFamily.display, fontSize: 26, color: Colors.label, letterSpacing: -0.5, lineHeight: 30, marginTop: 2 }}>
+            <Text style={{ fontFamily: FontFamily.display, fontSize: 28, color: T.label, letterSpacing: -0.8, lineHeight: 31, marginTop: 2 }} maxFontSizeMultiplier={1.2}>
               Where to today?
             </Text>
           </View>
-          <IconBtn
+          <GlassBtn
             size={40}
+            radius={12}
             onPress={() => router.push('/profile/notifications')}
             accessibilityLabel="Notifications"
-            shadow
           >
-            <Icon name="bell" size={18} color={Colors.label} />
-          </IconBtn>
+            <Icon name="bell" size={18} color={T.label2} />
+          </GlassBtn>
         </View>
 
-        {/* ── Search pill: tapping navigates to the Search tab ─────────── */}
+        {/* ── Search pill: tapping navigates to the Search tab (jsx r16) ── */}
         <Pressable
           style={{
             marginHorizontal: 20, marginBottom: 14,
-            backgroundColor: Colors.surface, borderRadius: 9999,
-            paddingHorizontal: 16, paddingVertical: 12,
+            backgroundColor: T.surface, borderRadius: 16,
+            paddingHorizontal: 15, paddingVertical: 13,
             flexDirection: 'row', alignItems: 'center', gap: 10,
-            borderWidth: 1, borderColor: Colors.separator,
-            shadowColor: Colors.label, shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
+            borderWidth: 1, borderColor: T.separator,
           }}
+          android_ripple={{ color: 'rgba(255,255,255,0.12)' }}
           onPress={() => router.push('/(tabs)/search')}
           accessibilityRole="button"
           accessibilityLabel="Search venues or a postcode"
         >
-          <Icon name="search" size={18} color={Colors.label3} />
-          <Text style={{ flex: 1, fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3 }}>
+          <Icon name="search" size={17} color={T.label3} />
+          <Text style={{ flex: 1, fontFamily: FontFamily.body, fontSize: 15, color: T.label3 }}>
             Search venues or a postcode…
           </Text>
         </Pressable>
 
         {/* ── Location row ────────────────────────────────────────────── */}
         <View style={{ paddingHorizontal: 20, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Icon name="pin" size={14} color={Colors.accent} />
+          <Icon name="pin" size={14} color={ACCENT} />
           {trackLocation && locLoading ? (
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label3 }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: T.label3 }}>
               Getting location…
             </Text>
           ) : locationLabel ? (
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: T.label2 }}>
               {locationLabel}{' '}
-              <Text style={{ fontFamily: FontFamily.body, color: Colors.label3 }}>
+              <Text style={{ fontFamily: FontFamily.body, color: T.label3 }}>
                 · within {radiusMiles} mile{radiusMiles === 1 ? '' : 's'}
               </Text>
             </Text>
           ) : (
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.label3 }}>
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: T.label2 }}>
               Nearby · within {radiusMiles} mile{radiusMiles === 1 ? '' : 's'}
             </Text>
           )}
@@ -1044,16 +1326,18 @@ function MapScreen({
             as the user pans — the mini-map is interactive. */}
         <View style={{ marginHorizontal: 20, marginBottom: 18 }}>
           <View style={{
-            height: 240, borderRadius: 32,
+            height: 226, borderRadius: 20,
             overflow: 'hidden',
-            borderWidth: 1, borderColor: Colors.separator,
-            shadowColor: Colors.label, shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
+            backgroundColor: '#1A1A22', // prototype mc.base — shows while map tiles load
+            borderWidth: 1, borderColor: T.separator,
+            shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3, shadowRadius: 12, elevation: 4,
           }}>
             <ClusterMapView
               ref={mapRef}
               provider={PROVIDER_GOOGLE}
               style={{ flex: 1 }}
+              customMapStyle={DARK_MAP_STYLE}
               initialRegion={initialRegion}
               showsUserLocation={trackLocation}
               showsMyLocationButton={false}
@@ -1083,28 +1367,29 @@ function MapScreen({
               style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
               pointerEvents="none"
             >
-              <Svg width="100%" height={240} pointerEvents="none">
+              <Svg width="100%" height={226} pointerEvents="none">
                 <SvgCircle
                   cx="50%"
-                  cy={120}
-                  r={100}
-                  stroke="rgba(76,141,246,0.65)"
-                  strokeWidth={1.5}
-                  strokeDasharray="6 4"
+                  cy={113}
+                  r={94}
+                  stroke="rgba(76,141,246,0.75)"
+                  strokeWidth={2}
+                  strokeDasharray="6 5"
                   fill="none"
                 />
               </Svg>
               <Text style={{
                 position: 'absolute',
-                top: 16,
+                top: 14,
                 alignSelf: 'center',
                 fontFamily: FontFamily.caption,
-                fontSize: 10,
-                color: 'rgba(76,141,246,0.95)',
-                backgroundColor: 'rgba(241,240,244,0.88)',
-                paddingHorizontal: 7,
-                paddingVertical: 2,
-                borderRadius: 8,
+                fontSize: 11,
+                color: ACCENT,
+                backgroundColor: 'rgba(23,23,31,0.9)',
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 10,
+                overflow: 'hidden',
               }}>
                 {radiusMiles} miles
               </Text>
@@ -1120,8 +1405,8 @@ function MapScreen({
                 style={{
                   fontFamily: FontFamily.body,
                   fontSize: 9,
-                  color: 'rgba(29,38,48,0.80)',
-                  backgroundColor: 'rgba(241,240,244,0.88)',
+                  color: 'rgba(235,235,245,0.8)',
+                  backgroundColor: 'rgba(23,23,31,0.85)',
                   paddingHorizontal: 6,
                   paddingVertical: 2,
                   borderRadius: 8,
@@ -1133,77 +1418,128 @@ function MapScreen({
               </Text>
             </View>
 
-            {/* Top-right floating controls */}
-            <View style={{ position: 'absolute', top: 12, right: 12, gap: 8 }}>
-              <IconBtn
-                size={38}
-                shadow
+            {/* Top-right floating controls (jsx: 36×36, r10, surface) */}
+            <View style={{ position: 'absolute', top: 10, right: 10, gap: 8 }}>
+              <GlassBtn
+                size={36}
+                radius={10}
                 onPress={recenter}
                 accessibilityLabel="Recenter map to your location"
               >
-                <Icon name="locate" size={16} color={Colors.label} />
-              </IconBtn>
-              <IconBtn
-                size={38}
-                shadow
+                <Icon name="locate" size={16} color={T.label2} />
+              </GlassBtn>
+              <GlassBtn
+                size={36}
+                radius={10}
                 onPress={onFiltersPress}
                 accessibilityLabel="Open filters"
               >
-                <Icon name="sliders" size={16} color={Colors.label} />
-              </IconBtn>
+                <Icon name="sliders" size={16} color={T.label2} />
+              </GlassBtn>
             </View>
 
-            {/* Selected venue label — bottom-left of mini-map */}
-            {selectedVenue && (
-              <View style={{
-                position: 'absolute', bottom: 12, left: 12,
-                backgroundColor: Colors.surface, borderRadius: 12,
-                paddingHorizontal: 12, paddingVertical: 8,
-                flexDirection: 'row', alignItems: 'center', gap: 8,
-                borderWidth: 1, borderColor: Colors.separator,
-                shadowColor: Colors.label, shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.12, shadowRadius: 8, elevation: 4,
-              }}>
-                <View style={{ width: 8, height: 8, borderRadius: 9999, backgroundColor: selectedVenue.category?.color ?? Colors.accent }} />
-                <View>
-                  <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: Colors.label }} numberOfLines={1}>
-                    {selectedVenue.name}
-                  </Text>
-                  <Text style={{ fontFamily: FontFamily.body, fontSize: 10, color: Colors.label3 }}>
-                    {selectedVenue.category?.name ?? 'Venue'}
-                  </Text>
+            {/* ── Peek card for the selected pin (jsx: bottom sheet inside the
+                map card — tinted icon tile, name, category + honest open state,
+                close, full-width "View venue →" CTA). Open/Closed only renders
+                when the venue actually has opening-hours data. */}
+            {selectedVenue && (() => {
+              const peekTint = selectedVenue.category?.color ?? ACCENT;
+              const openState = isOpenNow(selectedVenue);
+              return (
+                <View style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  backgroundColor: T.surface,
+                  borderTopLeftRadius: 20, borderTopRightRadius: 20,
+                  paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14,
+                  borderWidth: 1, borderColor: T.separator,
+                  shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+                  shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
+                }}>
+                  <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+                    <View style={{
+                      width: 48, height: 48, borderRadius: 13, flexShrink: 0,
+                      backgroundColor: peekTint + '33',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Icon name="pin" size={20} color={peekTint} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontFamily: FontFamily.heading, fontSize: 16, color: T.label, letterSpacing: -0.2 }} numberOfLines={1}>
+                        {selectedVenue.name}
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 7, alignItems: 'center', marginTop: 3 }}>
+                        <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12.5, color: peekTint }}>
+                          {selectedVenue.category?.name ?? 'Venue'}
+                        </Text>
+                        {openState !== null && (
+                          <>
+                            <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: T.label3 }} />
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: openState ? OPEN_GREEN : T.label3 }} />
+                              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12.5, color: openState ? OPEN_GREEN : T.label3 }}>
+                                {openState ? 'Open now' : 'Closed'}
+                              </Text>
+                            </View>
+                          </>
+                        )}
+                      </View>
+                    </View>
+                    <Pressable
+                      style={{
+                        width: 30, height: 30, borderRadius: 15, flexShrink: 0,
+                        backgroundColor: T.fill,
+                        alignItems: 'center', justifyContent: 'center',
+                      }}
+                      android_ripple={{ color: 'rgba(255,255,255,0.14)', borderless: true }}
+                      onPress={dismissVenue}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close venue label"
+                    >
+                      <Icon name="close" size={12} color={T.label3} />
+                    </Pressable>
+                  </View>
+                  <Pressable
+                    style={{
+                      backgroundColor: ACCENT, borderRadius: 14,
+                      paddingVertical: 13, alignItems: 'center',
+                    }}
+                    android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
+                    onPress={() => router.push(`/venue/${selectedVenue.id}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View ${selectedVenue.name}`}
+                  >
+                    <Text style={{ fontFamily: FontFamily.caption, fontSize: 15, color: '#FFFFFF', letterSpacing: -0.1 }}>
+                      View venue →
+                    </Text>
+                  </Pressable>
                 </View>
-                <TouchableOpacity
-                  onPress={dismissVenue}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  accessibilityLabel="Close venue label"
-                >
-                  <Icon name="close" size={14} color={Colors.label3} />
-                </TouchableOpacity>
-              </View>
-            )}
+              );
+            })()}
 
-            {/* "See all" pill — bottom-right */}
-            {/* Opens the full venue list (list mode). Label updated from "Full map"
-                which was misleading — this button switches to list view, not a map. */}
-            <TouchableOpacity
-              style={{
-                position: 'absolute', bottom: 12, right: 12,
-                backgroundColor: Colors.label, borderRadius: 9999,
-                paddingHorizontal: 12, paddingVertical: 8,
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                shadowColor: Colors.label, shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.25, shadowRadius: 8, elevation: 5,
-              }}
-              onPress={() => onViewModeChange('list')}
-              accessibilityLabel="Browse full venue list"
-              accessibilityRole="button"
-            >
-              <Icon name="map" size={13} color="#fff" />
-              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: '#fff' }}>
-                See all
-              </Text>
-            </TouchableOpacity>
+            {/* "See all" pill — bottom-right (jsx dark mode: white pill,
+                near-black glyphs). Hidden while the peek card is up — the
+                card spans the full map width. Opens the full venue list. */}
+            {!selectedVenue && (
+              <TouchableOpacity
+                style={{
+                  position: 'absolute', bottom: 12, right: 12,
+                  backgroundColor: '#FFFFFF', borderRadius: 9999,
+                  paddingHorizontal: 16, paddingVertical: 9,
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3, shadowRadius: 8, elevation: 5,
+                }}
+                onPress={() => onViewModeChange('list')}
+                accessibilityLabel="Browse full venue list"
+                accessibilityRole="button"
+              >
+                <Icon name="map" size={13} color="#1C1C1E" />
+                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: '#1C1C1E' }}>
+                  See all
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -1215,28 +1551,26 @@ function MapScreen({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 6, gap: 8 }}
             >
-              <Chip
+              <DarkChip
                 active={selectedCategoryId === null}
-                color={Colors.accent}
+                color={ACCENT}
                 onPress={() => setSelectedCategoryId(null)}
                 accessibilityLabel="All categories"
-                accessibilityState={{ selected: selectedCategoryId === null }}
               >
                 All
-              </Chip>
+              </DarkChip>
               {availableCategories.map((cat) => {
                 const active = selectedCategoryId === cat.id;
                 return (
-                  <Chip
+                  <DarkChip
                     key={cat.id}
                     active={active}
                     color={cat.color}
                     onPress={() => setSelectedCategoryId(active ? null : cat.id)}
                     accessibilityLabel={cat.name}
-                    accessibilityState={{ selected: active }}
                   >
                     {cat.icon ? `${cat.icon} ${cat.name}` : cat.name}
-                  </Chip>
+                  </DarkChip>
                 );
               })}
             </ScrollView>
@@ -1248,26 +1582,35 @@ function MapScreen({
           <View style={{
             marginHorizontal: 20, marginBottom: 4,
             paddingHorizontal: 14, paddingVertical: 10,
-            borderRadius: 14, backgroundColor: weatherBanner.tint,
+            borderRadius: 14, backgroundColor: T.surface,
+            borderWidth: 1, borderColor: T.separator,
+            flexDirection: 'row', alignItems: 'center', gap: 8,
           }}>
-            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: '#1D2630' }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: weatherBanner.tint }} />
+            <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: T.label, flex: 1 }}>
               {weatherBanner.text}
             </Text>
           </View>
         )}
 
-        {/* ── "Open right now" section header ─────────────────────────── */}
+        {/* ── "Nearby places" section header (jsx: 21 display −0.5) ────
+            The list below shows ALL nearby venues (filteredVenues), NOT an
+            open-now-filtered set, so the heading + count must describe
+            "nearby", never "open right now" (which previously showed an
+            open-count over an all-nearby list — a confusing mismatch). We do
+            not invent open status here; per-venue open/closed is shown
+            honestly on the pin peek card via isOpenNow(). */}
         <View style={{
           paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8,
           flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
         }}>
           <View>
-            <Text style={{ fontFamily: FontFamily.heading, fontSize: 18, color: Colors.label, letterSpacing: -0.3 }}>
-              Open right now
+            <Text style={{ fontFamily: FontFamily.display, fontSize: 21, color: T.label, letterSpacing: -0.5 }}>
+              Nearby places
             </Text>
             {!venuesLoading && (
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3, marginTop: 1, opacity: venuesFetching ? 0.5 : 1 }}>
-                {openVenueCount} place{openVenueCount === 1 ? '' : 's'} within {radiusMiles} mile{radiusMiles === 1 ? '' : 's'}
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3, marginTop: 2, opacity: venuesFetching ? 0.5 : 1 }}>
+                {filteredVenues.length} place{filteredVenues.length === 1 ? '' : 's'} within {radiusMiles} mile{radiusMiles === 1 ? '' : 's'}
               </Text>
             )}
           </View>
@@ -1279,7 +1622,7 @@ function MapScreen({
               accessibilityRole="button"
               accessibilityLabel="See all venues"
             >
-              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: Colors.accent }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13, color: ACCENT }}>
                 See all
               </Text>
             </TouchableOpacity>
@@ -1287,36 +1630,36 @@ function MapScreen({
         </View>
 
         {/* ── Venue cards / skeleton / empty / error ───────────────────── */}
-        <View style={{ paddingHorizontal: 20, gap: 10 }}>
+        <View style={{ paddingHorizontal: 20, paddingTop: 6, gap: 10 }}>
           {venuesLoading ? (
             <>
-              <VenueRowSkeleton />
-              <VenueRowSkeleton />
-              <VenueRowSkeleton />
+              <SkeletonRow />
+              <SkeletonRow />
+              <SkeletonRow />
             </>
           ) : venuesError ? (
             <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-              <Ionicons name="cloud-offline-outline" size={38} color={Colors.separator} />
-              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: Colors.label, marginTop: 12 }}>
+              <Ionicons name="cloud-offline-outline" size={38} color={T.label3} />
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: T.label, marginTop: 12 }}>
                 Could not load venues
               </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center' }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3, marginTop: 6, textAlign: 'center' }}>
                 Check your connection and pull down to refresh.
               </Text>
             </View>
           ) : filteredVenues.length === 0 ? (
             <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-              <Ionicons name="map-outline" size={38} color={Colors.separator} />
-              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: Colors.label, marginTop: 12, textAlign: 'center' }}>
+              <Ionicons name="map-outline" size={38} color={T.label3} />
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: T.label, marginTop: 12, textAlign: 'center' }}>
                 No venues in this area
               </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center' }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3, marginTop: 6, textAlign: 'center' }}>
                 Pan the map or adjust your filters to explore more.
               </Text>
             </View>
           ) : (
             filteredVenues.map((venue) => (
-              <VenueCard
+              <AreaVenueCard
                 key={venue.id}
                 venue={venue}
                 onPress={() => router.push(`/venue/${venue.id}`)}
@@ -1335,10 +1678,11 @@ function MapScreen({
 
 // ─── Pill styles ───────────────────────────────────────────────────────────
 const pillStyles = StyleSheet.create({
-  tab:           { paddingHorizontal: 20, paddingVertical: 7, borderRadius: 999 },
-  tabActive:     { backgroundColor: Colors.accent },
-  labelActive:   { fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#fff' },
-  labelInactive: { fontFamily: FontFamily.body, fontSize: 14, color: Colors.label },
+  // jsx: '8px 34px' active pill on the surface track.
+  tab:           { paddingHorizontal: 28, paddingVertical: 8, borderRadius: 999 },
+  tabActive:     { backgroundColor: ACCENT },
+  labelActive:   { fontFamily: FontFamily.bodyStrong, fontSize: 15, color: '#fff' },
+  labelInactive: { fontFamily: FontFamily.body, fontSize: 15, color: T.label3 },
 });
 
 // ─── MapWithLocation ───────────────────────────────────────────────────────
@@ -1406,12 +1750,19 @@ export default function ExploreScreen() {
   const handleViewModeChange   = useCallback((mode: 'map' | 'list') => setViewMode(mode), []);
 
   // State 1: still reading SecureStore — render nothing to avoid consent prompt flash.
-  if (status === 'checking') return <View style={{ flex: 1, backgroundColor: Colors.bg }} />;
+  // Dark base matches V2Background's floor so there is no light flash.
+  if (status === 'checking') return <View style={{ flex: 1, backgroundColor: Themes.dark.bg }} />;
 
-  // State 2: consent not yet given — show plain-English prompt first.
+  // State 2: consent not yet given — show the plain-English prompt first,
+  // over the shared v2 atmosphere. Copy, actions, and consent semantics are
+  // untouched (ICO Children's Code Standard 10) — only the dark variant skin.
   if (status === 'undecided') {
     return (
-      <LocationConsentPrompt onAccept={grant} onDecline={decline} />
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+        <V2Background />
+        <StatusBar style="light" />
+        <LocationConsentPrompt variant="dark" onAccept={grant} onDecline={decline} />
+      </View>
     );
   }
 

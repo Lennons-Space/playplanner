@@ -197,6 +197,30 @@ describe('Browse (Home) — chrome (renders identically regardless of consent)',
     expect(router.push as jest.Mock).toHaveBeenCalledWith('/(tabs)/search');
   });
 
+  // ── "Your area" header: passive location display, NOT a manual area picker ──
+  // Product decision (2026-07-13): the app uses the user's location; there is
+  // no manual "Choose Area" flow. The header must show passive wording and its
+  // only action is to open the Map (the real location surface).
+  it('shows a PASSIVE "Near you" label and never a "Choose area" CTA when no area/postcode is known', () => {
+    // beforeEach: consent undecided, useAreaLabel → null, profile.postcode → null.
+    const { getByText, queryByText } = render(<HomeScreen />);
+    expect(getByText('Your area')).toBeTruthy();
+    expect(getByText('Near you')).toBeTruthy();
+    // The misleading manual-picker copy must be gone.
+    expect(queryByText('Choose area')).toBeNull();
+    expect(queryByText('Choose Area')).toBeNull();
+  });
+
+  it('the area header opens the Map (its only action) — no manual area-selection flow', () => {
+    const { getByLabelText } = render(<HomeScreen />);
+    // The accessible label announces the passive area + that it opens the map,
+    // never "choose"/"change"/"pick" an area.
+    const header = getByLabelText('Your area: Near you — open map');
+    expect(header).toBeTruthy();
+    fireEvent.press(header);
+    expect(router.push as jest.Mock).toHaveBeenCalledWith('/explore/map');
+  });
+
   it('reveals an inline Clear pill in the intent rail once an intent is selected', () => {
     const { getByLabelText, queryByLabelText } = render(<HomeScreen />);
     expect(queryByLabelText('Clear filters')).toBeNull();

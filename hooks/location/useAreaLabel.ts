@@ -16,7 +16,8 @@ import { useLocationConsent } from '@/hooks/useLocationConsent';
  *    geocoder, no paid API), and keeps ONLY that string. The coordinates are
  *    used transiently and never stored.
  *  - Returns null when unavailable; the caller falls back to the saved profile
- *    postcode, then a "Choose area" CTA.
+ *    postcode, then a passive "Near you" label (NOT a manual area-picker CTA —
+ *    no such flow exists; the header only opens the Map).
  */
 export function useAreaLabel(): string | null {
   const { status } = useLocationConsent();

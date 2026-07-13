@@ -65,6 +65,11 @@ jest.mock('@/hooks/useVenues', () => ({
     isLoading: false,
     error: null,
   })),
+  useCategories: jest.fn(() => ({
+    data: [],
+    isLoading: false,
+    error: null,
+  })),
 }));
 
 // filterStore: return sensible defaults with activeFilterCount returning 0.
