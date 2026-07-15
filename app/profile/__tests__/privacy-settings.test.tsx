@@ -26,6 +26,18 @@ jest.mock('expo-router', () => ({
 
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: 'View',
+  useSafeAreaInsets: () => ({ top: 44, bottom: 34, left: 0, right: 0 }),
+}));
+
+jest.mock('expo-status-bar', () => ({
+  StatusBar: () => null,
+}));
+
+// v2 restyle (Step 5): stub this screen's <V2Background/> atmosphere mount —
+// covered by its own dedicated background test elsewhere — so this file
+// stays focused on the location-status/GDPR business logic below.
+jest.mock('@/components/ui/V2Background', () => ({
+  V2Background: () => null,
 }));
 
 // Mock expo-location — getForegroundPermissionsAsync is the only method the screen uses.

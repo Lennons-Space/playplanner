@@ -1,6 +1,10 @@
 /**
  * Children's Ages screen — app/profile/children-ages.tsx
  *
+ * v2 dark restyle (Step 5, feat/exact-v2-design): VISUAL LAYER ONLY. All
+ * hooks, mutation calls and storage semantics are byte-identical to the
+ * pre-restyle version.
+ *
  * Lets the user select which broad age ranges apply to their children so
  * PlayPlanner can surface venues that are suitable for their family.
  *
@@ -24,11 +28,21 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
-import { Stack, router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useProfile, useUser } from '@/hooks/useAuth';
 import { useUpdateChildrenAges } from '@/hooks/useProfile';
+import { Icon } from '@/components/ui/Icon';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { V2Background } from '@/components/ui/V2Background';
+import { V2Header } from '@/components/ui/V2Header';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
+
+const T = Themes.dark;
+const ACCENT = ocean;
 
 /**
  * Age ranges to display as selectable chips.
@@ -42,6 +56,7 @@ export default function ChildrenAgesScreen() {
   const user    = useUser();
   const profile = useProfile();
   const { mutateAsync, isPending } = useUpdateChildrenAges();
+  const insets = useSafeAreaInsets();
 
   // Initialise selection from the profile stored in Zustand.
   // We cast because the DB stores text[] and we know our values match AgeRange.
@@ -77,67 +92,51 @@ export default function ChildrenAgesScreen() {
   }
 
   return (
-    <>
-      <Stack.Screen options={{ title: "Children's Ages" }} />
-      <SafeAreaView className="flex-1 bg-slate" edges={['bottom']}>
-        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+    <View style={styles.root}>
+      <V2Background />
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <V2Header title="Children's Ages" />
+
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 130 + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
+        >
 
           {/* Privacy notice — shown before the controls (ICO Children's Code Std. 4) */}
-          <View className="bg-white rounded-xl px-4 py-4 mb-5 flex-row gap-3">
-            <Text className="text-lg">🔒</Text>
-            <View className="flex-1">
-              <Text
-                className="text-charcoal text-sm font-bold mb-1"
-                style={{ fontFamily: 'Nunito-Bold' }}
-              >
-                Only you can see this
-              </Text>
-              <Text
-                className="text-grey text-xs"
-                style={{ fontFamily: 'Nunito-Regular' }}
-              >
+          <GlassSurface style={styles.privacyCard} tintColor="rgba(14,14,20,0.55)">
+            <View style={styles.privacyIconBox}>
+              <Icon name="shield" size={18} color={ACCENT.accent} />
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.privacyTitle}>Only you can see this</Text>
+              <Text style={styles.privacyBody}>
                 We use broad age ranges to suggest venues that suit your family.
                 We never collect exact dates of birth and this information is
                 never visible to other users.
               </Text>
             </View>
-          </View>
+          </GlassSurface>
 
           {/* Heading */}
-          <Text
-            className="text-charcoal text-base font-bold mb-1"
-            style={{ fontFamily: 'Nunito-Bold' }}
-          >
-            Select your children's age ranges
-          </Text>
-          <Text
-            className="text-grey text-sm mb-4"
-            style={{ fontFamily: 'Nunito-Regular' }}
-          >
-            Tap all that apply. You can update this any time.
-          </Text>
+          <Text style={styles.heading}>Select your children&apos;s age ranges</Text>
+          <Text style={styles.subheading}>Tap all that apply. You can update this any time.</Text>
 
           {/* Age range chips */}
-          <View className="flex-row flex-wrap gap-3">
+          <View style={styles.chipRow}>
             {AGE_RANGES.map((range) => {
               const isSelected = selected.includes(range);
               return (
                 <TouchableOpacity
                   key={range}
-                  className={`px-5 py-3 rounded-full border-2 ${
-                    isSelected
-                      ? 'bg-leaf border-leaf'
-                      : 'bg-white border-greyLighter'
-                  }`}
+                  style={[styles.chip, isSelected ? styles.chipSelected : styles.chipUnselected]}
                   onPress={() => toggleRange(range)}
+                  activeOpacity={0.8}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: isSelected }}
                   accessibilityLabel={`Age range ${range} years`}
                 >
-                  <Text
-                    className={isSelected ? 'text-white' : 'text-charcoal'}
-                    style={{ fontFamily: 'Nunito-Bold', fontSize: 15 }}
-                  >
+                  <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
                     {range} yrs
                   </Text>
                 </TouchableOpacity>
@@ -148,45 +147,154 @@ export default function ChildrenAgesScreen() {
           {/* "None" / clear option */}
           {selected.length > 0 && (
             <TouchableOpacity
-              className="mt-4 self-start"
+              style={styles.clearBtn}
               onPress={() => setSelected([])}
               accessibilityRole="button"
               accessibilityLabel="Clear all age range selections"
             >
-              <Text
-                className="text-grey text-sm underline"
-                style={{ fontFamily: 'Nunito-Regular' }}
-              >
-                Clear selection
-              </Text>
+              <Text style={styles.clearText}>Clear selection</Text>
             </TouchableOpacity>
           )}
 
         </ScrollView>
 
-        {/* Save button — sticky at the bottom of the screen */}
-        <View className="absolute bottom-0 left-0 right-0 bg-sand px-4 pb-8 pt-3 border-t border-greyLighter">
+        {/* Save button — sticky, safe-area aware above Android nav */}
+        <GlassSurface
+          style={[styles.stickyBar, { paddingBottom: insets.bottom + 14 }]}
+          tintColor="rgba(12,12,17,0.92)"
+        >
           <TouchableOpacity
-            className="bg-leaf rounded-2xl items-center justify-center"
-            style={{ height: 56 }}
+            style={[styles.saveBtn, isPending && styles.saveBtnDisabled]}
             onPress={handleSave}
             disabled={isPending}
             accessibilityRole="button"
             accessibilityLabel="Save age range selections"
+            accessibilityState={{ disabled: isPending }}
           >
             {isPending ? (
-              <ActivityIndicator color="white" />
+              <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text
-                className="text-white text-lg"
-                style={{ fontFamily: 'Nunito-Bold' }}
-              >
-                Save
-              </Text>
+              <Text style={styles.saveBtnText}>Save</Text>
             )}
           </TouchableOpacity>
-        </View>
+        </GlassSurface>
       </SafeAreaView>
-    </>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
+  flex: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: 20,
+  },
+
+  privacyCard: {
+    flexDirection: 'row',
+    gap: 12,
+    borderRadius: 16,
+    padding: 15,
+    marginBottom: 20,
+  },
+  privacyIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: ACCENT.light,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  privacyTitle: {
+    fontFamily: FontFamily.heading,
+    fontSize: 14,
+    color: T.label,
+    marginBottom: 4,
+  },
+  privacyBody: {
+    fontFamily: FontFamily.body,
+    fontSize: 12.5,
+    color: T.label3,
+    lineHeight: 18,
+  },
+
+  heading: {
+    fontFamily: FontFamily.heading,
+    fontSize: 16,
+    color: T.label,
+    marginBottom: 4,
+  },
+  subheading: {
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: T.label3,
+    marginBottom: 16,
+  },
+
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  chip: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 999,
+    borderWidth: 1.5,
+  },
+  chipSelected: {
+    backgroundColor: ACCENT.accent,
+    borderColor: ACCENT.accent,
+  },
+  chipUnselected: {
+    backgroundColor: T.surface,
+    borderColor: T.separator,
+  },
+  chipText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 15,
+    color: T.label,
+  },
+  chipTextSelected: {
+    color: '#FFFFFF',
+  },
+
+  clearBtn: {
+    marginTop: 16,
+    alignSelf: 'flex-start',
+  },
+  clearText: {
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: T.label3,
+    textDecorationLine: 'underline',
+  },
+
+  // Sticky save bar
+  stickyBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  saveBtn: {
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: ACCENT.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  saveBtnText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+});

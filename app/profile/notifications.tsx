@@ -1,6 +1,16 @@
 /**
  * Notifications settings screen.
  *
+ * v2 dark restyle (Step 5, feat/exact-v2-design): VISUAL LAYER ONLY. The
+ * permission-check/register/unregister logic, the token-existence query and
+ * the useFocusEffect re-check are byte-identical to the pre-restyle version.
+ *
+ * This screen previously supplied its own custom header AND sat under a
+ * Stack with no `<Stack.Screen options={{title}}>` — Expo Router rendered
+ * the literal route filename ("notifications") as a second native header
+ * above this screen's own. See app/profile/_layout.tsx (headerShown:false)
+ * for the fix; this screen's header is now the ONLY header rendered.
+ *
  * GDPR / ICO Children's Code
  * --------------------------
  * Notifications are opt-in only. The user must actively toggle the switch to
@@ -13,16 +23,23 @@
  */
 
 import { useCallback } from 'react';
-import { View, Text, Switch, Alert, TouchableOpacity } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { View, Text, Switch, Alert, StyleSheet } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { Colors, FontFamily, FontSize, Spacing } from '@/constants/theme';
+import { Icon } from '@/components/ui/Icon';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { V2Background } from '@/components/ui/V2Background';
+import { V2Header } from '@/components/ui/V2Header';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
+
+const T = Themes.dark;
+const ACCENT = ocean;
 
 export default function NotificationsScreen() {
   const user = useUser();
@@ -89,198 +106,158 @@ export default function NotificationsScreen() {
   // ── Signed-out guard ─────────────────────────────────────────────────────────
   if (!user) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sand }} edges={['top']}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: Spacing.lg,
-            paddingVertical: Spacing.md,
-            gap: Spacing.md,
-            borderBottomWidth: 1,
-            borderBottomColor: Colors.greyLighter,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Ionicons name="chevron-back" size={24} color={Colors.charcoal} />
-          </TouchableOpacity>
-          <Text style={{ fontFamily: FontFamily.extraBold, fontSize: FontSize.lg, color: Colors.charcoal, flex: 1 }}>
-            Notifications
-          </Text>
-        </View>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.lg }}>
-          <Ionicons name="notifications-off-outline" size={40} color={Colors.grey} />
-          <Text style={{ fontFamily: FontFamily.bold, fontSize: FontSize.md, color: Colors.charcoal, marginTop: 12, textAlign: 'center' }}>
-            Sign in to manage notifications
-          </Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.root}>
+        <V2Background />
+        <StatusBar style="light" />
+        <SafeAreaView style={styles.safe} edges={['top']}>
+          <V2Header title="Notifications" />
+          <View style={styles.signedOutBody}>
+            <Icon name="bell" size={36} color={T.label4} />
+            <Text style={styles.signedOutText}>Sign in to manage notifications</Text>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sand }} edges={['top']}>
+    <View style={styles.root}>
+      <V2Background />
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <V2Header title="Notifications" />
 
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: Spacing.lg,
-          paddingVertical: Spacing.md,
-          gap: Spacing.md,
-          borderBottomWidth: 1,
-          borderBottomColor: Colors.greyLighter,
-          backgroundColor: Colors.sand,
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Ionicons name="chevron-back" size={24} color={Colors.charcoal} />
-        </TouchableOpacity>
-        <Text
-          style={{
-            fontFamily: FontFamily.extraBold,
-            fontSize: FontSize.lg,
-            color: Colors.charcoal,
-            flex: 1,
-          }}
-        >
-          Notifications
-        </Text>
-      </View>
+        <View style={styles.body}>
 
-      {/* Body */}
-      <View style={{ flex: 1, paddingHorizontal: Spacing.lg, paddingTop: Spacing.xl }}>
+          {/* Toggle card */}
+          <GlassSurface style={styles.toggleCard} tintColor="rgba(14,14,20,0.55)">
+            <View style={styles.iconBox}>
+              <Icon
+                name="bell"
+                size={20}
+                color={ACCENT.accent}
+              />
+            </View>
 
-        {/* Toggle card */}
-        <View
-          style={{
-            backgroundColor: '#fff',
-            borderRadius: 16,
-            paddingHorizontal: Spacing.lg,
-            paddingVertical: 18,
-            flexDirection: 'row',
-            alignItems: 'center',
-            shadowColor: '#000',
-            shadowOpacity: 0.05,
-            shadowRadius: 4,
-            shadowOffset: { width: 0, height: 1 },
-            elevation: 2,
-          }}
-        >
-          {/* Icon badge */}
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              backgroundColor: Colors.sky + '18',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: Spacing.md,
-            }}
-          >
-            <Ionicons
-              name={notificationsEnabled ? 'notifications' : 'notifications-off-outline'}
-              size={20}
-              color={Colors.sky}
+            <View style={styles.flex}>
+              <Text style={styles.toggleLabel}>Push notifications</Text>
+              <Text style={styles.toggleSub}>
+                {notificationsEnabled ? 'Enabled' : 'Disabled'}
+              </Text>
+            </View>
+
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={handleToggle}
+              disabled={isLoading}
+              trackColor={{ false: T.fill, true: ACCENT.accent }}
+              thumbColor="#FFFFFF"
+              accessibilityRole="switch"
+              accessibilityLabel="Toggle push notifications"
+              accessibilityState={{ checked: notificationsEnabled, disabled: isLoading }}
+              style={{ opacity: isLoading ? 0.4 : 1 }}
             />
-          </View>
+          </GlassSurface>
 
-          {/* Label */}
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{
-                fontFamily: FontFamily.bold,
-                fontSize: FontSize.md,
-                color: Colors.charcoal,
-              }}
-            >
-              Push notifications
-            </Text>
-            <Text
-              style={{
-                fontFamily: FontFamily.regular,
-                fontSize: FontSize.sm,
-                color: Colors.grey,
-                marginTop: 2,
-              }}
-            >
-              {notificationsEnabled ? 'Enabled' : 'Disabled'}
-            </Text>
-          </View>
-
-          <Switch
-            value={notificationsEnabled}
-            onValueChange={handleToggle}
-            disabled={isLoading}
-            trackColor={{ false: Colors.greyLighter, true: Colors.sky }}
-            thumbColor="#fff"
-            accessibilityRole="switch"
-            accessibilityLabel="Toggle push notifications"
-            accessibilityState={{ checked: notificationsEnabled, disabled: isLoading }}
-            style={{ opacity: isLoading ? 0.4 : 1 }}
-          />
-        </View>
-
-        {/* GDPR-friendly explanation of what we'll send */}
-        <Text
-          style={{
-            fontFamily: FontFamily.regular,
-            fontSize: FontSize.sm,
-            color: Colors.grey,
-            marginTop: Spacing.lg,
-            lineHeight: 20,
-            paddingHorizontal: Spacing.xs,
-          }}
-        >
-          We'll notify you when your reviews are published. You can turn this off at any time.
-        </Text>
-
-        {/* Privacy reassurance card */}
-        <View
-          style={{
-            backgroundColor: Colors.sky + '12',
-            borderRadius: 12,
-            padding: Spacing.md,
-            marginTop: Spacing.lg,
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: Spacing.sm,
-          }}
-        >
-          <Ionicons
-            name="shield-checkmark-outline"
-            size={16}
-            color={Colors.sky}
-            style={{ marginTop: 1 }}
-          />
-          <Text
-            style={{
-              fontFamily: FontFamily.regular,
-              fontSize: FontSize.sm,
-              color: Colors.charcoal,
-              flex: 1,
-              lineHeight: 19,
-            }}
-          >
-            We'll never send marketing messages or sell your data to third parties.
-            Notification tokens are deleted automatically if you delete your account.
+          {/* GDPR-friendly explanation of what we'll send */}
+          <Text style={styles.explainer}>
+            We&apos;ll notify you when your reviews are published. You can turn this off at any time.
           </Text>
-        </View>
 
-      </View>
-    </SafeAreaView>
+          {/* Privacy reassurance card */}
+          <GlassSurface style={styles.privacyCard} tintColor={ACCENT.light}>
+            <Icon
+              name="shield"
+              size={16}
+              color={ACCENT.accent}
+              strokeWidth={1.8}
+            />
+            <Text style={styles.privacyText}>
+              We&apos;ll never send marketing messages or sell your data to third parties.
+              Notification tokens are deleted automatically if you delete your account.
+            </Text>
+          </GlassSurface>
+
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
+  flex: { flex: 1 },
+
+  signedOutBody: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  signedOutText: {
+    fontFamily: FontFamily.heading,
+    fontSize: 15,
+    color: T.label2,
+    textAlign: 'center',
+  },
+
+  body: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+  },
+
+  toggleCard: {
+    borderRadius: 18,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: ACCENT.light,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleLabel: {
+    fontFamily: FontFamily.heading,
+    fontSize: 15,
+    color: T.label,
+  },
+  toggleSub: {
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: T.label3,
+    marginTop: 2,
+  },
+
+  explainer: {
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: T.label3,
+    lineHeight: 19,
+    marginTop: 16,
+    paddingHorizontal: 4,
+  },
+
+  privacyCard: {
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 16,
+  },
+  privacyText: {
+    flex: 1,
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: T.label2,
+    lineHeight: 19,
+  },
+});

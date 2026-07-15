@@ -2,6 +2,15 @@
  * Add Venue screen — lets any logged-in user submit a new venue.
  * All submissions go into moderation_status='pending' for admin review.
  *
+ * v2 dark restyle (Step 5, feat/exact-v2-design): VISUAL LAYER ONLY. The
+ * postcode lookup, validation functions (validateWebsiteUrl/validateAgeRange),
+ * the supabase.from('venues').insert(...) mutation shape and every field it
+ * writes are byte-identical to the pre-restyle version. This screen is
+ * presented as a modal by the root Stack (`app/_layout.tsx`,
+ * `options={{ presentation: 'modal' }}`) with `headerShown: false` already
+ * set globally, so its own "Add a venue" + Cancel row (unchanged structure,
+ * just restyled) remains the only header — no duplicate-header bug here.
+ *
  * Address flow:
  *   1. User enters postcode → validated via postcodes.io (free, no API key)
  *   2. lat/lng + city are populated automatically from the postcodes.io response
@@ -19,15 +28,24 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
 } from 'react-native';
 import { router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useQuery } from '@tanstack/react-query';
-import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
-import { Colors } from '@/constants/theme';
+import { Icon } from '@/components/ui/Icon';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { V2Background } from '@/components/ui/V2Background';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
 import type { Category } from '@/types';
+
+const T = Themes.dark;
+const ACCENT = ocean;
 
 const LIMITS = {
   name:        100,
@@ -83,6 +101,7 @@ async function lookupPostcode(raw: string): Promise<PostcodeResult | null> {
 
 export default function AddVenueScreen() {
   const user = useUser();
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading]             = useState(false);
   const [name, setName]                   = useState('');
@@ -233,234 +252,407 @@ export default function AddVenueScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sand }}>
-      <ScrollView
-        style={{ paddingHorizontal: 16 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, paddingBottom: 8 }}>
-          <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 22, color: Colors.charcoal }}>
-            Add a venue
-          </Text>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 15, color: Colors.grey }}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 14, color: Colors.grey, marginBottom: 20 }}>
-          Know a great family-friendly place? Add it here and help other parents discover it!
-        </Text>
+    <View style={styles.root}>
+      <V2Background />
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe} edges={['top']}>
 
-        <View style={{ gap: 16 }}>
-
-          {/* Venue name */}
-          <View>
-            <Text style={label}>Venue name *</Text>
-            <TextInput
-              style={input}
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Sunshine Soft Play"
-              placeholderTextColor={Colors.greyLight}
-              maxLength={LIMITS.name}
-            />
-          </View>
-
-          {/* Category chips */}
-          <View>
-            <Text style={label}>Category</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {categories.map((cat) => (
-                <TouchableOpacity
-                  key={cat.id}
-                  style={{
-                    marginRight: 8,
-                    paddingHorizontal: 14,
-                    paddingVertical: 8,
-                    borderRadius: 999,
-                    borderWidth: 2,
-                    borderColor: categoryId === cat.id ? Colors.sky : Colors.greyLighter,
-                    backgroundColor: categoryId === cat.id ? Colors.sky : '#fff',
-                  }}
-                  onPress={() => setCategoryId(cat.id)}
-                >
-                  <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 13, color: categoryId === cat.id ? '#fff' : Colors.charcoal }}>
-                    {cat.icon} {cat.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* Description */}
-          <View>
-            <Text style={label}>Description</Text>
-            <TextInput
-              style={[input, { height: 90, textAlignVertical: 'top', paddingTop: 12 }]}
-              value={description}
-              onChangeText={setDesc}
-              placeholder="What makes this place great for families?"
-              placeholderTextColor={Colors.greyLight}
-              multiline
-              maxLength={LIMITS.description}
-            />
-          </View>
-
-          {/* ── Postcode lookup ───────────────────────────────────────────── */}
-          <View>
-            <Text style={label}>Postcode *</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TextInput
-                style={[input, { flex: 1 }]}
-                value={postcodeInput}
-                onChangeText={handlePostcodeChange}
-                placeholder="e.g. M1 1AE"
-                placeholderTextColor={Colors.greyLight}
-                autoCapitalize="characters"
-                autoCorrect={false}
-              />
-              <TouchableOpacity
-                style={{
-                  backgroundColor: Colors.sky,
-                  borderRadius: 12,
-                  paddingHorizontal: 16,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  minWidth: 80,
-                }}
-                onPress={handleLookupPostcode}
-                disabled={postcodeLoading}
-              >
-                {postcodeLoading
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 14, color: '#fff' }}>Look up</Text>
-                }
-              </TouchableOpacity>
-            </View>
-
-            {postcodeError !== '' && (
-              <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 13, color: Colors.error, marginTop: 4 }}>
-                {postcodeError}
-              </Text>
-            )}
-
-            {postcodeConfirmed && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                <Ionicons name="checkmark-circle" size={16} color={Colors.mint} />
-                <Text style={{ fontFamily: 'Nunito-Medium', fontSize: 13, color: Colors.mint }}>
-                  {postcode} — {city}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* House / building number — shown after postcode confirmed */}
-          {postcodeConfirmed && (
-            <View>
-              <Text style={label}>House / building number or name</Text>
-              <TextInput
-                style={input}
-                value={houseNumber}
-                onChangeText={setHouseNumber}
-                placeholder="e.g. 12 or Meadow House (optional)"
-                placeholderTextColor={Colors.greyLight}
-                maxLength={LIMITS.houseNumber}
-              />
-            </View>
-          )}
-
-          {/* Phone */}
-          <View>
-            <Text style={label}>Phone number</Text>
-            <TextInput
-              style={input}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="e.g. 0161 123 4567"
-              placeholderTextColor={Colors.greyLight}
-              keyboardType="phone-pad"
-              maxLength={LIMITS.phone}
-            />
-          </View>
-
-          {/* Website */}
-          <View>
-            <Text style={label}>Website</Text>
-            <TextInput
-              style={input}
-              value={website}
-              onChangeText={setWebsite}
-              placeholder="e.g. https://example.com"
-              placeholderTextColor={Colors.greyLight}
-              keyboardType="url"
-              autoCapitalize="none"
-              maxLength={LIMITS.website}
-            />
-          </View>
-
-          {/* Age range */}
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={label}>Min age</Text>
-              <TextInput
-                style={input}
-                value={minAge}
-                onChangeText={setMinAge}
-                keyboardType="number-pad"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={label}>Max age</Text>
-              <TextInput
-                style={input}
-                value={maxAge}
-                onChangeText={setMaxAge}
-                keyboardType="number-pad"
-              />
-            </View>
-          </View>
-
+        {/* Header — "Cancel" text action, not a back chevron: this is a modal
+            presentation (root Stack: presentation:'modal'), matching the
+            existing behaviour exactly, only restyled dark. */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Add a venue</Text>
           <TouchableOpacity
-            style={{
-              backgroundColor: Colors.sky,
-              borderRadius: 16,
-              paddingVertical: 16,
-              alignItems: 'center',
-              marginTop: 8,
-              marginBottom: 40,
-              opacity: loading ? 0.7 : 1,
-            }}
-            onPress={handleSubmit}
-            disabled={loading}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel adding a venue"
           >
-            {loading
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 16, color: '#fff' }}>Submit venue</Text>
-            }
+            <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
-
         </View>
-      </ScrollView>
-    </SafeAreaView>
+
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={{ paddingBottom: 120 + insets.bottom, gap: 18 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.intro}>
+              Know a great family-friendly place? Add it here and help other parents discover it!
+            </Text>
+
+            {/* Split into three separate cards (was one monolithic formCard
+                spanning almost the whole scroll height) with gaps between —
+                a single edge-to-edge card at the default 0.82 tint smothered
+                the shared animated background atmosphere across nearly
+                the entire viewport. Each card also uses a lighter 0.55 tint,
+                matching the value already used for full-bleed surfaces
+                elsewhere (see Venue Detail's sheet / SmartFeaturedCard). No
+                field, handler or validation logic below has changed — only
+                which GlassSurface each block sits inside. */}
+
+            {/* Card 1: what it is */}
+            <GlassSurface style={styles.formCard} tintColor="rgba(14,14,20,0.55)">
+
+              {/* Venue name */}
+              <View style={styles.field}>
+                <Text style={styles.label}>Venue name *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g. Sunshine Soft Play"
+                  placeholderTextColor={T.label4}
+                  maxLength={LIMITS.name}
+                />
+              </View>
+
+              {/* Category chips */}
+              <View style={styles.field}>
+                <Text style={styles.label}>Category</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {categories.map((cat) => {
+                    const active = categoryId === cat.id;
+                    const catColor = cat.color || ACCENT.accent;
+                    return (
+                      <TouchableOpacity
+                        key={cat.id}
+                        style={[
+                          styles.categoryChip,
+                          active
+                            ? { backgroundColor: catColor, borderColor: catColor }
+                            : styles.categoryChipInactive,
+                        ]}
+                        onPress={() => setCategoryId(cat.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Category: ${cat.name}`}
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
+                          {cat.icon} {cat.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Description */}
+              <View style={styles.field}>
+                <Text style={styles.label}>Description</Text>
+                <TextInput
+                  style={[styles.input, styles.multilineInput]}
+                  value={description}
+                  onChangeText={setDesc}
+                  placeholder="What makes this place great for families?"
+                  placeholderTextColor={T.label4}
+                  multiline
+                  maxLength={LIMITS.description}
+                />
+              </View>
+
+            </GlassSurface>
+
+            {/* Card 2: where it is */}
+            <GlassSurface style={styles.formCard} tintColor="rgba(14,14,20,0.55)">
+
+              {/* ── Postcode lookup ───────────────────────────────────────────── */}
+              <View style={styles.field}>
+                <Text style={styles.label}>Postcode *</Text>
+                <View style={styles.postcodeRow}>
+                  <TextInput
+                    style={[styles.input, styles.flex]}
+                    value={postcodeInput}
+                    onChangeText={handlePostcodeChange}
+                    placeholder="e.g. M1 1AE"
+                    placeholderTextColor={T.label4}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity
+                    style={styles.lookupBtn}
+                    onPress={handleLookupPostcode}
+                    disabled={postcodeLoading}
+                    accessibilityRole="button"
+                    accessibilityLabel="Look up postcode"
+                  >
+                    {postcodeLoading
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={styles.lookupBtnText}>Look up</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+
+                {postcodeError !== '' && (
+                  <Text style={styles.errorText}>{postcodeError}</Text>
+                )}
+
+                {postcodeConfirmed && (
+                  <View style={styles.confirmedRow}>
+                    <Icon name="check" size={16} color="#6EE7B7" />
+                    <Text style={styles.confirmedText}>
+                      {postcode} — {city}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* House / building number — shown after postcode confirmed */}
+              {postcodeConfirmed && (
+                <View style={styles.field}>
+                  <Text style={styles.label}>House / building number or name</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={houseNumber}
+                    onChangeText={setHouseNumber}
+                    placeholder="e.g. 12 or Meadow House (optional)"
+                    placeholderTextColor={T.label4}
+                    maxLength={LIMITS.houseNumber}
+                  />
+                </View>
+              )}
+
+            </GlassSurface>
+
+            {/* Card 3: contact + suitability */}
+            <GlassSurface style={styles.formCard} tintColor="rgba(14,14,20,0.55)">
+
+              {/* Phone */}
+              <View style={styles.field}>
+                <Text style={styles.label}>Phone number</Text>
+                <TextInput
+                  style={styles.input}
+                  value={phone}
+                  onChangeText={setPhone}
+                  placeholder="e.g. 0161 123 4567"
+                  placeholderTextColor={T.label4}
+                  keyboardType="phone-pad"
+                  maxLength={LIMITS.phone}
+                />
+              </View>
+
+              {/* Website */}
+              <View style={styles.field}>
+                <Text style={styles.label}>Website</Text>
+                <TextInput
+                  style={styles.input}
+                  value={website}
+                  onChangeText={setWebsite}
+                  placeholder="e.g. https://example.com"
+                  placeholderTextColor={T.label4}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  maxLength={LIMITS.website}
+                />
+              </View>
+
+              {/* Age range */}
+              <View style={styles.ageRow}>
+                <View style={styles.ageField}>
+                  <Text style={styles.label}>Min age</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={minAge}
+                    onChangeText={setMinAge}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={styles.ageField}>
+                  <Text style={styles.label}>Max age</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={maxAge}
+                    onChangeText={setMaxAge}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </View>
+
+            </GlassSurface>
+
+          </ScrollView>
+
+          {/* Submit — sticky, safe-area aware above Android nav */}
+          <GlassSurface
+            style={[styles.stickyBar, { paddingBottom: insets.bottom + 14 }]}
+            tintColor="rgba(12,12,17,0.92)"
+          >
+            <TouchableOpacity
+              style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
+              onPress={handleSubmit}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Submit venue"
+              accessibilityState={{ disabled: loading, busy: loading }}
+            >
+              {loading
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.submitBtnText}>Submit venue</Text>
+              }
+            </TouchableOpacity>
+          </GlassSurface>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
-const label: object = {
-  fontFamily: 'Nunito-Bold',
-  fontSize: 14,
-  color: Colors.charcoal,
-  marginBottom: 4,
-};
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
+  flex: { flex: 1 },
+  scroll: { flex: 1, paddingHorizontal: 20 },
 
-const input: object = {
-  backgroundColor: '#fff',
-  borderWidth: 1,
-  borderColor: Colors.greyLighter,
-  borderRadius: 12,
-  paddingHorizontal: 16,
-  paddingVertical: 12,
-  fontFamily: 'Nunito-Regular',
-  fontSize: 15,
-  color: Colors.charcoal,
-};
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  headerTitle: {
+    fontFamily: FontFamily.display,
+    fontSize: 20,
+    color: T.label,
+    letterSpacing: -0.4,
+  },
+  cancelText: {
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label3,
+  },
+
+  intro: {
+    fontFamily: FontFamily.body,
+    fontSize: 14,
+    color: T.label3,
+    // Spacing to the first card now comes from the ScrollView's
+    // contentContainerStyle gap (18), not a local margin, so it stays
+    // consistent with the gap between the three form cards below.
+    lineHeight: 20,
+  },
+
+  formCard: {
+    borderRadius: 20,
+    padding: 16,
+    gap: 16,
+  },
+  field: { gap: 6 },
+  label: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 13,
+    color: T.label2,
+  },
+  input: {
+    backgroundColor: T.bg,
+    borderWidth: 1,
+    borderColor: T.separator,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label,
+  },
+  multilineInput: {
+    height: 90,
+    textAlignVertical: 'top',
+    paddingTop: 12,
+  },
+
+  categoryChip: {
+    marginRight: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1.5,
+  },
+  categoryChipInactive: {
+    backgroundColor: T.surface,
+    borderColor: T.separator,
+  },
+  categoryChipText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 13,
+    color: T.label,
+  },
+  categoryChipTextActive: {
+    color: '#FFFFFF',
+  },
+
+  postcodeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  lookupBtn: {
+    backgroundColor: ACCENT.accent,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 80,
+  },
+  lookupBtnText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  errorText: {
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: '#FF8A80',
+    marginTop: 4,
+  },
+  confirmedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  confirmedText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 13,
+    color: '#6EE7B7',
+  },
+
+  ageRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  ageField: {
+    flex: 1,
+    gap: 6,
+  },
+
+  // Sticky submit bar
+  stickyBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  submitBtn: {
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: ACCENT.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitBtnDisabled: {
+    opacity: 0.7,
+  },
+  submitBtnText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+});

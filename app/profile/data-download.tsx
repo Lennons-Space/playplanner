@@ -1,6 +1,10 @@
 /**
  * Download My Data screen — app/profile/data-download.tsx
  *
+ * v2 dark restyle (Step 5, feat/exact-v2-design): VISUAL LAYER ONLY. The
+ * export flow (buildDataExport, file write/share/delete, SecureStore
+ * cooldown) is byte-identical to the pre-restyle version.
+ *
  * GDPR Art.15 (right of access): users can request a portable copy of all
  *   personal data held about them. The export is delivered as a JSON file
  *   via the device share sheet — we never store it server-side.
@@ -22,8 +26,8 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { Stack } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 import {
   documentDirectory,
@@ -36,6 +40,14 @@ import { shareAsync } from 'expo-sharing';
 import { format } from 'date-fns';
 import { useAuthStore } from '@/store/authStore';
 import { buildDataExport } from '@/hooks/useDataRights';
+import { Icon } from '@/components/ui/Icon';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { V2Background } from '@/components/ui/V2Background';
+import { V2Header } from '@/components/ui/V2Header';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
+
+const T = Themes.dark;
+const ACCENT = ocean;
 
 const STORAGE_KEY   = 'playplanner.last_data_export';
 const COOLDOWN_MS   = 86_400_000; // 24 hours
@@ -46,6 +58,7 @@ const COOLDOWN_MS   = 86_400_000; // 24 hours
 
 export default function DataDownloadScreen() {
   const userId = useAuthStore((s) => s.user?.id);
+  const insets = useSafeAreaInsets();
 
   const [isLoading,    setIsLoading]    = useState(false);
   const [success,      setSuccess]      = useState(false);
@@ -125,33 +138,39 @@ export default function DataDownloadScreen() {
   const buttonDisabled = isLoading || isOnCooldown;
 
   return (
-    <>
-      <Stack.Screen options={{ title: 'Download My Data' }} />
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+    <View style={styles.root}>
+      <V2Background />
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <V2Header title="Download My Data" />
+
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}
           showsVerticalScrollIndicator={false}
         >
 
           {/* Info box */}
-          <View style={styles.infoBox}>
-            <Text style={styles.infoHeading}>What&apos;s included</Text>
+          <GlassSurface style={styles.infoBox} tintColor="rgba(14,14,20,0.55)">
+            <View style={styles.infoIconRow}>
+              <Icon name="info" size={18} color={ACCENT.accent} />
+              <Text style={styles.infoHeading}>What&apos;s included</Text>
+            </View>
             <Text style={styles.infoBody}>
               Your download includes your profile, reviews, saved venues, submitted
               venues, location consent history, and a log of privacy actions. It does
               not include payment information, your profile photo, or data about other
               users.
             </Text>
-          </View>
+          </GlassSurface>
 
           {/* Cooldown warning */}
           {isOnCooldown && nextAllowedTime && (
-            <View style={styles.cooldownBox}>
+            <GlassSurface style={styles.cooldownBox} tintColor="rgba(255,178,62,0.14)">
               <Text style={styles.cooldownText}>
                 You downloaded your data recently. You can request another download
                 after {nextAllowedTime}.
               </Text>
-            </View>
+            </GlassSurface>
           )}
 
           {/* Request download button */}
@@ -175,26 +194,26 @@ export default function DataDownloadScreen() {
 
           {/* Success message */}
           {success && (
-            <View style={styles.successBox}>
+            <GlassSurface style={styles.successBox} tintColor="rgba(52,211,153,0.14)">
               <Text style={styles.successText}>
                 Your data has been prepared and shared. The file has been deleted
                 from this device.
               </Text>
-            </View>
+            </GlassSurface>
           )}
 
           {/* Error message */}
           {error && (
-            <View style={styles.errorBox}>
+            <GlassSurface style={styles.errorBox} tintColor="rgba(255,59,48,0.14)">
               <Text style={styles.errorText}>
                 Something went wrong preparing your data. Please try again.
               </Text>
-            </View>
+            </GlassSurface>
           )}
 
         </ScrollView>
       </SafeAreaView>
-    </>
+    </View>
   );
 }
 
@@ -203,46 +222,47 @@ export default function DataDownloadScreen() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFF9F0',
-  },
+  root: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
+    paddingHorizontal: 20,
+    paddingTop: 4,
   },
   infoBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 24,
   },
-  infoHeading: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 15,
-    color: '#2D3436',
+  infoIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 8,
   },
+  infoHeading: {
+    fontFamily: FontFamily.heading,
+    fontSize: 15,
+    color: T.label,
+  },
   infoBody: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#636E72',
+    color: T.label2,
     lineHeight: 20,
   },
   cooldownBox: {
-    backgroundColor: '#FFF3CD',
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
   },
   cooldownText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#856404',
+    color: '#FFC976',
     lineHeight: 20,
   },
   button: {
-    backgroundColor: '#FF6B6B',
+    backgroundColor: ACCENT.accent,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
@@ -252,32 +272,30 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   buttonText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 16,
     color: '#FFFFFF',
   },
   successBox: {
-    backgroundColor: '#D4EDDA',
     borderRadius: 12,
     padding: 12,
     marginTop: 16,
   },
   successText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#155724',
+    color: '#6EE7B7',
     lineHeight: 20,
   },
   errorBox: {
-    backgroundColor: '#F8D7DA',
     borderRadius: 12,
     padding: 12,
     marginTop: 16,
   },
   errorText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#721C24',
+    color: '#FF8A80',
     lineHeight: 20,
   },
 });

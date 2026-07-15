@@ -1,6 +1,11 @@
 /**
  * My Reviews screen — app/profile/my-reviews.tsx
  *
+ * v2 dark restyle (Step 5, feat/exact-v2-design): VISUAL LAYER ONLY. The
+ * useMyReviews/useDeleteReview queries, the delete-confirmation Alert, and
+ * the "Explore venues" empty-state destination are byte-identical to the
+ * pre-restyle version.
+ *
  * GDPR Art.17 (right to erasure): each review has a delete button that
  * permanently removes it. The confirmation alert names the venue and makes
  * clear the action is irreversible, satisfying the transparency requirement.
@@ -14,12 +19,20 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { format } from 'date-fns';
 import { useAuthStore } from '@/store/authStore';
 import { useMyReviews, useDeleteReview } from '@/hooks/useDataRights';
 import { ModerationBadge } from '@/components/profile/ModerationBadge';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { V2Background } from '@/components/ui/V2Background';
+import { V2Header } from '@/components/ui/V2Header';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
+
+const T = Themes.dark;
+const ACCENT = ocean;
 
 // ---------------------------------------------------------------------------
 // Star rating helper
@@ -33,7 +46,7 @@ function StarRating({ rating }: { rating: number }) {
           key={star}
           style={[
             styles.star,
-            { color: star <= rating ? '#FF6B6B' : '#B2BEC3' },
+            { color: star <= rating ? T.star : T.label4 },
           ]}
         >
           {star <= rating ? '★' : '☆'}
@@ -71,14 +84,16 @@ export default function MyReviewsScreen() {
   }
 
   return (
-    <>
-      <Stack.Screen options={{ title: 'My Reviews' }} />
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+    <View style={styles.root}>
+      <V2Background />
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <V2Header title="My Reviews" />
 
         {/* Loading */}
         {isLoading && (
           <View style={styles.centred}>
-            <ActivityIndicator color="#FF6B6B" size="large" />
+            <ActivityIndicator color={ACCENT.accent} size="large" />
           </View>
         )}
 
@@ -115,7 +130,7 @@ export default function MyReviewsScreen() {
 
             {/* Review cards */}
             {reviews && reviews.map((review: any) => (
-              <View key={review.id} style={styles.card}>
+              <GlassSurface key={review.id} style={styles.card} tintColor="rgba(14,14,20,0.55)">
 
                 {/* Row 1: badge + date */}
                 <View style={styles.badgeDateRow}>
@@ -160,13 +175,13 @@ export default function MyReviewsScreen() {
                   <Text style={styles.deleteText}>Delete</Text>
                 </TouchableOpacity>
 
-              </View>
+              </GlassSurface>
             ))}
           </ScrollView>
         )}
 
       </SafeAreaView>
-    </>
+    </View>
   );
 }
 
@@ -175,10 +190,8 @@ export default function MyReviewsScreen() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFF9F0',
-  },
+  root: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
   centred: {
     flex: 1,
     alignItems: 'center',
@@ -186,13 +199,13 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#636E72',
+    color: T.label2,
     textAlign: 'center',
   },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 20,
     paddingBottom: 40,
   },
   emptyContainer: {
@@ -201,27 +214,23 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyHeading: {
-    fontFamily: 'Nunito-Medium',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#636E72',
+    color: T.label2,
     textAlign: 'center',
   },
   emptyLink: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: '#FF6B6B',
+    color: ACCENT.accent,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
-    // Shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    // Wider than the original 12px gap — with the lighter 0.55 tint above,
+    // this keeps the shared animated background visible between rows even
+    // when the list is long, instead of reading as one solid stacked column.
+    marginBottom: 16,
   },
   badgeDateRow: {
     flexDirection: 'row',
@@ -230,9 +239,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   dateText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#636E72',
+    color: T.label3,
   },
   starsRow: {
     flexDirection: 'row',
@@ -243,15 +252,15 @@ const styles = StyleSheet.create({
     marginRight: 1,
   },
   venueName: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.heading,
     fontSize: 15,
-    color: '#2D3436',
+    color: T.label,
     marginBottom: 4,
   },
   reviewBody: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#636E72',
+    color: T.label2,
     lineHeight: 19,
     marginBottom: 8,
   },
@@ -261,30 +270,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   deleteText: {
-    fontFamily: 'Nunito-Medium',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 12,
-    color: '#D63031',
+    color: '#FF6B6B',
   },
   rejectionNote: {
-    backgroundColor: '#FFF3CD',
+    backgroundColor: 'rgba(255,178,62,0.12)',
     borderRadius: 8,
     padding: 10,
     marginBottom: 8,
     borderLeftWidth: 3,
-    borderLeftColor: '#D63031',
+    borderLeftColor: '#FFB23E',
   },
   rejectionLabel: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 11,
-    color: '#D63031',
+    color: '#FFB23E',
     marginBottom: 3,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   rejectionText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
-    color: '#2D3436',
+    color: T.label2,
     lineHeight: 18,
   },
 });

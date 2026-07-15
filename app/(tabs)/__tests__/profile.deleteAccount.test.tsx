@@ -65,14 +65,31 @@ jest.mock('expo-router', () => ({
 
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: 'View',
+  useSafeAreaInsets: () => ({ top: 44, bottom: 34, left: 0, right: 0 }),
+}));
+
+jest.mock('@react-navigation/bottom-tabs', () => ({
+  useBottomTabBarHeight: () => 64,
 }));
 
 jest.mock('expo-linear-gradient', () => ({
   LinearGradient: 'View',
 }));
 
+jest.mock('expo-status-bar', () => ({
+  StatusBar: () => null,
+}));
+
 jest.mock('@/components/ui', () => ({
   Icon: () => null,
+}));
+
+// V2Background (now mounted by the v2 restyle) reads the same coarse,
+// cached weather fetch every v2 screen uses — default to "no data" so the
+// time-aware fallback path runs deterministically, with no real network call.
+const mockUseWeather = jest.fn(() => null);
+jest.mock('@/hooks/useWeather', () => ({
+  useWeather: (...args: unknown[]) => mockUseWeather(...(args as [])),
 }));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

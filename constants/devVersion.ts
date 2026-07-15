@@ -8,4 +8,4 @@
  * components/ui/DevVersionBadge.tsx). Contains no personal, location or
  * otherwise sensitive data — safe to leave in source control.
  */
-export const DEV_VERSION = 'v2';
+export const DEV_VERSION = 'v2.1';

@@ -1,6 +1,18 @@
 /**
  * Profile tab — user account, settings, subscription.
  *
+ * v2 dark restyle (Step 5, feat/exact-v2-design): VISUALS ONLY. Structural
+ * reference: .design-v2-handoff/pp2-profile.jsx (icons, row grouping, hero
+ * layout, copy). Its mock data — "My reviews" sample fixtures, prefilled
+ * "Sarah Mitchell" personal-detail fields, and the dead BusinessTab2
+ * claim/analytics tab — is NOT ported. This screen only ever renders real
+ * profile data and routes to real screens.
+ *
+ * Shares the same global background atmosphere and <GlassSurface/> card
+ * primitive as Home/Saved/Venue Detail/Map. BlurView is banned (documented
+ * Android Fabric crash — see components/ui/GlassSurface.tsx); GlassSurface
+ * renders a plain tinted View, not real blur.
+ *
  * GDPR Art.17 (right to erasure): "Delete account" calls delete_own_account()
  * server-side — never the auth API directly. The function handles cascading
  * deletion and writes a GDPR audit log before removing the row.
@@ -17,13 +29,25 @@ import {
   Linking,
 } from 'react-native';
 import { router, Redirect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
 import { Icon } from '@/components/ui';
+import { V2Background } from '@/components/ui/V2Background';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { HelpModal } from '@/components/profile/HelpModal';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
+
+const T = Themes.dark;
+const ACCENT = ocean;
+// iOS-standard destructive red — matches the v2 mock's sign-out/delete copy
+// (pp2-profile.jsx sign-out button: color: '#FF3B30').
+const DESTRUCTIVE = '#FF3B30';
 
 // ─── SectionLabel ────────────────────────────────────────────────────────────
 function SectionLabel({ label }: { label: string }) {
@@ -52,8 +76,8 @@ function MenuItem({
   onPress,
   badge,
   detail,
-  iconBg = '#EEF9F8',
-  iconColor = '#1B8A85',
+  iconBg = ACCENT.light,
+  iconColor = ACCENT.accent,
   last = false,
 }: MenuItemProps) {
   return (
@@ -81,18 +105,18 @@ function MenuItem({
         </View>
       )}
 
-      <Icon name="chevR" size={16} color="#7B8794" />
+      <Icon name="chevR" size={16} color={T.label3} />
     </TouchableOpacity>
   );
 }
 
 // ─── MenuGroup ───────────────────────────────────────────────────────────────
-// Wraps a group of MenuItems in a card with rounded corners.
+// Wraps a group of MenuItems in a dark glass card with rounded corners.
 function MenuGroup({ children }: { children: React.ReactNode }) {
   return (
-    <View style={styles.menuGroup}>
+    <GlassSurface style={styles.menuGroup}>
       {children}
-    </View>
+    </GlassSurface>
   );
 }
 
@@ -103,6 +127,20 @@ export default function ProfileScreen() {
   const signOut = useAuthStore((s) => s.signOut);
   const queryClient = useQueryClient();
   const [deleting, setDeleting] = useState(false);
+  // In-app Help modal — replaces the old native Alert.alert('Help', ...)
+  // call so it matches the v2 dark design language. Conditionally rendered
+  // (not just Modal's own `visible` prop) so the modal's content genuinely
+  // isn't in the tree while closed — deterministic under test, and avoids
+  // any accessibility-tree leakage from a hidden-but-mounted sheet.
+  const [helpVisible, setHelpVisible] = useState(false);
+
+  // Tab-safe zone — same rule as Home/Saved/Map: the scroll VIEWPORT itself
+  // ends above the floating glass tab bar (marginBottom on the ScrollView),
+  // so content can never sit or pass beneath it. The bar only ever overlays
+  // the shared background layer mounted at the app root.
+  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  const tabSafeZone = Math.max(tabBarHeight, 52 + insets.bottom);
 
   function confirmSignOut() {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
@@ -235,11 +273,15 @@ export default function ProfileScreen() {
   // ── Loading skeleton ──────────────────────────────────────────────────────
   if (!profile) {
     return (
-      <SafeAreaView style={styles.skeletonRoot} edges={['top']}>
-        <View style={styles.skeletonHero} />
-        <View style={styles.skeletonBlock1} />
-        <View style={styles.skeletonBlock2} />
-      </SafeAreaView>
+      <View style={styles.root}>
+        <V2Background />
+        <StatusBar style="light" />
+        <SafeAreaView style={styles.safe} edges={['top']}>
+          <View style={styles.skeletonHero} />
+          <View style={styles.skeletonBlock1} />
+          <View style={styles.skeletonBlock2} />
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -252,192 +294,215 @@ export default function ProfileScreen() {
     .join('') ?? '';
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-
-        {/* ── Hero card ─────────────────────────────────────────────────── */}
-        <LinearGradient
-          colors={['#D4F0EE', '#EEF9F8', '#FFF1C7']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
+    <View style={styles.root}>
+      {/* Same accepted v2 atmosphere as Home/Saved/Venue Detail/Map — the
+          shared weather cache key + pure resolveAtmosphere() keep it
+          identical across screens. Each screen mounts its own instance. */}
+      <V2Background />
+      {/* Local override of the tabs layout's shared "dark" status bar —
+          same stacking pattern as Home/Saved; reverts on the legacy light tabs. */}
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <ScrollView
+          style={{ marginBottom: tabSafeZone }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
         >
-          {/* Top row: avatar + settings button */}
-          <View style={styles.heroTopRow}>
-            {/* Avatar */}
-            <View style={styles.avatar}>
-              {initials.length > 0 ? (
-                <Text style={styles.avatarInitials}>{initials}</Text>
-              ) : (
-                <Icon name="user" size={28} color="#FFFFFF" />
-              )}
+
+          {/* ── Hero card ─────────────────────────────────────────────────── */}
+          <GlassSurface style={styles.heroCard} tintColor="rgba(18,18,26,0.86)">
+            {/* Subtle accent halo, same Ocean/violet language as the shared
+                atmosphere layer — not a real blur, just a soft gradient tint. */}
+            <LinearGradient
+              colors={['rgba(76,141,246,0.18)', 'rgba(124,79,204,0.10)', 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+
+            {/* Top row: avatar + settings button */}
+            <View style={styles.heroTopRow}>
+              {/* Avatar */}
+              <LinearGradient
+                colors={[ACCENT.accent, 'rgba(76,141,246,0.55)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.avatar}
+              >
+                {initials.length > 0 ? (
+                  <Text style={styles.avatarInitials}>{initials}</Text>
+                ) : (
+                  <Icon name="user" size={28} color="#FFFFFF" />
+                )}
+              </LinearGradient>
+
+              {/* Settings button */}
+              <TouchableOpacity
+                style={styles.heroSettingsBtn}
+                onPress={() => router.push('/profile/edit')}
+                accessibilityRole="button"
+                accessibilityLabel="Edit profile settings"
+                activeOpacity={0.7}
+              >
+                <Icon name="settings" size={20} color={T.label2} />
+              </TouchableOpacity>
             </View>
 
-            {/* Settings button */}
-            <TouchableOpacity
-              style={styles.heroSettingsBtn}
+            {/* Name */}
+            <Text style={styles.heroName}>
+              {profile.full_name ?? 'Parent'}
+            </Text>
+
+            {/* Username */}
+            {profile.username ? (
+              <Text style={styles.heroUsername}>@{profile.username}</Text>
+            ) : null}
+
+            {/* Premium badge placeholder — hidden until Pass relaunches */}
+          </GlassSurface>
+
+          {/* ── Account ───────────────────────────────────────────────────── */}
+          <SectionLabel label="Account" />
+          <MenuGroup>
+            <MenuItem
+              icon="user"
+              label="Personal details"
               onPress={() => router.push('/profile/edit')}
-              accessibilityRole="button"
-              accessibilityLabel="Edit profile settings"
-              activeOpacity={0.7}
-            >
-              <Icon name="settings" size={20} color="#4A5560" />
-            </TouchableOpacity>
+            />
+            <MenuItem
+              icon="stroller"
+              label="Family"
+              detail="Children's age ranges"
+              onPress={() => router.push('/profile/children-ages')}
+            />
+            <MenuItem
+              icon="bell"
+              label="Notifications"
+              onPress={() => router.push('/profile/notifications')}
+            />
+            <MenuItem
+              icon="shield"
+              label="Privacy & data"
+              onPress={() => router.push('/profile/privacy-settings')}
+            />
+            <MenuItem
+              icon="info"
+              label="Download my data"
+              onPress={() => router.push('/profile/data-download')}
+              last
+            />
+          </MenuGroup>
+
+          {/* ── My Activity ───────────────────────────────────────────────── */}
+          <SectionLabel label="My activity" />
+          <MenuGroup>
+            <MenuItem
+              icon="star"
+              label="My reviews"
+              onPress={() => router.push('/profile/my-reviews')}
+            />
+            <MenuItem
+              icon="pin"
+              label="My submitted venues"
+              onPress={() => router.push('/profile/my-venues')}
+              last
+            />
+          </MenuGroup>
+
+          {/* Subscription / upsell section intentionally removed.
+              PlayPlanner is free to use at launch. The Pass will be
+              reintroduced in a future release once payment infrastructure
+              is fully hardened. Remove this comment when reinstating. */}
+
+          {/* ── Community ─────────────────────────────────────────────────── */}
+          <SectionLabel label="Community" />
+          <MenuGroup>
+            <MenuItem
+              icon="plus"
+              label="Add a venue"
+              onPress={() => router.push('/venue/add')}
+              last
+            />
+          </MenuGroup>
+
+          {/* "Own a venue?" claim card intentionally removed.
+              The claim flow is being redesigned for security before re-launch.
+              Edge functions send-otp / verify-otp remain deployed server-side.
+              Remove this comment and restore the card when the flow is ready. */}
+
+          {/* ── Support ───────────────────────────────────────────────────── */}
+          <SectionLabel label="Support" />
+          <MenuGroup>
+            <MenuItem
+              icon="info"
+              label="Help & FAQ"
+              onPress={() => setHelpVisible(true)}
+            />
+            <MenuItem
+              icon="msg"
+              label="Contact us"
+              onPress={() => Linking.openURL('mailto:support@playplanner.app')}
+            />
+            <MenuItem
+              icon="shield"
+              label="Privacy policy"
+              onPress={() => router.push('/(auth)/privacy')}
+              last
+            />
+          </MenuGroup>
+
+          {/* Admin/business controls intentionally NOT surfaced here — the
+              consumer-facing Profile screen never exposes admin navigation,
+              regardless of profile.is_admin. Admin tooling lives entirely
+              under app/admin/ and is reached by other means. */}
+
+          {/* ── Footer ────────────────────────────────────────────────────── */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>PlayPlanner · v1.0.0</Text>
           </View>
 
-          {/* Name */}
-          <Text style={styles.heroName}>
-            {profile.full_name ?? 'Parent'}
-          </Text>
+          {/* ── Sign out ──────────────────────────────────────────────────── */}
+          <GlassSurface style={styles.signOutSurface}>
+            <TouchableOpacity
+              style={styles.signOutBtn}
+              onPress={confirmSignOut}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out of your account"
+            >
+              <Text style={styles.signOutText}>Sign out</Text>
+            </TouchableOpacity>
+          </GlassSurface>
 
-          {/* Username */}
-          {profile.username ? (
-            <Text style={styles.heroUsername}>@{profile.username}</Text>
-          ) : null}
+          {/* ── Delete account — GDPR Art.17 ──────────────────────────────── */}
+          <GlassSurface style={styles.deleteWrapper} tintColor="rgba(255,59,48,0.10)">
+            <TouchableOpacity
+              style={styles.deleteBtn}
+              onPress={confirmDeleteAccount}
+              disabled={deleting}
+              accessibilityRole="button"
+              accessibilityLabel="Permanently delete your account and all your data"
+              accessibilityState={{ disabled: deleting }}
+            >
+              {deleting ? (
+                <ActivityIndicator color={DESTRUCTIVE} />
+              ) : (
+                <Text style={styles.deleteBtnText}>Delete account</Text>
+              )}
+            </TouchableOpacity>
+            {/* ICO Children's Code Standard 4 — transparency before destructive action */}
+            <Text style={styles.deleteWarning}>
+              Permanently deletes all your data. Cannot be undone.
+            </Text>
+          </GlassSurface>
 
-          {/* Premium badge placeholder — hidden until Pass relaunches */}
-        </LinearGradient>
+        </ScrollView>
+      </SafeAreaView>
 
-        {/* ── Account ───────────────────────────────────────────────────── */}
-        <SectionLabel label="Account" />
-        <MenuGroup>
-          <MenuItem
-            icon="user"
-            label="Personal details"
-            onPress={() => router.push('/profile/edit')}
-          />
-          <MenuItem
-            icon="bell"
-            label="Notifications"
-            onPress={() => router.push('/profile/notifications')}
-          />
-          <MenuItem
-            icon="shield"
-            label="Privacy & data"
-            onPress={() => router.push('/profile/privacy-settings')}
-          />
-          <MenuItem
-            icon="info"
-            label="Download my data"
-            onPress={() => router.push('/profile/data-download')}
-            last
-          />
-        </MenuGroup>
-
-        {/* ── My Activity ───────────────────────────────────────────────── */}
-        <SectionLabel label="My activity" />
-        <MenuGroup>
-          <MenuItem
-            icon="star"
-            label="My reviews"
-            onPress={() => router.push('/profile/my-reviews')}
-          />
-          <MenuItem
-            icon="pin"
-            label="My submitted venues"
-            onPress={() => router.push('/profile/my-venues')}
-            last
-          />
-        </MenuGroup>
-
-        {/* Subscription / upsell section intentionally removed.
-            PlayPlanner is free to use at launch. The Pass will be
-            reintroduced in a future release once payment infrastructure
-            is fully hardened. Remove this comment when reinstating. */}
-
-        {/* ── Community ─────────────────────────────────────────────────── */}
-        <SectionLabel label="Community" />
-        <MenuGroup>
-          <MenuItem
-            icon="plus"
-            label="Add a venue"
-            onPress={() => router.push('/venue/add')}
-            last
-          />
-        </MenuGroup>
-
-        {/* "Own a venue?" claim card intentionally removed.
-            The claim flow is being redesigned for security before re-launch.
-            Edge functions send-otp / verify-otp remain deployed server-side.
-            Remove this comment and restore the card when the flow is ready. */}
-
-        {/* ── Support ───────────────────────────────────────────────────── */}
-        <SectionLabel label="Support" />
-        <MenuGroup>
-          <MenuItem
-            icon="info"
-            label="Help & FAQ"
-            onPress={() => Alert.alert('Help', 'For help, email support@playplanner.app')}
-          />
-          <MenuItem
-            icon="msg"
-            label="Contact us"
-            onPress={() => Linking.openURL('mailto:support@playplanner.app')}
-          />
-          <MenuItem
-            icon="shield"
-            label="Privacy policy"
-            onPress={() => router.push('/(auth)/privacy')}
-            last
-          />
-        </MenuGroup>
-
-        {/* ── Admin panel — only visible to admins ──────────────────────── */}
-        {profile?.is_admin === true && (
-          <>
-            <SectionLabel label="Admin" />
-            <MenuGroup>
-              <MenuItem
-                icon="shield"
-                label="Moderation panel"
-                onPress={() => router.push('/admin/moderation')}
-                iconBg="#FFF1C7"
-                iconColor="#8A6100"
-                last
-              />
-            </MenuGroup>
-          </>
-        )}
-
-        {/* ── Footer ────────────────────────────────────────────────────── */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>PlayPlanner · v1.0.0</Text>
-        </View>
-
-        {/* ── Sign out ──────────────────────────────────────────────────── */}
-        <TouchableOpacity
-          style={styles.signOutBtn}
-          onPress={confirmSignOut}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out of your account"
-        >
-          <Text style={styles.signOutText}>Sign out</Text>
-        </TouchableOpacity>
-
-        {/* ── Delete account — GDPR Art.17 ──────────────────────────────── */}
-        <View style={styles.deleteWrapper}>
-          <TouchableOpacity
-            style={styles.deleteBtn}
-            onPress={confirmDeleteAccount}
-            disabled={deleting}
-            accessibilityRole="button"
-            accessibilityLabel="Permanently delete your account and all your data"
-            accessibilityState={{ disabled: deleting }}
-          >
-            {deleting ? (
-              <ActivityIndicator color="#FF6B6B" />
-            ) : (
-              <Text style={styles.deleteBtnText}>Delete account</Text>
-            )}
-          </TouchableOpacity>
-          {/* ICO Children's Code Standard 4 — transparency before destructive action */}
-          <Text style={styles.deleteWarning}>
-            Permanently deletes all your data. Cannot be undone.
-          </Text>
-        </View>
-
-      </ScrollView>
-    </SafeAreaView>
+      {helpVisible && (
+        <HelpModal visible={helpVisible} onClose={() => setHelpVisible(false)} />
+      )}
+    </View>
   );
 }
 
@@ -446,37 +511,44 @@ const styles = StyleSheet.create({
   // Root
   root: {
     flex: 1,
-    // Transparent so the global weather layer (app/(tabs)/_layout) shows through.
+    // Transparent — V2Background (first child) is the screen's backdrop,
+    // same pattern as Home/Saved/Venue Detail/Map.
     backgroundColor: 'transparent',
   },
-  scrollContent: {
-    paddingBottom: 96,
-  },
-
-  // Skeleton
-  skeletonRoot: {
+  safe: {
     flex: 1,
     backgroundColor: 'transparent',
   },
+  scrollContent: {
+    paddingBottom: 32,
+  },
+
+  // Skeleton
   skeletonHero: {
-    margin: 16,
-    height: 140,
+    margin: 20,
+    height: 150,
     borderRadius: 24,
-    backgroundColor: '#F1ECE2',
+    backgroundColor: T.surface,
+    borderWidth: 1,
+    borderColor: T.separator,
   },
   skeletonBlock1: {
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     marginTop: 20,
     height: 200,
-    borderRadius: 16,
-    backgroundColor: '#F1ECE2',
+    borderRadius: 20,
+    backgroundColor: T.surface,
+    borderWidth: 1,
+    borderColor: T.separator,
   },
   skeletonBlock2: {
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     marginTop: 12,
     height: 100,
-    borderRadius: 16,
-    backgroundColor: '#F1ECE2',
+    borderRadius: 20,
+    backgroundColor: T.surface,
+    borderWidth: 1,
+    borderColor: T.separator,
   },
 
   // Hero card
@@ -486,8 +558,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
     padding: 18,
-    borderWidth: 1,
-    borderColor: '#E6E2DB',
   },
   heroTopRow: {
     flexDirection: 'row',
@@ -498,75 +568,68 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#1D2630',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   avatarInitials: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 22,
     color: '#FFFFFF',
   },
   heroSettingsBtn: {
     width: 44,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 14,
+    backgroundColor: T.fill,
+    borderWidth: 1,
+    borderColor: T.separator,
     alignItems: 'center',
     justifyContent: 'center',
   },
   heroName: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 20,
-    color: '#1D2630',
+    color: T.label,
     letterSpacing: -0.3,
-    marginTop: 12,
+    marginTop: 14,
   },
   heroUsername: {
-    fontFamily: 'Nunito-Bold',
-    fontSize: 12,
-    color: '#4A5560',
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: T.label3,
     marginTop: 2,
   },
   // SectionLabel
   sectionLabel: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 11,
-    color: '#7B8794',
+    color: T.label3,
     letterSpacing: 0.6,
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 8,
   },
 
-  // MenuGroup — warm paper surface + soft Home/Discover-style shadow (was a
-  // pure-white card with a tight, harsh shadow).
+  // MenuGroup — dark glass card (GlassSurface owns the tint + hairline
+  // border + overflow:hidden clip; this only supplies layout/shape).
   menuGroup: {
     marginHorizontal: 20,
     borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#FBF7EF',
-    shadowColor: '#2A1E0A',
-    shadowOpacity: 0.04,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
   },
 
   // MenuItem
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FBF7EF',
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 12,
   },
   menuItemBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E6E2DB',
+    borderBottomColor: T.separator,
   },
   menuItemLast: {
     borderBottomWidth: 0,
@@ -580,25 +643,25 @@ const styles = StyleSheet.create({
   },
   menuLabel: {
     flex: 1,
-    fontFamily: 'Nunito-Bold',
-    fontSize: 14,
-    color: '#1D2630',
+    fontFamily: FontFamily.heading,
+    fontSize: 15,
+    color: T.label,
   },
   menuDetail: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#7B8794',
+    color: T.label3,
     marginRight: 4,
   },
   menuBadge: {
-    backgroundColor: '#2FB8B0',
+    backgroundColor: ACCENT.accent,
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 2,
     marginRight: 4,
   },
   menuBadgeText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 11,
     color: '#FFFFFF',
   },
@@ -615,35 +678,37 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   footerText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#7B8794',
+    color: T.label4,
   },
 
   // Sign out
-  signOutBtn: {
+  signOutSurface: {
     marginHorizontal: 20,
+    borderRadius: 16,
+  },
+  signOutBtn: {
     paddingVertical: 14,
     alignItems: 'center',
-    flexDirection: 'row',
     justifyContent: 'center',
+    flexDirection: 'row',
     gap: 8,
   },
   signOutText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.heading,
     fontSize: 15,
-    color: '#FF6B6B',
+    color: DESTRUCTIVE,
   },
 
   // Delete account
   deleteWrapper: {
     marginHorizontal: 20,
-    marginTop: 8,
+    marginTop: 12,
     marginBottom: 48,
-    backgroundColor: '#FFE8E8',
-    borderWidth: 1,
-    borderColor: '#FF6B6B',
     borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: DESTRUCTIVE,
     paddingVertical: 15,
     alignItems: 'center',
   },
@@ -653,16 +718,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     paddingVertical: 14,
+    paddingHorizontal: 24,
   },
   deleteBtnText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.heading,
     fontSize: 15,
-    color: '#FF6B6B',
+    color: DESTRUCTIVE,
   },
   deleteWarning: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#7B8794',
+    color: T.label3,
     textAlign: 'center',
     marginTop: 8,
     paddingHorizontal: 16,

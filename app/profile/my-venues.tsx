@@ -1,6 +1,12 @@
 /**
  * My Submitted Venues screen — app/profile/my-venues.tsx
  *
+ * v2 dark restyle (Step 5, feat/exact-v2-design): VISUAL LAYER ONLY. The
+ * useMyVenues query and handleVenuePress moderation-status branching
+ * (approved -> navigate, pending/rejected -> Alert, never navigate — this
+ * intentionally never exposes the moderation workflow) are byte-identical
+ * to the pre-restyle version.
+ *
  * Shows all venues the user has submitted for review.
  * Approved venues link to the venue detail page.
  * Pending and rejected venues show an Alert with status information —
@@ -15,13 +21,21 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { format } from 'date-fns';
 import { useAuthStore } from '@/store/authStore';
 import { useMyVenues } from '@/hooks/useDataRights';
 import { ModerationBadge } from '@/components/profile/ModerationBadge';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { V2Background } from '@/components/ui/V2Background';
+import { V2Header } from '@/components/ui/V2Header';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
 import type { ModerationStatus } from '@/types';
+
+const T = Themes.dark;
+const ACCENT = ocean;
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -45,14 +59,16 @@ export default function MyVenuesScreen() {
   }
 
   return (
-    <>
-      <Stack.Screen options={{ title: 'My Submitted Venues' }} />
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+    <View style={styles.root}>
+      <V2Background />
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <V2Header title="My Submitted Venues" />
 
         {/* Loading */}
         {isLoading && (
           <View style={styles.centred}>
-            <ActivityIndicator color="#FF6B6B" size="large" />
+            <ActivityIndicator color={ACCENT.accent} size="large" />
           </View>
         )}
 
@@ -89,31 +105,32 @@ export default function MyVenuesScreen() {
 
             {/* Venue rows */}
             {venues && venues.map((venue: any) => (
-              <TouchableOpacity
-                key={venue.id}
-                style={styles.card}
-                onPress={() => handleVenuePress(venue.id, venue.moderation_status)}
-                accessibilityRole="button"
-                accessibilityLabel={`${venue.name}, ${venue.moderation_status}`}
-              >
-                {/* Left: name, city, date */}
-                <View style={styles.cardLeft}>
-                  <Text style={styles.venueName}>{venue.name}</Text>
-                  <Text style={styles.venueCity}>{venue.city}</Text>
-                  <Text style={styles.submittedDate}>
-                    {format(new Date(venue.created_at), 'd MMM yyyy')}
-                  </Text>
-                </View>
+              <GlassSurface key={venue.id} style={styles.card} tintColor="rgba(14,14,20,0.55)">
+                <TouchableOpacity
+                  style={styles.cardRow}
+                  onPress={() => handleVenuePress(venue.id, venue.moderation_status)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${venue.name}, ${venue.moderation_status}`}
+                >
+                  {/* Left: name, city, date */}
+                  <View style={styles.cardLeft}>
+                    <Text style={styles.venueName}>{venue.name}</Text>
+                    <Text style={styles.venueCity}>{venue.city}</Text>
+                    <Text style={styles.submittedDate}>
+                      {format(new Date(venue.created_at), 'd MMM yyyy')}
+                    </Text>
+                  </View>
 
-                {/* Right: badge */}
-                <ModerationBadge status={venue.moderation_status} />
-              </TouchableOpacity>
+                  {/* Right: badge */}
+                  <ModerationBadge status={venue.moderation_status} />
+                </TouchableOpacity>
+              </GlassSurface>
             ))}
           </ScrollView>
         )}
 
       </SafeAreaView>
-    </>
+    </View>
   );
 }
 
@@ -122,10 +139,8 @@ export default function MyVenuesScreen() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFF9F0',
-  },
+  root: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
   centred: {
     flex: 1,
     alignItems: 'center',
@@ -133,13 +148,13 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#636E72',
+    color: T.label2,
     textAlign: 'center',
   },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 20,
     paddingBottom: 40,
   },
   emptyContainer: {
@@ -148,50 +163,48 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyHeading: {
-    fontFamily: 'Nunito-Medium',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#636E72',
+    color: T.label2,
     textAlign: 'center',
   },
   emptyLink: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: '#FF6B6B',
+    color: ACCENT.accent,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
+    borderRadius: 16,
+    // Wider than the original 8px gap — with the lighter 0.55 tint above,
+    // this keeps the shared animated background visible between rows even
+    // when the list is long, instead of reading as one solid stacked column.
+    marginBottom: 14,
+  },
+  cardRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    // Shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    padding: 16,
   },
   cardLeft: {
     flex: 1,
     marginRight: 12,
   },
   venueName: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.heading,
     fontSize: 15,
-    color: '#2D3436',
+    color: T.label,
     marginBottom: 2,
   },
   venueCity: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#636E72',
+    color: T.label3,
   },
   submittedDate: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 12,
-    color: '#B2BEC3',
+    color: T.label4,
     marginTop: 2,
   },
 });

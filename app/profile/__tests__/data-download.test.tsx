@@ -25,6 +25,20 @@ jest.mock('expo-router', () => ({
 
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: 'View',
+  useSafeAreaInsets: () => ({ top: 44, bottom: 34, left: 0, right: 0 }),
+}));
+
+jest.mock('expo-status-bar', () => ({
+  StatusBar: () => null,
+}));
+
+// v2 restyle (Step 5): this screen mounts its own <V2Background/> atmosphere
+// layer, which reads weather via react-query. That's covered by its own
+// dedicated background test elsewhere — stub it here so this file stays
+// focused on the GDPR export/cooldown business logic and doesn't need a
+// QueryClientProvider wrapper.
+jest.mock('@/components/ui/V2Background', () => ({
+  V2Background: () => null,
 }));
 
 jest.mock('@/store/authStore', () => ({
