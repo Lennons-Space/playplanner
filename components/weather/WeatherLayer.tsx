@@ -18,12 +18,8 @@ import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, AppState, StyleSheet, View, type AppStateStatus } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
-  Easing,
-  cancelAnimation,
+  useFrameCallback,
   useSharedValue,
-  withDelay,
-  withRepeat,
-  withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 import type { Atmosphere, WeatherPalette } from '@/lib/weatherTheme';
@@ -156,36 +152,97 @@ export function useAppActive(): boolean {
   return active;
 }
 
+// ── Wall-clock phase (pure, testable, worklet-safe) ────────────────────────
+// Reproduces `Easing.inOut(Easing.sin)` from react-native-reanimated as a
+// standalone formula so `loopPhaseAt` below has zero runtime dependency on
+// the (mockable) reanimated Easing export.
+//
+// Verified algebraically against node_modules/react-native-reanimated/src/
+// Easing.ts:
+//   sin(t)        = 1 - cos(t·π/2)                        (easeInSine)
+//   inOut(fn)(t)  = t < 0.5 ? fn(2t)/2 : 1 - fn(2(1-t))/2
+// Substituting fn = sin and simplifying both branches with the identity
+// cos(π - x) = -cos(x) collapses to the SAME closed form on both sides of
+// t = 0.5: (1 - cos(π·t)) / 2 — the standard "easeInOutSine" curve.
+export function easeInOutSine(t: number): number {
+  'worklet';
+  return (1 - Math.cos(Math.PI * t)) / 2;
+}
+
+/**
+ * Pure function of an absolute timestamp (`nowMs`) that returns the 0..1
+ * value `useLoop`'s driver shows at that instant. Because the result depends
+ * only on `nowMs` — never on when a particular component instance mounted —
+ * two components evaluating this at the same real moment always agree, and a
+ * component that unmounts and later remounts simply resumes at the elapsed
+ * wall-clock phase instead of restarting at 0. This is what keeps the
+ * ambient background continuous across navigation.
+ *
+ * Reproduces the OLD driver's STEADY-STATE curve (the old
+ * `withDelay(delayMs, withRepeat(withTiming(1, { duration, easing }), -1,
+ * reverse))` pipeline), treating `delayMs` as a pure phase offset:
+ *   • reverse=true  → an eased triangle wave over a 2×duration cycle
+ *     (Easing.inOut(Easing.sin) per leg, see easeInOutSine above).
+ *   • reverse=false → a linear sawtooth over a duration-length cycle
+ *     (the old driver used Easing.linear for the non-reverse case).
+ * A double-mod keeps this safe for any input, including nowMs < delayMs or
+ * very large timestamps — never negative, never NaN.
+ */
+export function loopPhaseAt(
+  nowMs: number,
+  durationMs: number,
+  delayMs = 0,
+  reverse = true,
+): number {
+  'worklet';
+  if (!Number.isFinite(nowMs) || !Number.isFinite(durationMs) || durationMs <= 0) {
+    return reverse ? 0.5 : 0;
+  }
+  const cycleMs = reverse ? durationMs * 2 : durationMs;
+  const raw = (nowMs - delayMs) % cycleMs;
+  const t = (raw + cycleMs) % cycleMs; // double-mod: safe for negative raw
+  if (!reverse) {
+    return t / durationMs;
+  }
+  if (t < durationMs) {
+    return easeInOutSine(t / durationMs);
+  }
+  return 1 - easeInOutSine((t - durationMs) / durationMs);
+}
+
 // ── One repeating driver value per animated node ───────────────────────────
-// Returns a shared value looping 0→1. When `animate` is false (reduced motion
-// or backgrounded) it parks at a sensible resting value and runs nothing.
+// Returns a shared value looping 0→1, phased off the shared wall clock
+// (Date.now()) rather than a per-mount animation timeline — see
+// `loopPhaseAt` above for why that's what keeps navigation from restarting
+// the atmosphere. When `animate` is false (reduced motion or backgrounded)
+// it parks at the same resting value as before and runs nothing.
 export function useLoop(
   animate: boolean,
   durationMs: number,
   delayMs = 0,
   reverse = true,
 ): SharedValue<number> {
-  const sv = useSharedValue(reverse ? 0.5 : 0);
+  const sv = useSharedValue(loopPhaseAt(Date.now(), durationMs, delayMs, reverse));
+
+  // Ticks on the UI thread every frame, driven by the real wall clock — never
+  // autostarts on its own; `animate` (below) is the single source of truth
+  // for whether it's running, exactly like the old cancelAnimation gate.
+  const frameCallback = useFrameCallback(() => {
+    'worklet';
+    sv.value = loopPhaseAt(Date.now(), durationMs, delayMs, reverse);
+  }, false);
+
   useEffect(() => {
-    cancelAnimation(sv);
     if (animate) {
-      sv.value = 0;
-      sv.value = withDelay(
-        delayMs,
-        withRepeat(
-          withTiming(1, {
-            duration: durationMs,
-            easing: reverse ? Easing.inOut(Easing.sin) : Easing.linear,
-          }),
-          -1,
-          reverse,
-        ),
-      );
+      sv.value = loopPhaseAt(Date.now(), durationMs, delayMs, reverse);
+      frameCallback.setActive(true);
     } else {
+      frameCallback.setActive(false);
       sv.value = reverse ? 0.5 : 0;
     }
-    return () => cancelAnimation(sv);
-  }, [animate, durationMs, delayMs, reverse, sv]);
+    return () => frameCallback.setActive(false);
+  }, [animate, durationMs, delayMs, reverse, sv, frameCallback]);
+
   return sv;
 }
 

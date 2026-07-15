@@ -15,7 +15,29 @@ import type { WeatherCondition } from '@/lib/weather';
 
 jest.unmock('@/components/weather/WeatherBackground');
 
-jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
+// The lightweight reanimated mock (react-native-reanimated/mock) predates
+// useFrameCallback (see its "// useFrameCallback: ADD ME IF NEEDED" comment)
+// — useLoop's wall-clock driver (components/weather/WeatherLayer.tsx) now
+// calls it, so this suite extends the MOCK here, locally, rather than
+// touching the library. The stub never actually ticks (nothing in this file
+// asserts a mid-animation value — see the "parks at its resting value" test
+// below, which only exercises the animate=false branch), it just needs to
+// expose a callable `setActive` so mounting doesn't throw.
+jest.mock('react-native-reanimated', () => ({
+  ...require('react-native-reanimated/mock'),
+  useFrameCallback: (
+    _callback: (frameInfo: {
+      timestamp: number;
+      timeSincePreviousFrame: number | null;
+      timeSinceFirstFrame: number;
+    }) => void,
+    autostart = true,
+  ) => ({
+    setActive: (_isActive: boolean) => {},
+    isActive: autostart,
+    callbackId: -1,
+  }),
+}));
 
 jest.mock('expo-linear-gradient', () => {
   const React = require('react');
