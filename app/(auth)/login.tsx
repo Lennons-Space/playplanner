@@ -9,9 +9,17 @@
  *  - Terms and Privacy Policy are linked at the bottom so parents can read
  *    them before signing in (ICO Children's Code Standard 4 — transparency).
  *
- * Visual: PlayPlanner v3 style — Bricolage display heading, Hanken body, Ocean
- * accent (no teal), warm cream + ambient weather wash, soft paper cards/inputs.
- * Auth LOGIC is unchanged from the previous version.
+ * v2 dark restyle (Step 6, feat/exact-v2-design): VISUAL LAYER ONLY.
+ * signInWithPassword flow, EMAIL_REGEX pre-check, getFriendlyAuthError
+ * mapping (incl. anti-enumeration neutral credential message), Alert-based
+ * error/validation semantics, and handleForgotPassword (no branching on
+ * error — same message regardless of whether the account exists) are
+ * byte-identical to the pre-restyle version. Only the JSX/styling changed:
+ * the legacy warm-cream ambient weather wash component is gone,
+ * <V2Background/> mounted per the frozen background architecture (see
+ * app/(tabs)/profile.tsx), dark inputs, Ocean accent CTA, and a new
+ * password-visibility toggle (purely presentational — does not change
+ * validation or submission logic).
  */
 
 import { useState } from 'react';
@@ -25,39 +33,39 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
   type TextStyle,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
-import { Themes, ocean, FontFamily } from '@/constants/theme';
-import { WeatherBackground } from '@/components/weather/WeatherBackground';
+import { Icon } from '@/components/ui/Icon';
+import { V2Background } from '@/components/ui/V2Background';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
 
-const t = Themes.light;
+const T = Themes.dark;
+const ACCENT = ocean;
 
-// Shared rounded input (opaque surface — safe with elevation on Android).
+// Shared rounded input (dark translucent surface + hairline border).
 const inputStyle: TextStyle = {
   height: 54,
-  backgroundColor: t.surface,
+  backgroundColor: T.bg,
   borderRadius: 16,
   borderWidth: 1,
-  borderColor: t.separator,
+  borderColor: T.separator,
   paddingHorizontal: 16,
   fontFamily: FontFamily.body,
   fontSize: 15,
-  color: t.label,
-  shadowColor: '#2A1E0A',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.05,
-  shadowRadius: 10,
-  elevation: 1,
+  color: T.label,
 };
 
 const labelStyle: TextStyle = {
   fontFamily: FontFamily.bodyStrong,
   fontSize: 13.5,
-  color: t.label2,
+  color: T.label2,
   marginBottom: 7,
 };
 
@@ -94,6 +102,7 @@ export default function LoginScreen() {
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading]   = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const user = useUser();
 
   async function handleLogin() {
@@ -143,51 +152,49 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.warm }}>
-      {/* Ambient weather wash — matches the rest of the app, decorative only. */}
-      <WeatherBackground />
-      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
+    <View style={styles.root}>
+      <V2Background />
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
-          style={{ flex: 1 }}
+          style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
         >
           <ScrollView
-            contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 }}
+            contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
             {/* ── Back button ───────────────────────────────────────────── */}
             <TouchableOpacity
-              style={{ marginTop: 16, alignSelf: 'flex-start', paddingVertical: 10, paddingRight: 16 }}
+              style={styles.backBtn}
               onPress={() => router.back()}
               accessibilityRole="button"
               accessibilityLabel="Go back to the previous screen"
             >
-              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: ocean.accent }}>← Back</Text>
+              <Icon name="chevL" size={16} color={ACCENT.accent} />
+              <Text style={styles.backBtnText}>Back</Text>
             </TouchableOpacity>
 
             {/* ── Heading ──────────────────────────────────────────────── */}
-            <View style={{ marginTop: 28, marginBottom: 28 }}>
-              <Text
-                style={{ fontFamily: FontFamily.display, fontSize: 34, color: t.label, letterSpacing: -0.6, lineHeight: 38 }}
-                accessibilityRole="header"
-              >
+            <View style={styles.headingBlock}>
+              <Text style={styles.headline} accessibilityRole="header">
                 Welcome back!
               </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 15, color: t.label3, marginTop: 6 }}>
+              <Text style={styles.subtitle}>
                 Sign in to your Play Planner account
               </Text>
             </View>
 
             {/* ── Input fields ─────────────────────────────────────────── */}
-            <View style={{ gap: 14 }}>
+            <View style={styles.fieldGroup}>
               <View>
                 <Text style={labelStyle}>Email address</Text>
                 <TextInput
                   style={inputStyle}
                   placeholder="you@example.com"
-                  placeholderTextColor={t.label3}
+                  placeholderTextColor={T.label4}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -201,28 +208,40 @@ export default function LoginScreen() {
 
               <View>
                 <Text style={labelStyle}>Password</Text>
-                <TextInput
-                  style={inputStyle}
-                  placeholder="Your password"
-                  placeholderTextColor={t.label3}
-                  secureTextEntry
-                  autoComplete="password"
-                  returnKeyType="done"
-                  onSubmitEditing={handleLogin}
-                  value={password}
-                  onChangeText={setPassword}
-                  accessibilityLabel="Password"
-                />
+                <View style={styles.passwordWrap}>
+                  <TextInput
+                    style={[inputStyle, styles.passwordInput]}
+                    placeholder="Your password"
+                    placeholderTextColor={T.label4}
+                    secureTextEntry={!showPassword}
+                    autoComplete="password"
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                    value={password}
+                    onChangeText={setPassword}
+                    accessibilityLabel="Password"
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeBtn}
+                    onPress={() => setShowPassword((v) => !v)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                    accessibilityState={{ selected: showPassword }}
+                  >
+                    <Icon name={showPassword ? 'eyeOff' : 'eye'} size={19} color={T.label3} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {/* Forgot password — anti-enumeration: always same response */}
               <TouchableOpacity
-                style={{ alignSelf: 'flex-end', paddingVertical: 8, paddingLeft: 16 }}
+                style={styles.forgotBtn}
                 onPress={handleForgotPassword}
                 accessibilityRole="button"
                 accessibilityLabel="Forgot your password — tap to receive a reset link"
               >
-                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 13.5, color: ocean.accent }}>
+                <Text style={styles.forgotText}>
                   Forgot password?
                 </Text>
               </TouchableOpacity>
@@ -230,19 +249,7 @@ export default function LoginScreen() {
 
             {/* ── Primary CTA ───────────────────────────────────────────── */}
             <TouchableOpacity
-              style={{
-                height: 54,
-                backgroundColor: ocean.accent,
-                borderRadius: 16,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginTop: 24,
-                shadowColor: ocean.accent,
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.3,
-                shadowRadius: 14,
-                elevation: 4,
-              }}
+              style={styles.primaryBtn}
               onPress={handleLogin}
               disabled={loading}
               accessibilityRole="button"
@@ -251,52 +258,39 @@ export default function LoginScreen() {
             >
               {loading
                 ? <ActivityIndicator color="#fff" />
-                : <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 17, color: '#FFFFFF' }}>Sign in</Text>
+                : <Text style={styles.primaryBtnText}>Sign in</Text>
               }
             </TouchableOpacity>
 
             {/* ── Switch to register ────────────────────────────────────── */}
             <TouchableOpacity
-              style={{ marginTop: 20, alignItems: 'center', paddingVertical: 10 }}
+              style={styles.switchBtn}
               onPress={() => router.push('/(auth)/register')}
               accessibilityRole="button"
               accessibilityLabel="Go to the Create Account screen"
             >
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 15, color: t.label3 }}>
+              <Text style={styles.switchText}>
                 Don't have an account?{' '}
-                <Text style={{ fontFamily: FontFamily.bodyStrong, color: ocean.accent }}>Sign up free</Text>
+                <Text style={styles.switchTextStrong}>Sign up free</Text>
               </Text>
             </TouchableOpacity>
 
             {/* ── Privacy reminder strip (ICO Standard 4 — transparency) ── */}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: 10,
-                backgroundColor: 'rgba(255,255,255,0.62)',
-                borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.55)',
-                borderRadius: 18,
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                marginTop: 24,
-              }}
-            >
-              <Text style={{ fontSize: 18, marginTop: 1 }} accessible={false} importantForAccessibility="no-hide-descendants">
+            <GlassSurface style={styles.privacyStrip} tintColor="rgba(14,14,20,0.5)">
+              <Text style={styles.privacyEmoji} accessible={false} importantForAccessibility="no-hide-descendants">
                 🔒
               </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 13.5, color: t.label2, flex: 1, lineHeight: 19 }}>
-                <Text style={{ fontFamily: FontFamily.bodyStrong }}>Your privacy matters. </Text>
-                Location is <Text style={{ fontFamily: FontFamily.bodyStrong }}>off by default</Text>. We never sell your data.
+              <Text style={styles.privacyText}>
+                <Text style={styles.privacyTextStrong}>Your privacy matters. </Text>
+                Location is <Text style={styles.privacyTextStrong}>off by default</Text>. We never sell your data.
               </Text>
-            </View>
+            </GlassSurface>
 
             {/* ── Legal footer ─────────────────────────────────────────── */}
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: t.label3, textAlign: 'center', marginTop: 20, lineHeight: 18 }}>
+            <Text style={styles.legalText}>
               By signing in you agree to our{' '}
               <Text
-                style={{ fontFamily: FontFamily.bodyStrong, color: t.label2, textDecorationLine: 'underline' }}
+                style={styles.legalLink}
                 onPress={() => router.push('/(auth)/terms')}
                 accessibilityRole="link"
               >
@@ -304,7 +298,7 @@ export default function LoginScreen() {
               </Text>
               {' '}and{' '}
               <Text
-                style={{ fontFamily: FontFamily.bodyStrong, color: t.label2, textDecorationLine: 'underline' }}
+                style={styles.legalLink}
                 onPress={() => router.push('/(auth)/privacy')}
                 accessibilityRole="link"
               >
@@ -318,3 +312,144 @@ export default function LoginScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
+  flex: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
+
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 16,
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingRight: 16,
+  },
+  backBtnText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 16,
+    color: ACCENT.accent,
+  },
+
+  headingBlock: {
+    marginTop: 28,
+    marginBottom: 28,
+  },
+  headline: {
+    fontFamily: FontFamily.display,
+    fontSize: 34,
+    color: T.label,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+  },
+  subtitle: {
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label3,
+    marginTop: 6,
+  },
+
+  fieldGroup: { gap: 14 },
+
+  passwordWrap: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  passwordInput: {
+    paddingRight: 48,
+  },
+  eyeBtn: {
+    position: 'absolute',
+    right: 14,
+    height: 54,
+    width: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  forgotBtn: {
+    alignSelf: 'flex-end',
+    paddingVertical: 8,
+    paddingLeft: 16,
+  },
+  forgotText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 13.5,
+    color: ACCENT.accent,
+  },
+
+  primaryBtn: {
+    height: 54,
+    backgroundColor: ACCENT.accent,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+  },
+  primaryBtnText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 17,
+    color: '#FFFFFF',
+  },
+
+  switchBtn: {
+    marginTop: 20,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  switchText: {
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label3,
+  },
+  switchTextStrong: {
+    fontFamily: FontFamily.bodyStrong,
+    color: ACCENT.accent,
+  },
+
+  privacyStrip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginTop: 24,
+  },
+  privacyEmoji: {
+    fontSize: 18,
+    marginTop: 1,
+  },
+  privacyText: {
+    fontFamily: FontFamily.body,
+    fontSize: 13.5,
+    color: T.label2,
+    flex: 1,
+    lineHeight: 19,
+  },
+  privacyTextStrong: {
+    fontFamily: FontFamily.bodyStrong,
+    color: T.label,
+  },
+
+  legalText: {
+    fontFamily: FontFamily.body,
+    fontSize: 12,
+    color: T.label3,
+    textAlign: 'center',
+    marginTop: 20,
+    lineHeight: 18,
+  },
+  legalLink: {
+    fontFamily: FontFamily.bodyStrong,
+    color: T.label2,
+    textDecorationLine: 'underline',
+  },
+});

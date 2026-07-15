@@ -30,6 +30,19 @@ jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+// expo-status-bar: register.tsx mounts a local <StatusBar style="light"/>.
+jest.mock('expo-status-bar', () => ({
+  StatusBar: () => null,
+}));
+
+// V2Background: stub the shared atmosphere layer — its own behaviour is
+// covered by components/ui/__tests__/V2Background.test.tsx, and stubbing it
+// here avoids pulling in the real useWeather()/react-native-svg dependency
+// chain for a suite that only cares about the registration/consent flow.
+jest.mock('@/components/ui/V2Background', () => ({
+  V2Background: () => null,
+}));
+
 // Mock the audit log so it doesn't try to reach Supabase.
 jest.mock('@/services/audit/gdprAuditLog', () => ({
   writeAuditLog: jest.fn().mockResolvedValue(undefined),

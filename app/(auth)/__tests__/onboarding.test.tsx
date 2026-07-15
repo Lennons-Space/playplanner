@@ -67,10 +67,22 @@ jest.mock('@/components/ui', () => ({
   Icon: () => null,
 }));
 
-// constants/theme — only Colors.slate is used in index.tsx
-jest.mock('@/constants/theme', () => ({
-  Colors: { slate: '#FBF6EC' },
+// expo-status-bar: every v2 dark screen mounts a local <StatusBar style="light"/>.
+jest.mock('expo-status-bar', () => ({
+  StatusBar: () => null,
 }));
+
+// V2Background: stub the shared atmosphere layer — its own behaviour is
+// covered by components/ui/__tests__/V2Background.test.tsx, and stubbing it
+// here avoids pulling in the real useWeather()/react-native-svg dependency
+// chain for a suite that only cares about onboarding/welcome navigation.
+jest.mock('@/components/ui/V2Background', () => ({
+  V2Background: () => null,
+}));
+
+// constants/theme is NOT mocked — it is a pure constants module (no native
+// side effects) and index.tsx now reads Themes.dark.bg for the pre-check
+// flash colour (v2 dark floor, replacing the legacy Colors.slate flash).
 
 // ---------------------------------------------------------------------------
 // Shared reset

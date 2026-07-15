@@ -19,9 +19,19 @@
  *  - Consent timestamp is written to profiles.terms_accepted_at and an audit
  *    log entry is created for GDPR Art.5(2) accountability.
  *
- * Visual: PlayPlanner v3 style — Bricolage display heading, Hanken body, Ocean
- * accent (no teal), warm cream + ambient weather wash, soft paper cards/inputs.
- * Auth + consent LOGIC is unchanged from the previous version.
+ * v2 dark restyle (Step 6, feat/exact-v2-design): VISUAL LAYER ONLY. Every
+ * field, password rules/validation, the 3 consent controls (marketing
+ * opt-in NOT pre-ticked; age-affirmation checkbox; terms checkbox; the
+ * `canSubmit` gate requiring BOTH required boxes), the signUp call +
+ * marketing_consent metadata, terms_accepted_at profile update,
+ * writeAuditLog, migratePendingLocationConsent, submitLocked duplicate-
+ * submit guard, the post-signup "Almost there!" confirmation Alert →
+ * router.replace('/(auth)/login'), and all error/finally handling are
+ * byte-identical to the pre-restyle version. Only the JSX/styling changed:
+ * the legacy warm-cream ambient weather wash component is gone,
+ * <V2Background/> mounted per the frozen background architecture (see
+ * app/(tabs)/profile.tsx), dark inputs, the consent card restyled as a v2
+ * glass card, and a password-visibility toggle added (purely presentational).
  */
 
 import { useState, useRef } from 'react';
@@ -35,40 +45,40 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  StyleSheet,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/lib/supabase';
 import { writeAuditLog } from '@/services/audit/gdprAuditLog';
 import { migratePendingLocationConsent } from '@/services/consent/locationConsent';
-import { Themes, ocean, FontFamily } from '@/constants/theme';
-import { WeatherBackground } from '@/components/weather/WeatherBackground';
+import { Icon } from '@/components/ui/Icon';
+import { V2Background } from '@/components/ui/V2Background';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
 
-const t = Themes.light;
+const T = Themes.dark;
+const ACCENT = ocean;
 
 const inputStyle: TextStyle = {
   height: 54,
-  backgroundColor: t.surface,
+  backgroundColor: T.bg,
   borderRadius: 16,
   borderWidth: 1,
-  borderColor: t.separator,
+  borderColor: T.separator,
   paddingHorizontal: 16,
   fontFamily: FontFamily.body,
   fontSize: 15,
-  color: t.label,
-  shadowColor: '#2A1E0A',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.05,
-  shadowRadius: 10,
-  elevation: 1,
+  color: T.label,
 };
 
 const labelStyle: TextStyle = {
   fontFamily: FontFamily.bodyStrong,
   fontSize: 13.5,
-  color: t.label2,
+  color: T.label2,
   marginBottom: 7,
 };
 
@@ -82,8 +92,8 @@ function checkboxBox(checked: boolean): ViewStyle {
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    backgroundColor: checked ? ocean.accent : t.surface,
-    borderColor: checked ? ocean.accent : t.separator,
+    backgroundColor: checked ? ACCENT.accent : T.bg,
+    borderColor: checked ? ACCENT.accent : T.separator,
   };
 }
 
@@ -126,16 +136,17 @@ function getPasswordStrength(pwd: string): { label: string; color: string } {
   if (/[A-Z]/.test(pwd))         score++;
   if (/[0-9]/.test(pwd))         score++;
   if (/[^A-Za-z0-9]/.test(pwd))  score++;
-  if (score <= 1) return { label: 'Weak',   color: '#D63031' };
-  if (score === 2) return { label: 'Fair',   color: '#E67E22' };
-  if (score === 3) return { label: 'Good',   color: '#2ECC71' };
-  return                  { label: 'Strong', color: '#27AE60' };
+  if (score <= 1) return { label: 'Weak',   color: '#FF3B30' };
+  if (score === 2) return { label: 'Fair',   color: '#FFB23E' };
+  if (score === 3) return { label: 'Good',   color: '#34C77B' };
+  return                  { label: 'Strong', color: '#34C77B' };
 }
 
 export default function RegisterScreen() {
   const [fullName, setFullName]           = useState('');
   const [email, setEmail]                 = useState('');
   const [password, setPassword]           = useState('');
+  const [showPassword, setShowPassword]   = useState(false);
   const [marketing, setMarketing]         = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   // ICO Children's Code Standard 4: explicit age affirmation — must be ticked
@@ -249,51 +260,49 @@ export default function RegisterScreen() {
   const canSubmit = termsAccepted && ageAffirmed && !loading;
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.warm }}>
-      {/* Ambient weather wash — matches the rest of the app, decorative only. */}
-      <WeatherBackground />
-      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
+    <View style={styles.root}>
+      <V2Background />
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
-          style={{ flex: 1 }}
+          style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
         >
           <ScrollView
-            contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 }}
+            contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
             {/* ── Back button ───────────────────────────────────────────── */}
             <TouchableOpacity
-              style={{ marginTop: 16, alignSelf: 'flex-start', paddingVertical: 10, paddingRight: 16 }}
+              style={styles.backBtn}
               onPress={() => router.back()}
               accessibilityRole="button"
               accessibilityLabel="Go back to the previous screen"
             >
-              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: ocean.accent }}>← Back</Text>
+              <Icon name="chevL" size={16} color={ACCENT.accent} />
+              <Text style={styles.backBtnText}>Back</Text>
             </TouchableOpacity>
 
             {/* ── Heading ──────────────────────────────────────────────── */}
-            <View style={{ marginTop: 28, marginBottom: 28 }}>
-              <Text
-                style={{ fontFamily: FontFamily.display, fontSize: 34, color: t.label, letterSpacing: -0.6, lineHeight: 38 }}
-                accessibilityRole="header"
-              >
+            <View style={styles.headingBlock}>
+              <Text style={styles.headline} accessibilityRole="header">
                 Create account
               </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 15, color: t.label3, marginTop: 6 }}>
+              <Text style={styles.subtitle}>
                 Join thousands of parents discovering great places
               </Text>
             </View>
 
             {/* ── Input fields ─────────────────────────────────────────── */}
-            <View style={{ gap: 14 }}>
+            <View style={styles.fieldGroup}>
               <View>
                 <Text style={labelStyle}>Your name</Text>
                 <TextInput
                   style={inputStyle}
                   placeholder="e.g. Sarah"
-                  placeholderTextColor={t.label3}
+                  placeholderTextColor={T.label4}
                   autoComplete="name"
                   autoCorrect={false}
                   returnKeyType="next"
@@ -308,7 +317,7 @@ export default function RegisterScreen() {
                 <TextInput
                   style={inputStyle}
                   placeholder="you@example.com"
-                  placeholderTextColor={t.label3}
+                  placeholderTextColor={T.label4}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -322,20 +331,32 @@ export default function RegisterScreen() {
 
               <View>
                 <Text style={labelStyle}>Password</Text>
-                <TextInput
-                  style={inputStyle}
-                  placeholder="8+ characters, no spaces"
-                  placeholderTextColor={t.label3}
-                  secureTextEntry
-                  returnKeyType="done"
-                  value={password}
-                  onChangeText={setPassword}
-                  accessibilityLabel="Password — must be at least 8 characters, no spaces"
-                />
+                <View style={styles.passwordWrap}>
+                  <TextInput
+                    style={[inputStyle, styles.passwordInput]}
+                    placeholder="8+ characters, no spaces"
+                    placeholderTextColor={T.label4}
+                    secureTextEntry={!showPassword}
+                    returnKeyType="done"
+                    value={password}
+                    onChangeText={setPassword}
+                    accessibilityLabel="Password — must be at least 8 characters, no spaces"
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeBtn}
+                    onPress={() => setShowPassword((v) => !v)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                    accessibilityState={{ selected: showPassword }}
+                  >
+                    <Icon name={showPassword ? 'eyeOff' : 'eye'} size={19} color={T.label3} />
+                  </TouchableOpacity>
+                </View>
                 {/* Non-blocking strength hint — informational only, never blocks submission */}
                 {passwordStrength.label !== '' && (
                   <Text
-                    style={{ color: passwordStrength.color, fontFamily: FontFamily.bodyStrong, fontSize: 12, marginTop: 5, marginLeft: 4 }}
+                    style={[styles.strengthText, { color: passwordStrength.color }]}
                   >
                     Password strength: {passwordStrength.label}
                   </Text>
@@ -343,23 +364,12 @@ export default function RegisterScreen() {
               </View>
 
               {/* ── Consent section ──────────────────────────────────────── */}
-              {/* Soft paper card so checkboxes visually stand apart from the form
-                  fields — harder for parents to accidentally skip them. */}
-              <View
-                style={{
-                  backgroundColor: 'rgba(255,255,255,0.62)',
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.55)',
-                  borderRadius: 18,
-                  paddingHorizontal: 16,
-                  paddingVertical: 16,
-                  marginTop: 2,
-                  gap: 14,
-                }}
-              >
+              {/* Dark glass card so checkboxes visually stand apart from the
+                  form fields — harder for parents to accidentally skip them. */}
+              <GlassSurface style={styles.consentCard} tintColor="rgba(14,14,20,0.5)">
                 {/* Marketing consent — GDPR opt-in, not pre-checked */}
                 <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                  style={styles.checkRow}
                   onPress={() => setMarketing(!marketing)}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: marketing }}
@@ -367,20 +377,20 @@ export default function RegisterScreen() {
                 >
                   <View style={checkboxBox(marketing)}>
                     {marketing && (
-                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontFamily: FontFamily.bodyStrong, lineHeight: 16 }}>✓</Text>
+                      <Text style={styles.checkMark}>✓</Text>
                     )}
                   </View>
-                  <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: t.label2, flex: 1, lineHeight: 19 }}>
+                  <Text style={styles.checkLabel}>
                     I'd like to receive tips and venue recommendations by email{' '}
-                    <Text style={{ fontFamily: FontFamily.bodyStrong }}>(optional)</Text>
+                    <Text style={styles.checkLabelStrong}>(optional)</Text>
                   </Text>
                 </TouchableOpacity>
 
-                <View style={{ borderTopWidth: 1, borderTopColor: t.separator }} />
+                <View style={styles.divider} />
 
                 {/* ICO Children's Code Standard 4: age affirmation — must be a positive opt-in */}
                 <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}
+                  style={styles.checkRow}
                   onPress={() => setAgeAffirmed(!ageAffirmed)}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: ageAffirmed }}
@@ -390,21 +400,21 @@ export default function RegisterScreen() {
                       : 'Tap to confirm you are 18 or over, or a parent or guardian'
                   }
                 >
-                  <View style={[checkboxBox(ageAffirmed), { marginTop: 1 }]}>
+                  <View style={[checkboxBox(ageAffirmed), styles.checkBoxTopAlign]}>
                     {ageAffirmed && (
-                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontFamily: FontFamily.bodyStrong, lineHeight: 16 }}>✓</Text>
+                      <Text style={styles.checkMark}>✓</Text>
                     )}
                   </View>
-                  <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: t.label2, flex: 1, lineHeight: 19 }}>
+                  <Text style={styles.checkLabel}>
                     I confirm I am 18 or over, or I am a parent/guardian using PlayPlanner for my family.
                   </Text>
                 </TouchableOpacity>
 
-                <View style={{ borderTopWidth: 1, borderTopColor: t.separator }} />
+                <View style={styles.divider} />
 
                 {/* UK GDPR Art.7: explicit, unambiguous consent — must be a positive opt-in */}
                 <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}
+                  style={styles.checkRow}
                   onPress={() => setTermsAccepted(!termsAccepted)}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: termsAccepted }}
@@ -414,15 +424,15 @@ export default function RegisterScreen() {
                       : 'Tap to accept the Terms of Service and Privacy Policy'
                   }
                 >
-                  <View style={[checkboxBox(termsAccepted), { marginTop: 1 }]}>
+                  <View style={[checkboxBox(termsAccepted), styles.checkBoxTopAlign]}>
                     {termsAccepted && (
-                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontFamily: FontFamily.bodyStrong, lineHeight: 16 }}>✓</Text>
+                      <Text style={styles.checkMark}>✓</Text>
                     )}
                   </View>
-                  <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: t.label2, flex: 1, lineHeight: 19 }}>
+                  <Text style={styles.checkLabel}>
                     I have read and accept the{' '}
                     <Text
-                      style={{ fontFamily: FontFamily.bodyStrong, color: ocean.accent }}
+                      style={styles.checkLabelLink}
                       onPress={() => router.push('/(auth)/terms')}
                       accessibilityRole="link"
                     >
@@ -430,7 +440,7 @@ export default function RegisterScreen() {
                     </Text>
                     {' '}and{' '}
                     <Text
-                      style={{ fontFamily: FontFamily.bodyStrong, color: ocean.accent }}
+                      style={styles.checkLabelLink}
                       onPress={() => router.push('/(auth)/privacy')}
                       accessibilityRole="link"
                     >
@@ -439,7 +449,7 @@ export default function RegisterScreen() {
                     . We will never share your data without your consent.
                   </Text>
                 </TouchableOpacity>
-              </View>
+              </GlassSurface>
             </View>
 
             {/* ── Primary CTA ───────────────────────────────────────────── */}
@@ -451,20 +461,7 @@ export default function RegisterScreen() {
               submit without actively affirming both. Opacity communicates state.
             */}
             <TouchableOpacity
-              style={{
-                height: 54,
-                backgroundColor: ocean.accent,
-                borderRadius: 16,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginTop: 24,
-                shadowColor: ocean.accent,
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.3,
-                shadowRadius: 14,
-                elevation: 4,
-                opacity: canSubmit ? 1 : 0.45,
-              }}
+              style={[styles.primaryBtn, !canSubmit && styles.primaryBtnDisabled]}
               onPress={handleRegister}
               disabled={!termsAccepted || !ageAffirmed || loading}
               accessibilityRole="button"
@@ -473,48 +470,198 @@ export default function RegisterScreen() {
             >
               {loading
                 ? <ActivityIndicator color="#fff" />
-                : <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 17, color: '#FFFFFF' }}>Create account</Text>
+                : <Text style={styles.primaryBtnText}>Create account</Text>
               }
             </TouchableOpacity>
 
             {/* ── Switch to login ───────────────────────────────────────── */}
             <TouchableOpacity
-              style={{ marginTop: 20, alignItems: 'center', paddingVertical: 10 }}
+              style={styles.switchBtn}
               onPress={() => router.push('/(auth)/login')}
               accessibilityRole="button"
             >
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 15, color: t.label3 }}>
+              <Text style={styles.switchText}>
                 Already have an account?{' '}
-                <Text style={{ fontFamily: FontFamily.bodyStrong, color: ocean.accent }}>Sign in</Text>
+                <Text style={styles.switchTextStrong}>Sign in</Text>
               </Text>
             </TouchableOpacity>
 
             {/* ── Data minimisation notice (GDPR Art.5(1)(c) + ICO Standard 4) ── */}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: 10,
-                backgroundColor: 'rgba(255,255,255,0.62)',
-                borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.55)',
-                borderRadius: 18,
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                marginTop: 24,
-              }}
-            >
-              <Text style={{ fontSize: 18, marginTop: 1 }} accessible={false} importantForAccessibility="no-hide-descendants">
+            <GlassSurface style={styles.noticeCard} tintColor="rgba(14,14,20,0.5)">
+              <Text style={styles.noticeEmoji} accessible={false} importantForAccessibility="no-hide-descendants">
                 🔒
               </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 13.5, color: t.label2, flex: 1, lineHeight: 19 }}>
-                <Text style={{ fontFamily: FontFamily.bodyStrong }}>We only ask for what we need. </Text>
+              <Text style={styles.noticeText}>
+                <Text style={styles.noticeTextStrong}>We only ask for what we need. </Text>
                 No phone number, no address, no payment details at sign-up.
               </Text>
-            </View>
+            </GlassSurface>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
+  flex: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
+
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 16,
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingRight: 16,
+  },
+  backBtnText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 16,
+    color: ACCENT.accent,
+  },
+
+  headingBlock: {
+    marginTop: 28,
+    marginBottom: 28,
+  },
+  headline: {
+    fontFamily: FontFamily.display,
+    fontSize: 34,
+    color: T.label,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+  },
+  subtitle: {
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label3,
+    marginTop: 6,
+  },
+
+  fieldGroup: { gap: 14, marginBottom: 8 },
+
+  passwordWrap: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  passwordInput: {
+    paddingRight: 48,
+  },
+  eyeBtn: {
+    position: 'absolute',
+    right: 14,
+    height: 54,
+    width: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  strengthText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 12,
+    marginTop: 5,
+    marginLeft: 4,
+  },
+
+  consentCard: {
+    borderRadius: 14,
+    paddingHorizontal: 14,
+  },
+  checkRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+    paddingVertical: 11,
+  },
+  checkBoxTopAlign: {
+    marginTop: 1,
+  },
+  checkMark: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontFamily: FontFamily.bodyStrong,
+    lineHeight: 16,
+  },
+  checkLabel: {
+    flex: 1,
+    fontFamily: FontFamily.body,
+    fontSize: 14,
+    color: T.label2,
+    lineHeight: 19,
+  },
+  checkLabelStrong: {
+    fontFamily: FontFamily.bodyStrong,
+  },
+  checkLabelLink: {
+    fontFamily: FontFamily.bodyStrong,
+    color: ACCENT.accent,
+  },
+  divider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: T.separator,
+  },
+
+  primaryBtn: {
+    height: 54,
+    backgroundColor: ACCENT.accent,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+  },
+  primaryBtnDisabled: {
+    opacity: 0.45,
+  },
+  primaryBtnText: {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 17,
+    color: '#FFFFFF',
+  },
+
+  switchBtn: {
+    marginTop: 20,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  switchText: {
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label3,
+  },
+  switchTextStrong: {
+    fontFamily: FontFamily.bodyStrong,
+    color: ACCENT.accent,
+  },
+
+  noticeCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginTop: 24,
+  },
+  noticeEmoji: {
+    fontSize: 18,
+    marginTop: 1,
+  },
+  noticeText: {
+    fontFamily: FontFamily.body,
+    fontSize: 13.5,
+    color: T.label2,
+    flex: 1,
+    lineHeight: 19,
+  },
+  noticeTextStrong: {
+    fontFamily: FontFamily.bodyStrong,
+    color: T.label,
+  },
+});

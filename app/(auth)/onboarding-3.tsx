@@ -1,6 +1,11 @@
 /**
  * Onboarding screen 3 — "Your privacy matters"
  *
+ * v2 dark restyle (Step 6, feat/exact-v2-design): VISUAL LAYER ONLY. Same
+ * preservation rule as onboarding-1/2.tsx — the consent/location messaging,
+ * navigation targets, and accessibility labels are byte-identical to the
+ * pre-restyle version; only styling changed.
+ *
  * Satisfies GDPR Art.13 transparency: users see our data practices before any
  * personal data is collected (account creation happens on the next screen).
  *
@@ -10,9 +15,15 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 import { Icon, IconName } from '@/components/ui';
+import { V2Background } from '@/components/ui/V2Background';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
 import { ONBOARDING_KEY } from '.';
+
+const T = Themes.dark;
+const ACCENT = ocean;
 
 async function markOnboardingSeen() {
   await SecureStore.setItemAsync(ONBOARDING_KEY, '1').catch(() => {});
@@ -43,79 +54,84 @@ const PRIVACY_POINTS: { icon: IconName; text: string }[] = [
 
 export default function Onboarding3() {
   return (
-    <SafeAreaView style={styles.root}>
+    <View style={styles.root}>
+      <V2Background />
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe}>
 
-      {/* Top row: back only — no skip on the last screen */}
-      <View style={styles.topRow}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          accessibilityRole="button"
-          accessibilityLabel="Go back to previous onboarding screen"
-        >
-          <Icon name="chevL" size={24} color="#1D2630" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Hero illustration */}
-      <View style={styles.heroArea} accessible={false} importantForAccessibility="no-hide-descendants">
-        <View style={styles.heroCard}>
-          <Icon name="shield" size={48} color="#1B8A85" />
+        {/* Top row: back only — no skip on the last screen */}
+        <View style={styles.topRow}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back to previous onboarding screen"
+          >
+            <Icon name="chevL" size={24} color={T.label} />
+          </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Copy + privacy bullet list */}
-      <View style={styles.copyArea}>
-        <Text style={styles.headline}>{"Your privacy\nmatters"}</Text>
-        <Text style={styles.subtitle}>
-          PlayPlanner is built privacy-first. Here is what that means for you:
-        </Text>
+        {/* Hero illustration */}
+        <View style={styles.heroArea} accessible={false} importantForAccessibility="no-hide-descendants">
+          <View style={styles.heroCard}>
+            <Icon name="shield" size={48} color={ACCENT.accent} />
+          </View>
+        </View>
 
-        <View style={styles.bulletList}>
-          {PRIVACY_POINTS.map((point) => (
-            <View key={point.icon} style={styles.bulletRow}>
-              <View style={styles.bulletIconWrap}>
-                <Icon name={point.icon} size={20} color="#1B8A85" />
+        {/* Copy + privacy bullet list */}
+        <View style={styles.copyArea}>
+          <Text style={styles.headline}>{"Your privacy\nmatters"}</Text>
+          <Text style={styles.subtitle}>
+            PlayPlanner is built privacy-first. Here is what that means for you:
+          </Text>
+
+          <View style={styles.bulletList}>
+            {PRIVACY_POINTS.map((point) => (
+              <View key={point.icon} style={styles.bulletRow}>
+                <View style={styles.bulletIconWrap}>
+                  <Icon name={point.icon} size={20} color={ACCENT.accent} />
+                </View>
+                <Text style={styles.bulletText}>{point.text}</Text>
               </View>
-              <Text style={styles.bulletText}>{point.text}</Text>
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
-      </View>
 
-      <Dots active={2} />
+        <Dots active={2} />
 
-      {/* Back + Get Started */}
-      <View style={styles.buttonRow}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => router.back()}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Text style={styles.backBtnText}>Back</Text>
-        </TouchableOpacity>
+        {/* Back + Get Started */}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Text style={styles.backBtnText}>Back</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.getStartedBtn}
-          onPress={async () => { await markOnboardingSeen(); router.replace('/(auth)/welcome'); }}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Get started with PlayPlanner"
-        >
-          <Text style={styles.getStartedText}>Get Started</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={styles.getStartedBtn}
+            onPress={async () => { await markOnboardingSeen(); router.replace('/(auth)/welcome'); }}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Get started with PlayPlanner"
+          >
+            <Text style={styles.getStartedText}>Get Started</Text>
+          </TouchableOpacity>
+        </View>
 
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  root: { flex: 1, backgroundColor: 'transparent' },
+  safe: {
     flex: 1,
-    backgroundColor: '#FBF6EC',
+    backgroundColor: 'transparent',
     paddingHorizontal: 28,
     paddingBottom: 32,
   },
@@ -135,8 +151,10 @@ const styles = StyleSheet.create({
   heroCard: {
     width: 200,
     height: 200,
-    backgroundColor: '#DCF4E4',
+    backgroundColor: T.surface,
     borderRadius: 28,
+    borderWidth: 1,
+    borderColor: T.separator,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -146,16 +164,17 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   headline: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 30,
-    color: '#1D2630',
+    color: T.label,
     lineHeight: 38,
+    letterSpacing: -0.6,
     marginBottom: 10,
   },
   subtitle: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#4A5560',
+    color: T.label2,
     lineHeight: 22,
     marginBottom: 20,
   },
@@ -175,9 +194,9 @@ const styles = StyleSheet.create({
   },
   bulletText: {
     flex: 1,
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 15,
-    color: '#1D2630',
+    color: T.label,
     lineHeight: 22,
   },
 
@@ -192,11 +211,11 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#E6E2DB',
+    backgroundColor: T.fill,
   },
   dotActive: {
-    backgroundColor: '#2FB8B0',
-    width: 22,
+    backgroundColor: ACCENT.accent,
+    width: 24,
     borderRadius: 4,
   },
 
@@ -207,27 +226,27 @@ const styles = StyleSheet.create({
   },
   backBtn: {
     flex: 1,
-    borderRadius: 999,
+    borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#E6E2DB',
+    borderColor: T.separator,
     backgroundColor: 'transparent',
   },
   backBtnText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 16,
-    color: '#1D2630',
+    color: T.label,
   },
   getStartedBtn: {
     flex: 2,
-    backgroundColor: '#2FB8B0',
-    borderRadius: 999,
+    backgroundColor: ACCENT.accent,
+    borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
   },
   getStartedText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 16,
     color: '#FFFFFF',
   },

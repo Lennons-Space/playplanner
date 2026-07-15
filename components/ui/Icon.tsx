@@ -55,7 +55,9 @@ export type IconName =
   | 'flame'
   | 'minus'
   | 'camera'
-  | 'refresh';
+  | 'refresh'
+  | 'eye'
+  | 'eyeOff';
 
 export interface IconProps {
   name: IconName;
@@ -405,6 +407,24 @@ export function Icon({ name, size = 20, color = '#1D2630', strokeWidth = 1.75 }:
         <Svg {...svg}>
           <Path d="M23 4v6h-6" />
           <Path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+        </Svg>
+      );
+
+    case 'eye':
+      // Password-visibility toggle (Step 6, Auth v2) — "show password" state.
+      return (
+        <Svg {...svg}>
+          <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+          <Circle cx="12" cy="12" r="3" />
+        </Svg>
+      );
+
+    case 'eyeOff':
+      // Password-visibility toggle (Step 6, Auth v2) — "hide password" state.
+      return (
+        <Svg {...svg}>
+          <Path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a20.3 20.3 0 0 1 4.22-5.61M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a20.4 20.4 0 0 1-2.29 3.33M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+          <Path d="M1 1l22 22" />
         </Svg>
       );
 

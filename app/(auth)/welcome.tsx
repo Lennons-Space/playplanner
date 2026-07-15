@@ -1,6 +1,12 @@
 /**
  * Welcome screen — first screen after onboarding (or for returning users).
  *
+ * v2 dark restyle (Step 6, feat/exact-v2-design): VISUAL LAYER ONLY. Both
+ * CTAs' destinations, the legal footer semantics, and accessibility labels
+ * are byte-identical to the pre-restyle version — only styling changed.
+ * Mounts <V2Background/> as the first child of a transparent root, matching
+ * the frozen per-screen background architecture (see app/(tabs)/profile.tsx).
+ *
  * ICO Children's Code + UK GDPR:
  *  - No location requested here. Location is opt-in, prompted only when needed.
  *  - No data collected on this screen.
@@ -9,202 +15,176 @@
  *  - Terms and Privacy Policy linked before sign-up.
  */
 
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Icon } from '@/components/ui';
+import { V2Background } from '@/components/ui/V2Background';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
 
-// ─── Design tokens (pp- system) ─────────────────────────────────────────────
-const C = {
-  ink: '#1D2630',
-  inkSoft: '#4A5560',
-  line: '#E6E2DB',
-  sand: '#FBF6EC',
-  sky: '#2FB8B0',
-  skyDeep: '#1B8A85',
-  skySoft: '#D4F0EE',
-  skyWash: '#EEF9F8',
-  coral: '#FF6B6B',
-  sun: '#FFD66B',
-  leaf: '#5BC08A',
-  leafSoft: '#DCF4E4',
-} as const;
+const T = Themes.dark;
+const ACCENT = ocean;
 
 export default function WelcomeScreen() {
   return (
-    <SafeAreaView style={styles.root}>
-
-      {/* ── Hero card ──────────────────────────────────────────────────────── */}
-      <View style={styles.heroWrapper} accessible={false} importantForAccessibility="no-hide-descendants">
-        <LinearGradient
-          colors={['#D4F0EE', '#FFD66B44', '#FFE8E8']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
+    <View style={styles.root}>
+      <V2Background />
+      <StatusBar style="light" />
+      <SafeAreaView style={styles.safe}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          {/* Clouds */}
-          <View style={[styles.cloud, { width: 90, height: 28, top: 28, left: 20 }]} />
-          <View style={[styles.cloud, { width: 60, height: 30, top: 18, left: 80 }]} />
-          <View style={[styles.cloud, { width: 70, height: 22, top: 38, right: 30 }]} />
 
-          {/* Sun with glow ring */}
-          <View style={styles.sunGlow} accessible={false}>
-            <View style={styles.sun} />
-          </View>
+          {/* ── Hero card ────────────────────────────────────────────────── */}
+          <GlassSurface style={styles.heroCard} tintColor="rgba(18,18,26,0.86)">
+            <LinearGradient
+              colors={['rgba(76,141,246,0.22)', 'rgba(124,79,204,0.14)', 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroHalo}
+              pointerEvents="none"
+            />
 
-          {/* Leaf map pin (bottom-left) */}
-          <View style={styles.pinLeafOuter}>
-            <View style={styles.pinLeafInner}>
-              <Icon name="leaf" size={24} color="#fff" />
+            <View
+              style={styles.heroIllustration}
+              accessible={false}
+              importantForAccessibility="no-hide-descendants"
+            >
+              {/* Leaf map pin */}
+              <View style={styles.pinLeafOuter}>
+                <View style={styles.pinLeafInner}>
+                  <Icon name="leaf" size={22} color="#FFFFFF" />
+                </View>
+              </View>
+              {/* Sparkle map pin */}
+              <View style={styles.pinAccentOuter}>
+                <View style={styles.pinAccentInner}>
+                  <Icon name="sparkle" size={22} color="#FFFFFF" />
+                </View>
+              </View>
             </View>
-          </View>
 
-          {/* Coral map pin (bottom-right) */}
-          <View style={styles.pinCoralOuter}>
-            <View style={styles.pinCoralInner}>
-              <Icon name="sparkle" size={24} color="#fff" />
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.eyebrow}>Play Planner</Text>
+              <Text style={styles.headline}>{"Family days out,\nsorted by parents."}</Text>
+              <Text style={styles.subtitle}>
+                Find soft plays, parks and cafés nearby — with honest reviews from real families.
+              </Text>
             </View>
+          </GlassSurface>
+
+          {/* ── Privacy strip (ICO Standard 10: location off by default) ─── */}
+          <GlassSurface style={styles.privacyStrip} tintColor="rgba(14,14,20,0.5)">
+            <Icon name="shield" size={18} color={ACCENT.accent} />
+            <Text style={styles.privacyText}>
+              Location is{' '}
+              <Text style={styles.privacyBold}>off by default</Text>
+              {'. We never sell your data.'}
+            </Text>
+          </GlassSurface>
+
+          {/* ── CTAs ─────────────────────────────────────────────────────── */}
+          {/* Both buttons are equal-prominence — no nudge technique (ICO Standard 7) */}
+          <View style={styles.ctaBlock}>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => router.push('/(auth)/register')}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Create a free account"
+            >
+              <Text style={styles.primaryBtnText}>Create free account</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => router.push('/(auth)/login')}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in to your existing account"
+            >
+              <Text style={styles.secondaryBtnText}>Sign in</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Ground strip */}
-          <LinearGradient
-            colors={['#DCF4E4', '#5BC08A55']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.ground}
-          />
-        </LinearGradient>
-      </View>
+          {/* ── Legal footer — passive notice only, NOT pre-ticked consent ── */}
+          <View style={styles.legalBlock}>
+            <Text style={styles.legalText}>
+              {'By continuing you agree to our '}
+              <Text
+                style={styles.legalLink}
+                onPress={() => router.push('/(auth)/terms')}
+                accessibilityRole="link"
+                accessibilityLabel="Read Terms of Service"
+              >
+                Terms of Service
+              </Text>
+              {' and '}
+              <Text
+                style={styles.legalLink}
+                onPress={() => router.push('/(auth)/privacy')}
+                accessibilityRole="link"
+                accessibilityLabel="Read Privacy Policy"
+              >
+                Privacy Policy
+              </Text>
+              {'.'}
+            </Text>
+          </View>
 
-      {/* ── Copy block ────────────────────────────────────────────────────── */}
-      <View style={styles.copyBlock}>
-        <Text style={styles.eyebrow}>Play Planner</Text>
-        <Text style={styles.headline}>{"Family days out,\nsorted by parents."}</Text>
-        <Text style={styles.subtitle}>
-          Find soft plays, parks and cafés nearby — with honest reviews from real families.
-        </Text>
-      </View>
-
-      {/* ── Privacy strip (ICO Standard 10: location off by default) ─────── */}
-      <View style={styles.privacyStrip}>
-        <Icon name="shield" size={18} color={C.skyDeep} />
-        <Text style={styles.privacyText}>
-          Location is{' '}
-          <Text style={styles.privacyBold}>off by default</Text>
-          {'. We never sell your data.'}
-        </Text>
-      </View>
-
-      {/* ── CTAs ──────────────────────────────────────────────────────────── */}
-      {/* Both buttons are equal-prominence — no nudge technique (ICO Standard 7) */}
-      <View style={styles.ctaBlock}>
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={() => router.push('/(auth)/register')}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Create a free account"
-        >
-          <Text style={styles.primaryBtnText}>Create free account</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.secondaryBtn}
-          onPress={() => router.push('/(auth)/login')}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel="Sign in to your existing account"
-        >
-          <Text style={styles.secondaryBtnText}>Sign in</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Legal footer — passive notice only, NOT pre-ticked consent ───── */}
-      <View style={styles.legalBlock}>
-        <Text style={styles.legalText}>
-          {'By continuing you agree to our '}
-          <Text
-            style={styles.legalLink}
-            onPress={() => router.push('/(auth)/terms')}
-            accessibilityRole="link"
-            accessibilityLabel="Read Terms of Service"
-          >
-            Terms of Service
-          </Text>
-          {' and '}
-          <Text
-            style={styles.legalLink}
-            onPress={() => router.push('/(auth)/privacy')}
-            accessibilityRole="link"
-            accessibilityLabel="Read Privacy Policy"
-          >
-            Privacy Policy
-          </Text>
-          {'.'}
-        </Text>
-      </View>
-
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#FBF6EC',
+  root: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 24,
   },
 
-  // ── Hero ──────────────────────────────────────────────────────────────────
-  heroWrapper: {
-    flex: 1,
-    minHeight: 140,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    // flex:1 lets the hero expand to fill available space above the copy
-  },
+  // ── Hero ────────────────────────────────────────────────────────────────
   heroCard: {
-    flex: 1,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#E6E2DB',
+    borderRadius: 28,
+    padding: 22,
+    minHeight: 260,
+    justifyContent: 'flex-end',
     overflow: 'hidden',
   },
-  cloud: {
+  heroHalo: {
     position: 'absolute',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 999,
-    opacity: 0.9,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 180,
   },
-  sunGlow: {
+  heroIllustration: {
     position: 'absolute',
-    top: 18,
-    right: 22,
-    width: 66,
-    height: 66,
-    borderRadius: 999,
-    backgroundColor: '#FFD66B33',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sun: {
-    width: 46,
-    height: 46,
-    borderRadius: 999,
-    backgroundColor: '#FFD66B',
+    top: 24,
+    left: 0,
+    right: 0,
+    height: 120,
   },
   // Teardrop shape: three rounded corners + one sharp corner, rotated -45deg
   pinLeafOuter: {
     position: 'absolute',
-    bottom: 44,
-    left: 40,
-    width: 56,
-    height: 68,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    borderBottomLeftRadius: 36,
+    top: 8,
+    left: 36,
+    width: 52,
+    height: 64,
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
+    borderBottomLeftRadius: 34,
     borderBottomRightRadius: 0,
-    backgroundColor: '#5BC08A',
+    backgroundColor: '#3AA36A',
     transform: [{ rotate: '-45deg' }],
     alignItems: 'center',
     justifyContent: 'center',
@@ -212,144 +192,127 @@ const styles = StyleSheet.create({
   // Counter-rotate icon so it stays upright inside the pin
   pinLeafInner: {
     transform: [{ rotate: '45deg' }],
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pinCoralOuter: {
+  pinAccentOuter: {
     position: 'absolute',
-    bottom: 44,
-    right: 52,
-    width: 56,
-    height: 68,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    borderBottomLeftRadius: 36,
+    top: 24,
+    right: 44,
+    width: 52,
+    height: 64,
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
+    borderBottomLeftRadius: 34,
     borderBottomRightRadius: 0,
-    backgroundColor: '#FF6B6B',
+    backgroundColor: ACCENT.accent,
     transform: [{ rotate: '-45deg' }],
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pinCoralInner: {
+  pinAccentInner: {
     transform: [{ rotate: '45deg' }],
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ground: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 32,
-  },
-
-  // ── Copy ──────────────────────────────────────────────────────────────────
-  copyBlock: {
-    paddingHorizontal: 28,
-    paddingTop: 20,
-    gap: 6,
+  heroTextWrap: {
+    marginTop: 100,
   },
   eyebrow: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 12,
     letterSpacing: 1.5,
-    color: '#1B8A85',
+    color: ACCENT.tagText,
     textTransform: 'uppercase',
   },
   headline: {
-    fontFamily: 'Nunito-ExtraBold',
-    fontSize: 32,
-    color: '#1D2630',
-    lineHeight: 38,
-    letterSpacing: -0.5,
+    fontFamily: FontFamily.display,
+    fontSize: 28,
+    color: T.label,
+    lineHeight: 34,
+    letterSpacing: -0.6,
     marginTop: 8,
   },
   subtitle: {
-    fontFamily: 'Nunito-Medium',
-    fontSize: 15,
-    color: '#4A5560',
-    lineHeight: 22,
+    fontFamily: FontFamily.body,
+    fontSize: 14.5,
+    color: T.label2,
+    lineHeight: 21,
     marginTop: 10,
   },
 
-  // ── Privacy strip ─────────────────────────────────────────────────────────
+  // ── Privacy strip ──────────────────────────────────────────────────────
   privacyStrip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EEF9F8',
-    borderWidth: 1,
-    borderColor: '#D4F0EE',
     borderRadius: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 14,
-    marginHorizontal: 24,
-    marginTop: 24,
-    marginBottom: 14,
+    marginTop: 16,
     gap: 10,
   },
   privacyText: {
     flex: 1,
-    fontFamily: 'Nunito-Medium',
-    fontSize: 12,
-    color: '#4A5560',
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    color: T.label2,
     lineHeight: 18,
   },
   privacyBold: {
-    fontFamily: 'Nunito-Bold',
-    color: '#4A5560',
+    fontFamily: FontFamily.bodyStrong,
+    color: T.label,
   },
 
-  // ── CTAs ──────────────────────────────────────────────────────────────────
+  // ── CTAs ────────────────────────────────────────────────────────────────
   ctaBlock: {
-    paddingHorizontal: 24,
-    paddingBottom: 34,
+    marginTop: 20,
     gap: 12,
   },
   primaryBtn: {
-    backgroundColor: '#1D2630',
-    borderRadius: 999,
-    paddingVertical: 16,
+    height: 54,
+    backgroundColor: ACCENT.accent,
+    borderRadius: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   primaryBtnText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 16,
     color: '#FFFFFF',
   },
   secondaryBtn: {
-    backgroundColor: 'transparent',
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: '#E6E2DB',
-    paddingVertical: 15,
+    height: 54,
+    backgroundColor: T.fill,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: T.separator,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   secondaryBtnText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 16,
-    color: '#1D2630',
+    color: T.label,
   },
 
-  // ── Legal ─────────────────────────────────────────────────────────────────
+  // ── Legal ───────────────────────────────────────────────────────────────
   legalBlock: {
-    paddingHorizontal: 24,
-    marginTop: 8,
-    marginBottom: 4,
+    marginTop: 16,
   },
   legalText: {
-    fontFamily: 'Nunito-Regular',
-    fontSize: 11,
-    color: '#7B8794',
+    fontFamily: FontFamily.body,
+    fontSize: 11.5,
+    color: T.label3,
     textAlign: 'center',
-    lineHeight: 16,
+    lineHeight: 17,
   },
   legalLink: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     textDecorationLine: 'underline',
-    color: '#4A5560',
+    color: T.label2,
   },
 });
