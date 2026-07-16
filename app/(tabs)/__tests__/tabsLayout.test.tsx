@@ -20,6 +20,8 @@
  */
 
 import React from 'react';
+import fs from 'fs';
+import path from 'path';
 import { render } from '@testing-library/react-native';
 
 // ─── Imports (after mocks) ───────────────────────────────────────────────────
@@ -186,5 +188,18 @@ describe('TabsLayout — auth guard', () => {
     // No redirect must have fired.
     expect(queryByTestId('redirect')).toBeNull();
     expect(mockRedirectHref).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// Step 8 (v2 dark restyle) — the shared ambient <WeatherBackground/> is gone.
+// Every tab screen (Home, Map, Saved, Profile, Search) now mounts its own
+// <V2Background/> per the per-screen atmosphere pattern — there is nothing
+// left for this layout to own.
+// =============================================================================
+describe('TabsLayout — legacy ambient background fully removed (source guard)', () => {
+  it('no longer imports or mounts the legacy <WeatherBackground/>', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../_layout.tsx'), 'utf8');
+    expect(src).not.toMatch(/WeatherBackground/);
   });
 });

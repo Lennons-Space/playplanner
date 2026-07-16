@@ -15,17 +15,25 @@
  * REFINE (not filters): a single quiet row of chips lets the parent nudge
  * the result — Open now (server filter), Indoor / Outdoor / Free (curation
  * constraints). No modal, no long form. "More filters" is intentionally absent.
+ *
+ * VISUAL (Step 8, v2 dark restyle): this screen now mounts its own
+ * <V2Background/> (per-screen atmosphere pattern — see components/ui/V2Background
+ * doc comment) instead of the previous shared ambient weather layer.
+ * Behaviour, data flow, and consent semantics are byte-preserved; only the
+ * skin changed.
  */
 
 import { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TouchableOpacity } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
 import { useLocation } from '@/hooks/location';
 import { useWeather } from '@/hooks/useWeather';
 import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
+import { useSavedVenueIds, useToggleFavourite } from '@/hooks/useFavourites';
 import { curateVenues, type Mood, type CuratedVenue } from '@/lib/curation';
 import { generateRecommendationReasons } from '@/lib/recommendations/recommendationReasons';
 import {
@@ -36,15 +44,19 @@ import {
 } from '@/lib/quickFilters';
 import type { Category } from '@/types';
 import { LocationConsentPrompt } from '@/components/consent';
-import { WeatherBackground } from '@/components/weather/WeatherBackground';
-import { VenueCard, Icon } from '@/components/ui';
-import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
-import { Colors, FontFamily } from '@/constants/theme';
+import { V2Background } from '@/components/ui/V2Background';
+import { Icon } from '@/components/ui';
+import { VenueCard2 } from '@/components/home/VenueCard2';
+import { Themes, ocean, FontFamily, BorderRadius } from '@/constants/theme';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { DEFAULT_FILTERS } from '@/types';
 import type { Coordinates } from '@/types';
 
-
+// ─── v2 dark design tokens ───────────────────────────────────────────
+// Same tokens as the other accepted v2 dark screens (Home, Map, Venue
+// Detail, Saved, Profile) — a local `const T = Themes.dark` per screen.
+const T = Themes.dark;
+const ACCENT = ocean.accent; // '#4C8DF6'
 
 const VALID_MOODS: Mood[] = ['auto', 'indoor', 'outdoor', 'active', 'calm', 'free', 'surprise'];
 
@@ -95,12 +107,31 @@ export default function ResultsScreen() {
   );
   const { status, grant, decline } = useLocationConsent();
 
+  // State 1: still reading SecureStore — render the shared atmosphere over a
+  // transparent root (matches how app/venue/[id].tsx's loading state mounts
+  // V2Background) rather than a flat light fill, so there is no light flash
+  // while the stored consent value resolves.
   if (status === 'checking') {
-    return <View style={{ flex: 1, backgroundColor: Colors.bg }} />;
+    return (
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+        <V2Background />
+        <StatusBar style="light" />
+      </View>
+    );
   }
 
   if (status === 'undecided') {
-    return <LocationConsentPrompt onAccept={grant} onDecline={decline} />;
+    // Consent prompt renders over the shared v2 atmosphere. Copy, handlers,
+    // and accessibility labels are byte-identical to the light variant —
+    // only the skin (variant="dark") differs. ICO Children's Code Standard
+    // 10: location stays OFF until the parent explicitly accepts here.
+    return (
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+        <V2Background />
+        <StatusBar style="light" />
+        <LocationConsentPrompt onAccept={grant} onDecline={decline} variant="dark" />
+      </View>
+    );
   }
 
   if (status === 'granted') {
@@ -149,6 +180,12 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
   const [mood, setMood] = useState<Mood>(paramMood);
   const [openNow, setOpenNow] = useState(false);
 
+  // DATA ONLY — this is NOT the visual atmosphere. It feeds curateVenues()
+  // ranking below and the honest "☀️ Sunny · within N miles" context line.
+  // The visual atmosphere is owned entirely by <V2Background/> (mounted
+  // below), which resolves its own wall-clock-phased weather independently —
+  // this hook call must stay so ranking/context text keep working exactly
+  // as before.
   const weather = useWeather(coords.latitude, coords.longitude);
 
   const filters = useMemo(() => ({ ...DEFAULT_FILTERS, openNow }), [openNow]);
@@ -247,9 +284,14 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
   // to the original intent the parent arrived with.
   const toggleMood = (m: Mood) => setMood((cur) => (cur === m ? paramMood : m));
 
+  // Real favourites — same hook + invalidation pattern as Home (no fake state).
+  const { savedIds } = useSavedVenueIds();
+  const toggleFav = useToggleFavourite();
+
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <WeatherBackground condition={weather?.condition} />
+    <View style={{ flex: 1 }}>
+      <V2Background />
+      <StatusBar style="light" />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
       {/* ── Header ───────────────────────────────────────────────── */}
       <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10 }}>
@@ -261,25 +303,25 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
             accessibilityLabel="Go back"
             style={{
               width: 38, height: 38, borderRadius: 12,
-              backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.separator,
+              backgroundColor: T.surface, borderWidth: 1, borderColor: T.separator,
               alignItems: 'center', justifyContent: 'center',
             }}
           >
-            <Icon name="chevL" size={18} color={Colors.label} />
+            <Icon name="chevL" size={18} color={T.label} />
           </TouchableOpacity>
-          <Text style={{ fontFamily: FontFamily.display, fontSize: 20, color: Colors.label, letterSpacing: -0.6, flex: 1 }}>
+          <Text style={{ fontFamily: FontFamily.display, fontSize: 20, color: T.label, letterSpacing: -0.6, flex: 1 }}>
             {headerTitle(mood)}
           </Text>
         </View>
 
         {/* Context line: weather + radius */}
-        <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, marginLeft: 48 }}>
+        <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3, marginTop: 6, marginLeft: 48 }}>
           {weather ? `${weather.emoji} ${weather.label} · ` : ''}within {radiusMiles} miles
           {isFetching && !isLoading ? ' · updating…' : ''}
         </Text>
 
         {isFallback && (
-          <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label2, marginTop: 4, marginLeft: 48 }}>
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: T.label2, marginTop: 4, marginLeft: 48 }}>
             Showing a default area — turn on location for picks near you.
           </Text>
         )}
@@ -309,9 +351,9 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 12 }} showsVerticalScrollIndicator={false}>
         {locLoading || isLoading ? (
           <>
-            <VenueRowSkeleton />
-            <VenueRowSkeleton />
-            <VenueRowSkeleton />
+            <ResultRowSkeleton />
+            <ResultRowSkeleton />
+            <ResultRowSkeleton />
           </>
         ) : error ? (
           <ErrorState onRetry={() => refetch()} />
@@ -321,7 +363,15 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
           <EmptyState onOpenMap={() => router.push('/explore/map')} />
         ) : (
           curated.map((item) => (
-            <CuratedResult key={item.venue.id} item={item} onPress={() => router.push(`/venue/${item.venue.id}`)} />
+            <CuratedResult
+              key={item.venue.id}
+              item={item}
+              saved={savedIds.has(item.venue.id)}
+              onToggleSave={() =>
+                toggleFav.mutate({ venueId: item.venue.id, currentlySaved: savedIds.has(item.venue.id) })
+              }
+              onPress={() => router.push(`/venue/${item.venue.id}`)}
+            />
           ))
         )}
       </ScrollView>
@@ -330,27 +380,62 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
   );
 }
 
+// ─── ResultRowSkeleton ──────────────────────────────────────────────
+// Small local dark loading placeholder (no animation) shaped like a
+// VenueCard2 row. Local because the shared VenueRowSkeleton is light-themed
+// and used as-is by other (still-light-loading-state) screens — see
+// app/explore/map.tsx's SkeletonRow for the same pattern.
+function ResultRowSkeleton() {
+  return (
+    <View
+      testID="venue-row-skeleton"
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 14,
+        backgroundColor: T.surface, borderRadius: BorderRadius.card, padding: 11,
+        borderWidth: 1, borderColor: T.separator,
+      }}
+    >
+      <View style={{ width: 82, height: 82, borderRadius: 14, backgroundColor: T.fill }} />
+      <View style={{ flex: 1, gap: 8 }}>
+        <View style={{ height: 14, borderRadius: 7, backgroundColor: T.fill, width: '70%' }} />
+        <View style={{ height: 11, borderRadius: 6, backgroundColor: T.fill, width: '45%' }} />
+        <View style={{ height: 11, borderRadius: 6, backgroundColor: T.fill, width: '30%' }} />
+      </View>
+    </View>
+  );
+}
+
 // ─── CuratedResult ──────────────────────────────────────────────────
-// A standard VenueCard plus the honest "why" — the reasons that put this
+// A VenueCard2 row plus the honest "why" — the reasons that put this
 // venue on the shortlist. The reasons are the trust payload of this screen.
-function CuratedResult({ item, onPress }: { item: CuratedVenue; onPress: () => void }) {
+function CuratedResult({
+  item,
+  saved,
+  onToggleSave,
+  onPress,
+}: {
+  item: CuratedVenue;
+  saved: boolean;
+  onToggleSave: () => void;
+  onPress: () => void;
+}) {
   const reasons = generateRecommendationReasons(item.venue);
   return (
     <View>
-      <VenueCard venue={item.venue} onPress={onPress} />
+      <VenueCard2 venue={item.venue} onPress={onPress} saved={saved} onToggleSave={onToggleSave} />
       {reasons.length > 0 && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8, marginLeft: 4 }}>
           {reasons.map((r) => (
             <View
               key={r}
               style={{
-                backgroundColor: Colors.accentLight,
+                backgroundColor: ocean.light, // rgba(76,141,246,0.16) — dark tint, readable
                 borderRadius: 999,
                 paddingHorizontal: 9,
                 paddingVertical: 3,
               }}
             >
-              <Text style={{ fontFamily: FontFamily.caption, fontSize: 11, color: Colors.accentTagText }}>{r}</Text>
+              <Text style={{ fontFamily: FontFamily.caption, fontSize: 11, color: ocean.tagText }}>{r}</Text>
             </View>
           ))}
         </View>
@@ -371,12 +456,12 @@ function RefineChip({ label, active, onPress }: { label: string; active: boolean
         paddingHorizontal: 14,
         paddingVertical: 8,
         borderRadius: 999,
-        backgroundColor: active ? Colors.accent : Colors.surface,
+        backgroundColor: active ? ACCENT : T.surface,
         borderWidth: 1,
-        borderColor: active ? Colors.accent : Colors.separator,
+        borderColor: active ? ACCENT : T.separator,
       }}
     >
-      <Text style={{ fontFamily: FontFamily.caption, fontSize: 13, color: active ? '#FFFFFF' : Colors.label }}>
+      <Text style={{ fontFamily: FontFamily.caption, fontSize: 13, color: active ? '#FFFFFF' : T.label }}>
         {label}
       </Text>
     </Pressable>
@@ -391,17 +476,17 @@ function HardFilterEmptyState({ onOpenMap }: { onOpenMap: () => void }) {
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
       <Text style={{ fontSize: 40 }}>🔍</Text>
-      <Text style={{ fontFamily: FontFamily.heading, fontSize: 16, color: Colors.label, marginTop: 12, textAlign: 'center' }}>
+      <Text style={{ fontFamily: FontFamily.heading, fontSize: 16, color: T.label, marginTop: 12, textAlign: 'center' }}>
         We don't have enough data for this filter yet
       </Text>
-      <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
+      <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3, marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
         Try another idea — we can't confirm this feature for venues near you right now.
       </Text>
       <TouchableOpacity
         onPress={onOpenMap}
         accessibilityRole="button"
         accessibilityLabel="Open the map"
-        style={{ marginTop: 16, backgroundColor: Colors.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
+        style={{ marginTop: 16, backgroundColor: ACCENT, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
       >
         <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>Explore the map</Text>
       </TouchableOpacity>
@@ -414,17 +499,17 @@ function EmptyState({ onOpenMap }: { onOpenMap: () => void }) {
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
       <Text style={{ fontSize: 40 }}>🧭</Text>
-      <Text style={{ fontFamily: FontFamily.heading, fontSize: 16, color: Colors.label, marginTop: 12, textAlign: 'center' }}>
+      <Text style={{ fontFamily: FontFamily.heading, fontSize: 16, color: T.label, marginTop: 12, textAlign: 'center' }}>
         Nothing matched just now
       </Text>
-      <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
+      <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3, marginTop: 6, textAlign: 'center', lineHeight: 19 }}>
         Try turning off a refine above, or explore the map to widen your search.
       </Text>
       <TouchableOpacity
         onPress={onOpenMap}
         accessibilityRole="button"
         accessibilityLabel="Open the map"
-        style={{ marginTop: 16, backgroundColor: Colors.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
+        style={{ marginTop: 16, backgroundColor: ACCENT, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
       >
         <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>Open the map</Text>
       </TouchableOpacity>
@@ -437,17 +522,17 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
       <Text style={{ fontSize: 40 }}>⚠️</Text>
-      <Text style={{ fontFamily: FontFamily.heading, fontSize: 16, color: Colors.label, marginTop: 12, textAlign: 'center' }}>
+      <Text style={{ fontFamily: FontFamily.heading, fontSize: 16, color: T.label, marginTop: 12, textAlign: 'center' }}>
         Couldn’t load suggestions
       </Text>
-      <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: Colors.label3, marginTop: 6, textAlign: 'center' }}>
+      <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: T.label3, marginTop: 6, textAlign: 'center' }}>
         Check your connection and try again.
       </Text>
       <TouchableOpacity
         onPress={onRetry}
         accessibilityRole="button"
         accessibilityLabel="Try again"
-        style={{ marginTop: 16, backgroundColor: Colors.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
+        style={{ marginTop: 16, backgroundColor: ACCENT, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12 }}
       >
         <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>Try again</Text>
       </TouchableOpacity>

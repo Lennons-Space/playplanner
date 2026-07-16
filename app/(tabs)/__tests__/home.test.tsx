@@ -416,9 +416,14 @@ describe('Browse (Home) — granted: real venue list renders', () => {
   });
 
   it('renders the venue list with header and subtitle', () => {
-    const { getByText, getByLabelText } = render(<HomeScreen />);
+    // "updated just now" was dropped (Step 8) — the list is not actually
+    // refreshed on a timer, so the phrase was a false recency claim. Two
+    // "Near you" nodes are expected: the passive area header AND the venue
+    // list subtitle (both fall back to the same passive copy here).
+    const { getByText, getAllByText, queryByText, getByLabelText } = render(<HomeScreen />);
     expect(getByText('Family favourites')).toBeTruthy();
-    expect(getByText('Near you · updated just now')).toBeTruthy();
+    expect(getAllByText('Near you')).toHaveLength(2);
+    expect(queryByText(/updated just now/)).toBeNull();
     expect(getByLabelText('Bright Soft Play Barn')).toBeTruthy();
     expect(getByLabelText('Riverside Park')).toBeTruthy();
   });

@@ -12,9 +12,13 @@
  *   8. "All" chip resets all filters
  *   9. Section heading reads "Nearby venues" (not "Popular venues")
  *  10. Empty state with active filters shows "Clear filters" button
+ *  11. (Step 8, v2 dark restyle) mounts <V2Background/>; legacy
+ *      <WeatherBackground/> import fully gone; consent gates unchanged.
  */
 
 import React from 'react';
+import fs from 'fs';
+import path from 'path';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -102,6 +106,21 @@ jest.mock('@/hooks/useVenues', () => ({
   })),
 }));
 
+// Real favourites — no fake state. Default: nothing saved, mutate is a no-op spy.
+jest.mock('@/hooks/useFavourites', () => ({
+  useSavedVenueIds: jest.fn(() => ({ savedIds: new Set(), isLoading: false })),
+  useToggleFavourite: jest.fn(() => ({ mutate: jest.fn() })),
+}));
+
+// V2Background (mounted directly by this screen now, Step 8) reads the same
+// coarse weather fetch Home/Map/Venue-Detail already read — default it to
+// "no data yet" (null) so the atmosphere resolves deterministically without
+// ever making a real network call (would otherwise hang the test process —
+// see app/venue/__tests__/venueDetailBackground.test.tsx for the same pattern).
+jest.mock('@/hooks/useWeather', () => ({
+  useWeather: jest.fn(() => null),
+}));
+
 jest.mock('@/lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
@@ -116,6 +135,12 @@ jest.mock('react-native-safe-area-context', () => ({
   SafeAreaProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+// Search is a tab screen — same tab-safe-zone pattern as Home. Standalone
+// render here (outside a real bottom-tab navigator) needs a fixed height.
+jest.mock('@react-navigation/bottom-tabs', () => ({
+  useBottomTabBarHeight: () => 88,
+}));
+
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
 }));
@@ -127,39 +152,13 @@ jest.mock('@/components/filters/FilterSheet', () => {
   };
 });
 
-// Mock all UI kit components minimally so they render without native modules.
+// Only Icon is still imported from the shared '@/components/ui' barrel —
+// Chip/ScreenTitle/IconBtn were replaced by local dark equivalents (Step 8:
+// those shared components hard-code the legacy light `Colors` export).
 jest.mock('@/components/ui', () => {
-  const { Text, TouchableOpacity, View } = require('react-native');
+  const { Text } = require('react-native');
   return {
-    VenueCard: ({ venue }: { venue: { name: string } }) => (
-      <View testID={`venue-card-${venue.name}`}>
-        <Text>{venue.name}</Text>
-      </View>
-    ),
     Icon: ({ name }: { name: string }) => <Text>{name}</Text>,
-    Chip: ({
-      children,
-      active,
-      onPress,
-    }: {
-      children: React.ReactNode;
-      active: boolean;
-      onPress: () => void;
-    }) => (
-      <TouchableOpacity
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={String(children)}
-        accessibilityState={{ selected: active }}
-        testID={`chip-${children}`}
-      >
-        <Text>{children}</Text>
-      </TouchableOpacity>
-    ),
-    ScreenTitle: ({ title }: { title: string }) => <Text>{title}</Text>,
-    IconBtn: ({ children, onPress }: { children: React.ReactNode; onPress: () => void }) => (
-      <TouchableOpacity onPress={onPress}>{children}</TouchableOpacity>
-    ),
   };
 });
 
@@ -309,22 +308,22 @@ describe('Search screen — Free chip', () => {
     // Simulate free filter active.
     mockFilters = { ...mockFilters, priceRange: ['free'] };
 
-    const { getByTestId, queryByTestId, getByLabelText } = await renderSearch();
+    const { queryByText, getByLabelText } = await renderSearch();
 
     // Trigger search-active mode by typing into the search box.
     await act(async () => {
       fireEvent.changeText(getByLabelText('Search for venues'), 'soft');
     });
 
-    // Wait for results to render.
+    // Wait for results to render (real VenueCard2 renders the venue name as text).
     await waitFor(() => {
-      expect(getByTestId('venue-card-Free Place')).toBeTruthy();
+      expect(queryByText('Free Place')).toBeTruthy();
     });
 
     // Null-price-range venue must NOT appear (never assume free).
-    expect(queryByTestId('venue-card-Null Price')).toBeNull();
+    expect(queryByText('Null Price')).toBeNull();
     // Paid venue must NOT appear.
-    expect(queryByTestId('venue-card-Paid Place')).toBeNull();
+    expect(queryByText('Paid Place')).toBeNull();
   });
 });
 
@@ -352,14 +351,14 @@ describe('Search screen — Rainy day chip', () => {
     });
     mockNearbyVenues = [softPlay];
 
-    const { getByTestId } = await renderSearch();
+    const { queryByText, getByTestId } = await renderSearch();
 
     await act(async () => {
       fireEvent.press(getByTestId('chip-☔ Rainy day ideas'));
     });
 
     await waitFor(() => {
-      expect(getByTestId('venue-card-Bouncy Castle')).toBeTruthy();
+      expect(queryByText('Bouncy Castle')).toBeTruthy();
     });
   });
 
@@ -370,14 +369,14 @@ describe('Search screen — Rainy day chip', () => {
     });
     mockNearbyVenues = [park];
 
-    const { getByTestId, queryByTestId } = await renderSearch();
+    const { queryByText, getByTestId } = await renderSearch();
 
     await act(async () => {
       fireEvent.press(getByTestId('chip-☔ Rainy day ideas'));
     });
 
     await waitFor(() => {
-      expect(queryByTestId('venue-card-Local Park')).toBeNull();
+      expect(queryByText('Local Park')).toBeNull();
     });
   });
 
@@ -388,14 +387,14 @@ describe('Search screen — Rainy day chip', () => {
     });
     mockNearbyVenues = [unknownCat];
 
-    const { getByTestId, queryByTestId } = await renderSearch();
+    const { queryByText, getByTestId } = await renderSearch();
 
     await act(async () => {
       fireEvent.press(getByTestId('chip-☔ Rainy day ideas'));
     });
 
     await waitFor(() => {
-      expect(queryByTestId('venue-card-Mystery Venue')).toBeNull();
+      expect(queryByText('Mystery Venue')).toBeNull();
     });
   });
 
@@ -406,14 +405,14 @@ describe('Search screen — Rainy day chip', () => {
     });
     mockNearbyVenues = [farm];
 
-    const { getByTestId, queryByTestId } = await renderSearch();
+    const { queryByText, getByTestId } = await renderSearch();
 
     await act(async () => {
       fireEvent.press(getByTestId('chip-☔ Rainy day ideas'));
     });
 
     await waitFor(() => {
-      expect(queryByTestId('venue-card-Farm World')).toBeNull();
+      expect(queryByText('Farm World')).toBeNull();
     });
   });
 });
@@ -555,5 +554,59 @@ describe('Search screen — Suggestion chips', () => {
       fireEvent.press(getByLabelText('Filter by Parks'));
     });
     expect(mockSetFilters).toHaveBeenCalledWith({ categoryIds: ['cat-park'] });
+  });
+});
+
+// =============================================================================
+// 11. Step 8 — v2 dark restyle: shared atmosphere + legacy background removal
+// =============================================================================
+
+// ── helper: find a testID anywhere in a rendered tree ───────────────────────
+// V2Background is intentionally hidden from the accessibility tree — walk
+// toJSON() directly (same helper as app/venue/__tests__/venueDetailBackground.test.tsx).
+type JsonNode = { props?: Record<string, unknown>; children?: JsonNode[] | null } | null;
+function containsTestID(node: JsonNode | JsonNode[], testID: string): boolean {
+  if (!node) return false;
+  if (Array.isArray(node)) return node.some((n) => containsTestID(n, testID));
+  if (node.props?.testID === testID) return true;
+  return containsTestID(node.children ?? null, testID);
+}
+
+describe('Search screen — shared v2 background', () => {
+  it('mounts <V2Background/>', async () => {
+    const utils = render(<SearchScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(utils.getByText('Search')).toBeTruthy());
+    expect(containsTestID(utils.toJSON(), 'v2-background')).toBe(true);
+  });
+});
+
+describe('Search screen — legacy background fully removed (source guard)', () => {
+  it('never imports the legacy <WeatherBackground/>', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../search.tsx'), 'utf8');
+    expect(src).not.toMatch(/WeatherBackground/);
+  });
+
+  it('imports and mounts <V2Background/>', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../search.tsx'), 'utf8');
+    expect(src).toMatch(/import\s*{\s*V2Background\s*}\s*from\s*'@\/components\/ui\/V2Background'/);
+    expect(src).toMatch(/<V2Background\s*\/>/);
+  });
+});
+
+describe('Search screen — consent gate unchanged', () => {
+  it('shows the location nudge (not the nearby list) when consent is not granted', async () => {
+    const { useLocationConsent } = jest.requireMock('@/hooks/useLocationConsent');
+    (useLocationConsent as jest.Mock).mockReturnValue({ status: 'undecided', grant: jest.fn(), decline: jest.fn() });
+    const { getByLabelText } = await renderSearch();
+    expect(getByLabelText('Turn on location to see venues near you')).toBeTruthy();
+  });
+
+  it('routes to the consent-on-intent Results flow when the nudge is pressed', async () => {
+    const { useLocationConsent } = jest.requireMock('@/hooks/useLocationConsent');
+    (useLocationConsent as jest.Mock).mockReturnValue({ status: 'undecided', grant: jest.fn(), decline: jest.fn() });
+    const { router } = jest.requireMock('expo-router');
+    const { getByLabelText } = await renderSearch();
+    fireEvent.press(getByLabelText('Turn on location to see venues near you'));
+    expect(router.push).toHaveBeenCalledWith('/explore/results?mood=auto');
   });
 });

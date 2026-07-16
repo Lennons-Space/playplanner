@@ -21,9 +21,10 @@
  *   6. "Good for today" — 22px sentence-case heading + 192px
  *      EditorialCollectionHero → routes to a REAL /discover collection,
  *      never a venue. Renders pre-consent (editorial, not venue data).
- *   7. Venue list — 22px heading + "Near you · updated just now" + boxed
- *      refresh; VenueCard2 rows (hearts wired to real favourites).
- *      This region ONLY is consent-gated.
+ *   7. Venue list — 22px heading + "Near you" + boxed refresh; VenueCard2
+ *      rows (hearts wired to real favourites). This region ONLY is
+ *      consent-gated. ("updated just now" was dropped — the list is not
+ *      actually refreshed on a timer, so the phrase was a false recency claim.)
  * ("Continue exploring" recently-viewed rail is P2 — deliberately deferred.)
  *
  * PRIVACY (ICO Children's Code, Standard 10 + UK GDPR data minimisation):
@@ -174,7 +175,7 @@ function HomeResults({ activeIntent, isRain, refreshSeed, onShuffle, onClearFilt
             {listLabel}
           </Text>
           <Text style={{ fontFamily: FontFamily.body, fontSize: 13, color: tokens.label3, marginTop: 3 }}>
-            Near you · updated just now
+            Near you
           </Text>
         </View>
         <Pressable

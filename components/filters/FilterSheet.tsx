@@ -57,9 +57,16 @@ import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
 import { useFilterStore } from '@/store/filterStore';
-import { Colors } from '@/constants/theme';
+import { Themes, ocean, FontFamily } from '@/constants/theme';
 import type { Category, Facility, PriceRange, VenueFilters } from '@/types';
 import { DEFAULT_FILTERS } from '@/types';
+
+// ─── v2 dark design tokens ────────────────────────────────────────────────────
+// VISUAL-ONLY restyle (Step 8): FilterSheet now opens as a modal over the v2
+// dark Search screen — a cream/light sheet would clash badly. Same tokens as
+// the other accepted v2 dark screens; zero logic/handler/query changes.
+const T = Themes.dark;
+const ACCENT = ocean.accent; // '#4C8DF6'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -140,9 +147,9 @@ const Chip = memo(function Chip({
   icon?: string;
   accentColor?: string;
 }) {
-  const bg = selected ? (accentColor ?? Colors.sky) : Colors.sandDark;
-  const textColor = selected ? Colors.white : Colors.charcoal;
-  const borderColor = selected ? 'transparent' : Colors.greyLighter;
+  const bg = selected ? (accentColor ?? ACCENT) : T.fill;
+  const textColor = selected ? '#FFFFFF' : T.label;
+  const borderColor = selected ? 'transparent' : T.separator;
 
   return (
     <TouchableOpacity
@@ -168,7 +175,7 @@ const Chip = memo(function Chip({
       {icon ? (
         <Text style={{ fontSize: 15 }}>{icon}</Text>
       ) : null}
-      <Text style={{ color: textColor, fontFamily: 'Nunito-Bold', fontSize: 13 }}>
+      <Text style={{ color: textColor, fontFamily: FontFamily.bodyStrong, fontSize: 13 }}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -211,7 +218,7 @@ const AgeStepper = memo(function AgeStepper({
 
   return (
     <View style={{ alignItems: 'center', flex: 1, gap: 6 }}>
-      <Text style={{ color: Colors.grey, fontFamily: 'Nunito-Medium', fontSize: 13 }}>
+      <Text style={{ color: T.label2, fontFamily: FontFamily.body, fontSize: 13 }}>
         {label}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -221,25 +228,25 @@ const AgeStepper = memo(function AgeStepper({
             width: 36,
             height: 36,
             borderRadius: 18,
-            backgroundColor: Colors.sandDark,
+            backgroundColor: T.fill,
             alignItems: 'center',
             justifyContent: 'center',
             borderWidth: 1.5,
-            borderColor: Colors.greyLighter,
+            borderColor: T.separator,
           }}
           accessibilityLabel={`Decrease ${label}`}
           accessibilityRole="button"
         >
-          <Text style={{ fontSize: 20, color: Colors.charcoal, lineHeight: 24 }}>−</Text>
+          <Text style={{ fontSize: 20, color: T.label, lineHeight: 24 }}>−</Text>
         </TouchableOpacity>
 
         <View style={{ minWidth: 40, alignItems: 'center' }}>
           {value === null ? (
-            <Text style={{ color: Colors.greyLight, fontFamily: 'Nunito-Medium', fontSize: 16 }}>
+            <Text style={{ color: T.label3, fontFamily: FontFamily.body, fontSize: 16 }}>
               Any
             </Text>
           ) : (
-            <Text style={{ color: Colors.charcoal, fontFamily: 'Nunito-Bold', fontSize: 18 }}>
+            <Text style={{ color: T.label, fontFamily: FontFamily.bodyStrong, fontSize: 18 }}>
               {value}
             </Text>
           )}
@@ -251,14 +258,14 @@ const AgeStepper = memo(function AgeStepper({
             width: 36,
             height: 36,
             borderRadius: 18,
-            backgroundColor: Colors.sky,
+            backgroundColor: ACCENT,
             alignItems: 'center',
             justifyContent: 'center',
           }}
           accessibilityLabel={`Increase ${label}`}
           accessibilityRole="button"
         >
-          <Text style={{ fontSize: 20, color: Colors.white, lineHeight: 24 }}>+</Text>
+          <Text style={{ fontSize: 20, color: '#FFFFFF', lineHeight: 24 }}>+</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -271,9 +278,9 @@ const SectionTitle = memo(function SectionTitle({ title }: { title: string }) {
   return (
     <Text
       style={{
-        fontFamily: 'Nunito-Bold',
+        fontFamily: FontFamily.bodyStrong,
         fontSize: 15,
-        color: Colors.charcoal,
+        color: T.label,
         marginBottom: 10,
         marginTop: 20,
       }}
@@ -305,7 +312,7 @@ const CategoryChip = memo(function CategoryChip({ cat, selected, onToggle }: Cat
       icon={cat.icon}
       selected={selected}
       onPress={handlePress}
-      accentColor={cat.color ?? Colors.sky}
+      accentColor={cat.color ?? ACCENT}
     />
   );
 });
@@ -564,7 +571,7 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
           <Animated.View
             style={{
               height: sheetHeight,
-              backgroundColor: Colors.sand,
+              backgroundColor: T.surface2,
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
               overflow: 'hidden',
@@ -590,7 +597,7 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                   width: 40,
                   height: 4,
                   borderRadius: 999,
-                  backgroundColor: Colors.greyLight,
+                  backgroundColor: T.separator,
                 }}
               />
             </View>
@@ -608,9 +615,9 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
               {/* Header */}
               <Text
                 style={{
-                  fontFamily: 'Nunito-ExtraBold',
+                  fontFamily: FontFamily.display,
                   fontSize: 20,
-                  color: Colors.charcoal,
+                  color: T.label,
                   marginTop: 4,
                   marginBottom: 2,
                 }}
@@ -622,11 +629,11 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
               <SectionTitle title="Category" />
 
               {catsLoading && (
-                <ActivityIndicator size="small" color={Colors.sky} />
+                <ActivityIndicator size="small" color={ACCENT} />
               )}
 
               {catsError && (
-                <Text style={{ color: Colors.error, fontFamily: 'Nunito-Regular', fontSize: 13 }}>
+                <Text style={{ color: '#FF6B6B', fontFamily: FontFamily.body, fontSize: 13 }}>
                   Could not load categories. Try closing and reopening filters.
                 </Text>
               )}
@@ -667,8 +674,8 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
               <SectionTitle title="Age range" />
               <Text
                 style={{
-                  color: Colors.grey,
-                  fontFamily: 'Nunito-Regular',
+                  color: T.label2,
+                  fontFamily: FontFamily.body,
                   fontSize: 12,
                   marginBottom: 10,
                 }}
@@ -716,22 +723,22 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  backgroundColor: Colors.sandDark,
+                  backgroundColor: T.fill,
                   borderRadius: 14,
                   paddingHorizontal: 16,
                   paddingVertical: 14,
                 }}
               >
-                <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 15, color: Colors.charcoal }}>
+                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: T.label }}>
                   Open now
                 </Text>
                 <Switch
                   value={draft.openNow}
                   onValueChange={setOpenNow}
-                  // Use coral as the "on" track colour to match the app palette.
-                  trackColor={{ false: Colors.greyLighter, true: Colors.skyLight }}
-                  thumbColor={draft.openNow ? Colors.sky : Colors.white}
-                  ios_backgroundColor={Colors.greyLighter}
+                  // Ocean accent as the "on" track colour, matching the v2 palette.
+                  trackColor={{ false: T.separator, true: ocean.tagText }}
+                  thumbColor={draft.openNow ? ACCENT : '#FFFFFF'}
+                  ios_backgroundColor={T.separator}
                   accessibilityLabel="Show only venues open right now"
                   accessibilityRole="switch"
                 />
@@ -739,7 +746,7 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
 
               {/* ── 6. Facilities ──────────────────────────────────────── */}
               <SectionTitle title="Facilities" />
-              {facilitiesLoading && <ActivityIndicator size="small" color={Colors.sky} />}
+              {facilitiesLoading && <ActivityIndicator size="small" color={ACCENT} />}
               {!facilitiesLoading && facilities.length > 0 && (
                 <ScrollView
                   horizontal
@@ -764,26 +771,26 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  backgroundColor: Colors.sandDark,
+                  backgroundColor: T.fill,
                   borderRadius: 14,
                   paddingHorizontal: 16,
                   paddingVertical: 14,
                 }}
               >
                 <View>
-                  <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 15, color: Colors.charcoal }}>
+                  <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: T.label }}>
                     Featured venues only
                   </Text>
-                  <Text style={{ fontFamily: 'Nunito-Regular', fontSize: 12, color: Colors.grey, marginTop: 2 }}>
+                  <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: T.label2, marginTop: 2 }}>
                     Top-rated and verified by our team
                   </Text>
                 </View>
                 <Switch
                   value={draft.premiumOnly}
                   onValueChange={setPremiumOnly}
-                  trackColor={{ false: Colors.greyLighter, true: Colors.skyLight }}
-                  thumbColor={draft.premiumOnly ? Colors.sky : Colors.white}
-                  ios_backgroundColor={Colors.greyLighter}
+                  trackColor={{ false: T.separator, true: ocean.tagText }}
+                  thumbColor={draft.premiumOnly ? ACCENT : '#FFFFFF'}
+                  ios_backgroundColor={T.separator}
                   accessibilityLabel="Show only featured venues"
                   accessibilityRole="switch"
                 />
@@ -805,9 +812,9 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                 paddingHorizontal: 20,
                 paddingVertical: 16,
                 paddingBottom: 28, // extra room for home-bar devices
-                backgroundColor: Colors.sand,
+                backgroundColor: T.surface2,
                 borderTopWidth: 1,
-                borderTopColor: Colors.greyLighter,
+                borderTopColor: T.separator,
               }}
             >
               <TouchableOpacity
@@ -817,14 +824,14 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                   paddingVertical: 14,
                   borderRadius: 999,
                   alignItems: 'center',
-                  backgroundColor: Colors.sandDark,
+                  backgroundColor: T.fill,
                   borderWidth: 1.5,
-                  borderColor: Colors.greyLighter,
+                  borderColor: T.separator,
                 }}
                 accessibilityLabel="Reset all filters"
                 accessibilityRole="button"
               >
-                <Text style={{ fontFamily: 'Nunito-Bold', fontSize: 15, color: Colors.grey }}>
+                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 15, color: T.label2 }}>
                   Reset
                 </Text>
               </TouchableOpacity>
@@ -836,12 +843,12 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                   paddingVertical: 14,
                   borderRadius: 999,
                   alignItems: 'center',
-                  backgroundColor: Colors.sky,
+                  backgroundColor: ACCENT,
                 }}
                 accessibilityLabel="Apply filters"
                 accessibilityRole="button"
               >
-                <Text style={{ fontFamily: 'Nunito-ExtraBold', fontSize: 15, color: Colors.white }}>
+                <Text style={{ fontFamily: FontFamily.display, fontSize: 15, color: '#FFFFFF' }}>
                   Apply filters
                 </Text>
               </TouchableOpacity>

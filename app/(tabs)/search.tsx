@@ -39,6 +39,16 @@
  * - Rainy day filter only passes venues where isRainyDaySuitable === true (known
  *   indoor category). null category → excluded.
  * - Category chips use DB IDs from useCategories() — never hard-coded.
+ *
+ * VISUAL (Step 8, v2 dark restyle): this screen now mounts its own
+ * <V2Background/> (per-screen atmosphere pattern) instead of relying on the
+ * previous shared tab-layout ambient background (now removed entirely).
+ * Behaviour, data flow, and consent semantics are byte-preserved; only the
+ * skin changed. ScreenTitle, IconBtn and Chip from components/ui hard-code
+ * the legacy light `Colors` export, so this screen uses small local dark
+ * equivalents instead (matching the pattern already used by
+ * app/explore/map.tsx's DarkChip/GlassBtn) rather than modifying those
+ * shared components other (still-light) screens rely on.
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -54,19 +64,28 @@ import {
 } from 'react-native';
 import { useEffect } from 'react';
 import { router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { StatusBar } from 'expo-status-bar';
 
 import { useVenueSearch, useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { useLocation } from '@/hooks/location';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
+import { useSavedVenueIds, useToggleFavourite } from '@/hooks/useFavourites';
 import { useFilterStore } from '@/store/filterStore';
 import { useMapStore } from '@/store/mapStore';
 import FilterSheet from '@/components/filters/FilterSheet';
-import { VenueCard, Icon, Chip, ScreenTitle, IconBtn } from '@/components/ui';
-import { Colors, FontFamily } from '@/constants/theme';
+import { Icon } from '@/components/ui';
+import { V2Background } from '@/components/ui/V2Background';
+import { VenueCard2 } from '@/components/home/VenueCard2';
+import { Themes, ocean, FontFamily } from '@/constants/theme';
 import { MAX_SEARCH_RADIUS_KM } from '@/constants/location';
 import { getVenueAttributes } from '@/lib/venueAttributes';
 import type { Venue, VenueFilters, PriceRange, Coordinates } from '@/types';
+
+// ─── v2 dark design tokens ───────────────────────────────────────────
+const T = Themes.dark;
+const ACCENT = ocean.accent; // '#4C8DF6'
 
 // Matches full UK postcodes (SW1A 1AA) and outward-only districts (SW1A, M1, B1).
 const UK_POSTCODE_RE = /^[A-Z]{1,2}[0-9][A-Z0-9]?(\s*[0-9][A-Z]{2})?$/i;
@@ -191,6 +210,106 @@ function getEmptyStateContent(
   };
 }
 
+// ─── DarkScreenTitle ──────────────────────────────────────────────────────────
+// Local dark equivalent of components/ui/ScreenTitle (which hard-codes the
+// legacy light `Colors` export). Same layout/role, v2 dark tokens.
+function DarkScreenTitle({ title, trailing }: { title: string; trailing?: React.ReactNode }) {
+  return (
+    <View
+      style={{
+        paddingHorizontal: 20,
+        paddingTop: 6,
+        paddingBottom: 12,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-end',
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            fontFamily: FontFamily.display,
+            fontSize: 30,
+            color: T.label,
+            letterSpacing: -0.8,
+            lineHeight: 32,
+          }}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+        >
+          {title}
+        </Text>
+      </View>
+      {trailing ? <View style={{ marginLeft: 12 }}>{trailing}</View> : null}
+    </View>
+  );
+}
+
+// ─── DarkIconBtn ──────────────────────────────────────────────────────────────
+// Local dark equivalent of components/ui/IconBtn — static style object +
+// android_ripple (NativeWind interop drops Pressable style-as-function props
+// on device, same reasoning as Home/Map).
+function DarkIconBtn({
+  children,
+  onPress,
+  accessibilityLabel,
+}: {
+  children: React.ReactNode;
+  onPress: () => void;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      android_ripple={{ color: 'rgba(255,255,255,0.14)', foreground: true }}
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: T.surface,
+        borderWidth: 1,
+        borderColor: T.separator,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+// ─── SearchChip ───────────────────────────────────────────────────────────────
+// Local dark equivalent of components/ui/Chip (also hard-codes legacy
+// `Colors`). Keeps the same testID/accessibilityLabel/accessibilityState shape
+// so existing chip-press tests keep working unchanged.
+function SearchChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+      testID={`chip-${label}`}
+      android_ripple={{ color: 'rgba(255,255,255,0.14)' }}
+      style={{
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 999,
+        backgroundColor: active ? ACCENT : T.surface,
+        borderWidth: active ? 0 : 1,
+        borderColor: active ? 'transparent' : T.separator,
+      }}
+    >
+      <Text style={{ fontFamily: FontFamily.caption, fontSize: 13, color: active ? '#FFFFFF' : T.label2 }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 // ─── SearchNearbyResults ──────────────────────────────────────────────────────
 // This child component is the ONLY place in the Search tab that calls
 // useLocation(). It must NEVER be mounted unless location consent has already
@@ -210,6 +329,9 @@ interface SearchNearbyResultsProps {
   emptyStateContent:  EmptyStateContent;
   onVenuePress:       (id: string) => void;
   onResetFilters:     () => void;
+  /** Real favourites — savedIds/onToggleSave mirror Home's usage exactly. */
+  savedIds:           Set<string>;
+  onToggleSave:       (venueId: string) => void;
 }
 
 function SearchNearbyResults({
@@ -219,6 +341,8 @@ function SearchNearbyResults({
   emptyStateContent,
   onVenuePress,
   onResetFilters,
+  savedIds,
+  onToggleSave,
 }: SearchNearbyResultsProps) {
   // Safe to call here: this component is only mounted when consent is granted.
   const { coords: rawCoords, isLoading: locLoading } = useLocation();
@@ -245,28 +369,26 @@ function SearchNearbyResults({
     ? applyRainyDayFilter(recentVenues as Venue[])
     : recentVenues as Venue[];
 
-  const isLoading = recentLoading || locLoading;
-
   return (
     <>
       {/* Nearby venues list (idle state, location granted) */}
       {(locLoading || recentLoading) ? (
         <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-          <ActivityIndicator color={Colors.accent} size="large" />
+          <ActivityIndicator color={ACCENT} size="large" />
         </View>
       ) : displayedVenues.length === 0 ? (
         <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
           {hasActiveFilters ? (
             <>
-              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: Colors.label, textAlign: 'center', marginBottom: 6 }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: T.label, textAlign: 'center', marginBottom: 6 }}>
                 {emptyStateContent.title}
               </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3, textAlign: 'center', marginBottom: 16 }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3, textAlign: 'center', marginBottom: 16 }}>
                 {emptyStateContent.subtitle}
               </Text>
               <TouchableOpacity
                 onPress={onResetFilters}
-                style={{ backgroundColor: Colors.accent, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
+                style={{ backgroundColor: ACCENT, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
                 accessibilityRole="button"
                 accessibilityLabel="Clear all filters"
               >
@@ -275,10 +397,10 @@ function SearchNearbyResults({
             </>
           ) : (
             <>
-              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: Colors.label, textAlign: 'center', marginBottom: 8 }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: T.label, textAlign: 'center', marginBottom: 8 }}>
                 No venues nearby
               </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3, textAlign: 'center' }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3, textAlign: 'center' }}>
                 Check back soon — new venues are added regularly.
               </Text>
             </>
@@ -287,10 +409,11 @@ function SearchNearbyResults({
       ) : (
         <View style={{ paddingHorizontal: 20, gap: 12, paddingTop: 4 }}>
           {displayedVenues.map((item) => (
-            <VenueCard
+            <VenueCard2
               key={item.id}
               venue={item}
-              saved={false}
+              saved={savedIds.has(item.id)}
+              onToggleSave={() => onToggleSave(item.id)}
               onPress={() => onVenuePress(item.id)}
             />
           ))}
@@ -319,6 +442,22 @@ export default function SearchScreen() {
 
   // useCategories is cached for 24h — very cheap to call here.
   const { data: dbCategories = [] } = useCategories();
+
+  // Real favourites — same hooks Home uses (no fake state). Safe to call
+  // unconditionally: neither hook touches location or requires consent.
+  const { savedIds } = useSavedVenueIds();
+  const toggleFav = useToggleFavourite();
+  const handleToggleSave = useCallback(
+    (venueId: string) => toggleFav.mutate({ venueId, currentlySaved: savedIds.has(venueId) }),
+    [toggleFav, savedIds],
+  );
+
+  // ── Tab-safe zone ───────────────────────────────────────────────────────
+  // Same pattern as Home/(tabs)/index.tsx: the scroll viewport itself ends
+  // above the absolute tab bar so content can never sit or pass beneath it.
+  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  const tabSafeZone = Math.max(tabBarHeight, 52 + insets.bottom);
 
   // ── Location consent — privacy gate ────────────────────────────────────────
   // useLocationConsent reads only SecureStore. It NEVER triggers the OS location
@@ -491,8 +630,8 @@ export default function SearchScreen() {
     router.push(`/venue/${id}`);
   }, []);
 
-  // ── Search input border ────────────────────────────────────────────────────
-  const searchBorderColor = inputFocused || query.length > 0 ? Colors.label : Colors.separator;
+  // ── Search bar focus ring ───────────────────────────────────────────────────
+  const searchBorderColor = inputFocused || query.length > 0 ? ACCENT : T.separator;
 
   // ── Filter feedback ────────────────────────────────────────────────────────
   const filterLabel = hasActiveFilters
@@ -508,19 +647,20 @@ export default function SearchScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Weather background now lives once, globally, in app/(tabs)/_layout. */}
+      <V2Background />
+      <StatusBar style="light" />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <ScreenTitle
+      <DarkScreenTitle
         title="Search"
         trailing={
-          <IconBtn
+          <DarkIconBtn
             onPress={handleFiltersPress}
             accessibilityLabel={`Filters${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
           >
-            <Icon name="sliders" size={18} color={Colors.label} />
-          </IconBtn>
+            <Icon name="sliders" size={18} color={T.label} />
+          </DarkIconBtn>
         }
       />
 
@@ -530,26 +670,26 @@ export default function SearchScreen() {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            backgroundColor: Colors.surface,
-            borderRadius: 9999,
-            borderWidth: 1.5,
+            backgroundColor: T.surface,
+            borderRadius: 18,
+            borderWidth: 1,
             borderColor: searchBorderColor,
-            paddingHorizontal: 16,
-            paddingVertical: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 13,
             gap: 10,
           }}
         >
-          <Icon name="search" size={18} color={Colors.label3} />
+          <Icon name="search" size={18} color={T.label3} />
           <TextInput
             style={{
               flex: 1,
               fontFamily: FontFamily.bodyStrong,
-              fontSize: 14,
-              color: Colors.label,
+              fontSize: 15.5,
+              color: T.label,
               padding: 0,
             }}
             placeholder="Search venues, postcodes, tags…"
-            placeholderTextColor={Colors.label3}
+            placeholderTextColor={T.label3}
             value={query}
             onChangeText={setQuery}
             onFocus={() => setInputFocused(true)}
@@ -565,8 +705,16 @@ export default function SearchScreen() {
               hitSlop={8}
               accessibilityLabel="Clear search"
               accessibilityRole="button"
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                backgroundColor: T.fill,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <Icon name="close" size={16} color={Colors.label3} />
+              <Icon name="close" size={10} color={T.label3} />
             </Pressable>
           )}
         </View>
@@ -579,10 +727,10 @@ export default function SearchScreen() {
               flexDirection: 'row',
               alignItems: 'center',
               gap: 10,
-              backgroundColor: Colors.accentLight,
+              backgroundColor: ocean.light,
               borderRadius: 14,
               borderWidth: 1,
-              borderColor: Colors.separator,
+              borderColor: T.separator,
               paddingHorizontal: 14,
               paddingVertical: 11,
               marginTop: 10,
@@ -590,16 +738,16 @@ export default function SearchScreen() {
             accessibilityRole="button"
             accessibilityLabel={`Explore venues near postcode ${query}`}
           >
-            <Icon name="map" size={18} color={Colors.accent} />
+            <Icon name="map" size={18} color={ACCENT} />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: Colors.label }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: T.label }}>
                 Explore venues near {query.trim().toUpperCase()}
               </Text>
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: T.label3 }}>
                 Open map and zoom to this area
               </Text>
             </View>
-            <Icon name="chevR" size={16} color={Colors.accent} />
+            <Icon name="chevR" size={16} color={ACCENT} />
           </TouchableOpacity>
         )}
       </View>
@@ -612,20 +760,21 @@ export default function SearchScreen() {
           contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingBottom: 16 }}
         >
           {QUICK_FILTERS.map((f) => (
-            <Chip
+            <SearchChip
               key={f.id}
+              label={f.label}
               active={isChipActive(f.id)}
-              color={Colors.accent}
               onPress={() => handleChipPress(f.id)}
-            >
-              {f.label}
-            </Chip>
+            />
           ))}
-          {/* Clear button — visible in the chip row whenever filters are active */}
+          {/* Clear button — visible in the chip row whenever filters are active.
+              Neutral dark treatment (matches Home's intent-rail Clear pill) —
+              no coral border/fill. */}
           {hasActiveFilters && (
             <Pressable
               onPress={() => { resetFilters(); setIsRainyDay(false); }}
               hitSlop={8}
+              android_ripple={{ color: 'rgba(255,255,255,0.10)', foreground: true }}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -634,14 +783,15 @@ export default function SearchScreen() {
                 paddingVertical: 6,
                 borderRadius: 9999,
                 borderWidth: 1,
-                borderColor: '#FF6B6B',
-                backgroundColor: '#FFF0F0',
+                borderColor: T.separator,
+                backgroundColor: T.surface,
+                overflow: 'hidden',
               }}
               accessibilityRole="button"
               accessibilityLabel="Remove active filters"
             >
-              <Icon name="close" size={12} color={Colors.coral} />
-              <Text style={{ fontFamily: FontFamily.caption, fontSize: 13, color: Colors.coral }}>
+              <Icon name="close" size={12} color={T.label3} />
+              <Text style={{ fontFamily: FontFamily.caption, fontSize: 13, color: T.label3 }}>
                 Clear
               </Text>
             </Pressable>
@@ -652,7 +802,7 @@ export default function SearchScreen() {
       {/* ── Filter feedback label ─────────────────────────────────── */}
       {filterLabel != null && (
         <View style={{ paddingHorizontal: 20, paddingBottom: 8 }}>
-          <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: Colors.accent }}>
+          <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 12, color: ACCENT }}>
             {filterLabel}
           </Text>
         </View>
@@ -662,6 +812,7 @@ export default function SearchScreen() {
       {!isSearchActive && (
         <ScrollView
           showsVerticalScrollIndicator={false}
+          style={{ marginBottom: tabSafeZone }}
           contentContainerStyle={{ paddingBottom: 24 }}
         >
           {/* Onboarding hint — session-only, dismissible by tap */}
@@ -674,10 +825,10 @@ export default function SearchScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 10,
-                backgroundColor: Colors.accentLight,
+                backgroundColor: T.surface,
                 borderRadius: 12,
                 borderWidth: 1,
-                borderColor: Colors.separator,
+                borderColor: T.separator,
                 paddingHorizontal: 14,
                 paddingVertical: 11,
               }}
@@ -685,10 +836,10 @@ export default function SearchScreen() {
               accessibilityLabel="Dismiss tip"
             >
               <Text style={{ fontSize: 18 }}>💡</Text>
-              <Text style={{ flex: 1, fontFamily: FontFamily.bodyStrong, fontSize: 13, color: Colors.accent, lineHeight: 18 }}>
+              <Text style={{ flex: 1, fontFamily: FontFamily.bodyStrong, fontSize: 13, color: T.label3, lineHeight: 18 }}>
                 Use filters to find free places, indoor activities, and more.
               </Text>
-              <Icon name="close" size={14} color={Colors.label3} />
+              <Icon name="close" size={14} color={T.label3} />
             </Pressable>
           )}
 
@@ -698,7 +849,7 @@ export default function SearchScreen() {
               style={{
                 fontFamily: FontFamily.heading,
                 fontSize: 14,
-                color: Colors.label,
+                color: T.label,
                 marginBottom: 8,
               }}
             >
@@ -710,9 +861,9 @@ export default function SearchScreen() {
                   key={s.label}
                   onPress={s.action}
                   style={{
-                    backgroundColor: Colors.accentLight,
+                    backgroundColor: T.surface,
                     borderWidth: 1,
-                    borderColor: Colors.separator,
+                    borderColor: T.separator,
                     borderRadius: 9999,
                     paddingHorizontal: 14,
                     paddingVertical: 9,
@@ -724,7 +875,7 @@ export default function SearchScreen() {
                     style={{
                       fontFamily: FontFamily.bodyStrong,
                       fontSize: 13,
-                      color: Colors.accent,
+                      color: T.label2,
                     }}
                   >
                     {s.label}
@@ -751,11 +902,11 @@ export default function SearchScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ fontFamily: FontFamily.heading, fontSize: 14, color: Colors.label }}>
+                <Text style={{ fontFamily: FontFamily.heading, fontSize: 14, color: T.label }}>
                   Nearby venues
                 </Text>
                 {consentGranted && (
-                  <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
+                  <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: T.label3 }}>
                     Sort: Nearest
                   </Text>
                 )}
@@ -776,10 +927,10 @@ export default function SearchScreen() {
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 14,
-                    backgroundColor: Colors.accentLight,
+                    backgroundColor: T.surface,
                     borderRadius: 16,
                     borderWidth: 1,
-                    borderColor: Colors.separator,
+                    borderColor: T.separator,
                     padding: 16,
                   }}
                   accessibilityRole="button"
@@ -790,22 +941,22 @@ export default function SearchScreen() {
                       width: 44,
                       height: 44,
                       borderRadius: 14,
-                      backgroundColor: Colors.accentLight,
+                      backgroundColor: ocean.light,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Icon name="locate" size={20} color={Colors.accent} />
+                    <Icon name="locate" size={20} color={ACCENT} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: FontFamily.heading, fontSize: 14, color: Colors.label }}>
+                    <Text style={{ fontFamily: FontFamily.heading, fontSize: 14, color: T.label }}>
                       See venues near you
                     </Text>
-                    <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3, marginTop: 2 }}>
+                    <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: T.label3, marginTop: 2 }}>
                       Turn on location for local results.
                     </Text>
                   </View>
-                  <Icon name="chevR" size={16} color={Colors.label3} />
+                  <Icon name="chevR" size={16} color={T.label3} />
                 </Pressable>
               )}
 
@@ -820,6 +971,8 @@ export default function SearchScreen() {
                   emptyStateContent={emptyStateContent}
                   onVenuePress={handleVenuePress}
                   onResetFilters={() => { resetFilters(); setIsRainyDay(false); }}
+                  savedIds={savedIds}
+                  onToggleSave={handleToggleSave}
                 />
               )}
             </>
@@ -829,7 +982,7 @@ export default function SearchScreen() {
 
       {/* ── Search active state ──────────────────────────────────── */}
       {isSearchActive && (
-        <>
+        <View style={{ flex: 1, marginBottom: tabSafeZone }}>
           {/* Results header */}
           <View
             style={{
@@ -841,17 +994,17 @@ export default function SearchScreen() {
               alignItems: 'center',
             }}
           >
-            <Text style={{ fontFamily: FontFamily.heading, fontSize: 14, color: Colors.label }}>
+            <Text style={{ fontFamily: FontFamily.heading, fontSize: 14, color: T.label }}>
               {displayedSearchCount} result{displayedSearchCount !== 1 ? 's' : ''}
             </Text>
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: Colors.label3 }}>
+            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: T.label3 }}>
               Sort: Nearest
             </Text>
           </View>
 
           {searchLoading ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator color={Colors.accent} size="large" />
+              <ActivityIndicator color={ACCENT} size="large" />
             </View>
           ) : (
             <FlatList
@@ -859,20 +1012,23 @@ export default function SearchScreen() {
               keyExtractor={(item) => item.id}
               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24, gap: 12 }}
               removeClippedSubviews
-              getItemLayout={(_data, index) => ({ length: 86, offset: 86 * index + 12 * index, index })}
+              // No getItemLayout: VenueCard2's row height is not a fixed,
+              // knowable constant (text can wrap taller under large
+              // accessibility font scales) — a wrong hard-coded height causes
+              // blank scroll gaps, so we let FlatList measure naturally.
               ListEmptyComponent={
                 <View style={{ alignItems: 'center', paddingTop: 80, paddingHorizontal: 20 }}>
                   {hasActiveFilters ? (
                     <>
-                      <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: Colors.label, textAlign: 'center', marginBottom: 6 }}>
+                      <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: T.label, textAlign: 'center', marginBottom: 6 }}>
                         {emptyStateContent.title}
                       </Text>
-                      <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3, textAlign: 'center', marginBottom: 16 }}>
+                      <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3, textAlign: 'center', marginBottom: 16 }}>
                         {emptyStateContent.subtitle}
                       </Text>
                       <TouchableOpacity
                         onPress={() => { resetFilters(); setIsRainyDay(false); }}
-                        style={{ backgroundColor: Colors.accent, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
+                        style={{ backgroundColor: ACCENT, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
                         accessibilityRole="button"
                         accessibilityLabel="Clear all filters"
                       >
@@ -881,10 +1037,10 @@ export default function SearchScreen() {
                     </>
                   ) : (
                     <>
-                      <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: Colors.label, textAlign: 'center', marginBottom: 8 }}>
+                      <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: T.label, textAlign: 'center', marginBottom: 8 }}>
                         No venues found for "{debouncedQuery}"
                       </Text>
-                      <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: Colors.label3, textAlign: 'center' }}>
+                      <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3, textAlign: 'center' }}>
                         Try different words, a postcode, or check the spelling.
                       </Text>
                     </>
@@ -892,15 +1048,16 @@ export default function SearchScreen() {
                 </View>
               }
               renderItem={({ item }: { item: Venue }) => (
-                <VenueCard
+                <VenueCard2
                   venue={item}
-                  saved={false}
+                  saved={savedIds.has(item.id)}
+                  onToggleSave={() => handleToggleSave(item.id)}
                   onPress={() => handleVenuePress(item.id)}
                 />
               )}
             />
           )}
-        </>
+        </View>
       )}
 
       {/* FilterSheet modal */}

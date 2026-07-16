@@ -19,23 +19,17 @@
 // the bar only) — Search is reachable from Home's search bar, Discover from
 // the Saved-tab empty state and other in-app links.
 //
-// WHY the shared <WeatherBackground /> keeps its default ('ambient', no
-// paletteMode): flipping it to the cinematic 'immersive'/'dark' palette (as a
-// previous, reverted iteration did) would change the backdrop behind EVERY
-// tab, including Search / Favourites / Profile — three screens that are still
-// light-only in this pass (they read the legacy `Colors` export directly, not
-// `useAppTheme()`), and whose text would lose contrast against a dark wash.
-// Home instead paints its own opaque `tokens.bg` background (see
-// app/(tabs)/index.tsx), so it can be fully dark without requiring those three
-// screens to be redone in the same pass. The tab bar itself is independent of
-// the shared weather layer either way — its own BlurView + rgba fill is what
-// makes it dark glass.
+// STEP 8 (v2 dark restyle, 2026-07-16): the previous shared ambient weather
+// layer has been REMOVED from this file entirely. Every tab screen now mounts
+// its own <V2Background/> (Home, Map, Saved, Profile, and now Search) — the
+// per-screen atmosphere pattern documented on components/ui/V2Background.
+// There is no shared background left for this layout to own; each screen's
+// own atmosphere continues underneath the (still shared) glass tab bar below.
 //
-// WHY the global <StatusBar> stays "dark": it protects the 3 still-light
-// screens' dark text/icons. Home (the only dark screen in this pass) mounts
-// its own local <StatusBar style="light" /> — expo-status-bar stacks mounted
-// instances, so Home's override wins while it's focused and reverts to this
-// shared "dark" default on any other tab.
+// WHY the global <StatusBar> stays "dark": it is a harmless default — every
+// tab screen mounts its own local <StatusBar style="light"/> that wins while
+// it is focused (expo-status-bar stacks mounted instances) and reverts to
+// this shared "dark" default only if a future tab is added without one.
 // ─────────────────────────────────────────────────────────────────────────
 
 import { Platform, StyleSheet, Text, View } from 'react-native';
@@ -46,7 +40,6 @@ import { useAuthStore } from '@/store/authStore';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WeatherBackground } from '@/components/weather/WeatherBackground';
 
 // Content height (icon + label) before safe-area/cushion padding is added.
 // 46 (was 50, 2026-07-09 round 3): the bar read as a heavy block over Home's
@@ -124,15 +117,14 @@ export default function TabsLayout() {
   return (
     <View style={{ flex: 1 }}>
       <StatusBar style="dark" />
-      <WeatherBackground />
       <Tabs
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: accent.accent,
           tabBarInactiveTintColor: INACTIVE_TINT,
-          // Let each screen's own background show through (Home paints its
-          // own opaque dark bg; the 3 legacy screens rely on the shared
-          // ambient weather layer, unchanged).
+          // Let each screen's own <V2Background/> show through — every tab
+          // screen (Home, Map, Saved, Profile, Search) now mounts its own,
+          // so this stays transparent for all of them.
           sceneStyle: { backgroundColor: 'transparent' },
           tabBarBackground: TabBarBackground,
           tabBarStyle: {
