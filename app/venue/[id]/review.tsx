@@ -17,6 +17,19 @@
  * Duplicate review gate: the DB has a unique constraint (user_id, venue_id)
  * so a second insert would fail with a 23505 error anyway. We check upfront
  * with useMyReview to give a better UX than waiting for a DB error.
+ *
+ * v2 dark restyle (Step 9, feat/exact-v2-design): VISUAL LAYER ONLY. Every
+ * gate condition, wording, navigation target and the ownership/duplicate
+ * checks above are byte-identical to the pre-restyle version — only the
+ * JSX/styling changed. <V2Background/> is mounted per the frozen background
+ * architecture (see app/(tabs)/profile.tsx / venue/add.tsx) behind a
+ * transparent root in every gate state, dark tokens replace the old
+ * cream/teal/coral palette, and each gate gains the standard v2 back
+ * treatment (38px dark surface + hairline chevL, matching
+ * app/explore/results.tsx and the venue detail screen) as its one
+ * deliberate header — the loading spinner has none, matching the same
+ * transient-state convention used elsewhere (e.g. PlanVisitScreen's
+ * LoadingScreen).
  */
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -26,22 +39,37 @@ import { useMyReview } from '@/hooks/useReviews';
 import { useUser } from '@/hooks/useAuth';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { Icon } from '@/components/ui/Icon';
+import { V2Background } from '@/components/ui/V2Background';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
-const pp = {
-  ink:     '#1D2630',
-  inkSoft: '#4A5560',
-  mute:    '#7B8794',
-  sand:    '#FBF6EC',
-  paper:   '#FFFFFF',
-  sky:     '#2FB8B0',
-  skyWash: '#EEF9F8',
-  skyDeep: '#1B8A85',
-  coral:   '#FF6B6B',
-  line:    '#E6E2DB',
-  leaf:    '#5BC08A',
-  leafWash:'#EDFAF3',
-};
+const T = Themes.dark;
+const ACCENT = ocean;
+// Positive accent for the approved-review card — same green used for "open
+// now" state on venue detail / plan-visit.
+const OPEN_GREEN = '#34C77B';
+
+/**
+ * The one deliberate header for every gate state — a small back affordance
+ * in the standard v2 shape, matching app/explore/results.tsx and the venue
+ * detail screen. The loading spinner (no header) and the eligible ReviewForm
+ * (which supplies its own FlowHeader) do not use this.
+ */
+function GateHeader() {
+  return (
+    <View style={styles.gateHeaderRow}>
+      <TouchableOpacity
+        onPress={() => router.back()}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        style={styles.gateHeaderBack}
+      >
+        <Icon name="chevL" size={18} color={T.label} />
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 export default function WriteReviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -59,29 +87,35 @@ export default function WriteReviewScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={[styles.centred, { backgroundColor: pp.sand }]}>
-        <Icon name="shield" size={40} color={pp.mute} />
-        <Text style={styles.gateTitle}>Sign in to write a review</Text>
-        <Text style={styles.gateSub}>
-          You need to be signed in to share your experience with other parents.
-        </Text>
-        <TouchableOpacity
-          style={[styles.btn, { backgroundColor: pp.sky, marginBottom: 12 }]}
-          onPress={() => router.push('/(auth)/login')}
-          accessibilityRole="button"
-          accessibilityLabel="Sign in"
-        >
-          <Text style={styles.btnText}>Sign in</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.btnOutline]}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Text style={styles.btnOutlineText}>Go back</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      <View style={styles.outer}>
+        <V2Background />
+        <SafeAreaView style={styles.root} edges={['top']}>
+          <GateHeader />
+          <View style={styles.centred}>
+            <Icon name="shield" size={40} color={T.label3} />
+            <Text style={styles.gateTitle}>Sign in to write a review</Text>
+            <Text style={styles.gateSub}>
+              You need to be signed in to share your experience with other parents.
+            </Text>
+            <TouchableOpacity
+              style={[styles.btnPrimary, { marginBottom: 12 }]}
+              onPress={() => router.push('/(auth)/login')}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in"
+            >
+              <Text style={styles.btnPrimaryText}>Sign in</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.btnOutline}
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Text style={styles.btnOutlineText}>Go back</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -91,9 +125,14 @@ export default function WriteReviewScreen() {
 
   if (venueLoading || reviewLoading) {
     return (
-      <SafeAreaView style={[styles.centred, { backgroundColor: pp.sand }]}>
-        <ActivityIndicator color={pp.sky} size="large" />
-      </SafeAreaView>
+      <View style={styles.outer}>
+        <V2Background />
+        <SafeAreaView style={styles.root} edges={['top']}>
+          <View style={styles.centred}>
+            <ActivityIndicator color={ACCENT.accent} size="large" />
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -115,22 +154,28 @@ export default function WriteReviewScreen() {
 
   if (isOwnVenue) {
     return (
-      <SafeAreaView style={[styles.centred, { backgroundColor: pp.sand }]}>
-        <Icon name="shield" size={40} color={pp.mute} />
-        <Text style={styles.gateTitle}>Can't review your own venue</Text>
-        <Text style={styles.gateSub}>
-          As the listing owner, you're not able to write a review for this venue. This keeps
-          reviews trustworthy for families.
-        </Text>
-        <TouchableOpacity
-          style={[styles.btn, { backgroundColor: pp.coral }]}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Text style={styles.btnText}>Go back</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      <View style={styles.outer}>
+        <V2Background />
+        <SafeAreaView style={styles.root} edges={['top']}>
+          <GateHeader />
+          <View style={styles.centred}>
+            <Icon name="shield" size={40} color={T.label3} />
+            <Text style={styles.gateTitle}>Can't review your own venue</Text>
+            <Text style={styles.gateSub}>
+              As the listing owner, you're not able to write a review for this venue. This keeps
+              reviews trustworthy for families.
+            </Text>
+            <TouchableOpacity
+              style={styles.btnPrimary}
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Text style={styles.btnPrimaryText}>Go back</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -142,35 +187,41 @@ export default function WriteReviewScreen() {
     const isApproved = myReview.moderation_status === 'approved';
 
     return (
-      <SafeAreaView style={[styles.centred, { backgroundColor: pp.sand }]}>
-        <Icon name="info" size={40} color={isApproved ? pp.leaf : pp.mute} />
-        <Text style={styles.gateTitle}>You've already reviewed this venue</Text>
+      <View style={styles.outer}>
+        <V2Background />
+        <SafeAreaView style={styles.root} edges={['top']}>
+          <GateHeader />
+          <View style={styles.centred}>
+            <Icon name="info" size={40} color={isApproved ? OPEN_GREEN : T.label3} />
+            <Text style={styles.gateTitle}>You've already reviewed this venue</Text>
 
-        {isApproved ? (
-          // Green-tinted card for approved reviews — positive framing
-          <View style={styles.approvedCard}>
-            <Text style={styles.approvedCardText}>
-              Your review is live and helping other families.
-            </Text>
-            <Text style={[styles.approvedCardText, { marginTop: 4, color: pp.inkSoft }]}>
-              Visit your profile to edit or delete your existing review.
-            </Text>
+            {isApproved ? (
+              // Green-tinted card for approved reviews — positive framing
+              <View style={styles.approvedCard}>
+                <Text style={styles.approvedCardText}>
+                  Your review is live and helping other families.
+                </Text>
+                <Text style={[styles.approvedCardText, { marginTop: 4, color: T.label2 }]}>
+                  Visit your profile to edit or delete your existing review.
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.gateSub}>
+                Your review is waiting for moderation. It will appear here once approved.
+              </Text>
+            )}
+
+            <TouchableOpacity
+              style={[styles.btnPrimary, { marginTop: isApproved ? 24 : 0 }]}
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Text style={styles.btnPrimaryText}>Go back</Text>
+            </TouchableOpacity>
           </View>
-        ) : (
-          <Text style={styles.gateSub}>
-            Your review is waiting for moderation. It will appear here once approved.
-          </Text>
-        )}
-
-        <TouchableOpacity
-          style={[styles.btn, { backgroundColor: pp.coral, marginTop: isApproved ? 24 : 0 }]}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Text style={styles.btnText}>Go back</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -191,6 +242,30 @@ export default function WriteReviewScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  outer: {
+    flex: 1,
+    // Transparent so the shared <V2Background/> atmosphere shows through —
+    // matches Home / Venue Detail / Plan Visit. Cards/buttons stay opaque.
+    backgroundColor: 'transparent',
+  },
+  root: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  gateHeaderRow: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+  },
+  gateHeaderBack: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: T.surface,
+    borderWidth: 1,
+    borderColor: T.separator,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   centred: {
     flex: 1,
     alignItems: 'center',
@@ -198,62 +273,60 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   gateTitle: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.heading,
     fontSize: 18,
-    color: pp.ink,
+    color: T.label,
     textAlign: 'center',
     marginTop: 14,
-    marginBottom: 12,  // increased from 8 for better breathing room
+    marginBottom: 12,
   },
   gateSub: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 14,
-    color: pp.mute,
+    color: T.label3,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 24,
   },
-  btn: {
+  btnPrimary: {
     borderRadius: 24,
     paddingHorizontal: 32,
     paddingVertical: 14,
+    backgroundColor: ACCENT.accent,
   },
-  btnText: {
-    fontFamily: 'Nunito-Bold',
+  btnPrimaryText: {
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: pp.paper,
+    color: '#FFFFFF',
   },
   btnOutline: {
     borderRadius: 24,
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderWidth: 1.5,
-    borderColor: pp.line,
-    backgroundColor: pp.paper,
+    borderColor: T.separator,
+    backgroundColor: T.surface,
   },
   btnOutlineText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: pp.ink,
+    color: T.label,
   },
   // Approved review — green-tinted info card
   approvedCard: {
-    backgroundColor: pp.leafWash,
+    backgroundColor: 'rgba(52,199,123,0.12)',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: pp.leaf,
+    borderColor: OPEN_GREEN,
     padding: 14,
     marginBottom: 24,
     width: '100%',
   },
   approvedCardText: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
-    color: pp.leaf,
+    color: OPEN_GREEN,
     textAlign: 'center',
     lineHeight: 20,
-  },
-  inkSoft: {
-    color: pp.inkSoft,
   },
 });

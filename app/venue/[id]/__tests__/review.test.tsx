@@ -16,13 +16,16 @@
  */
 
 import React from 'react';
+import fs from 'fs';
+import path from 'path';
 import { ActivityIndicator } from 'react-native';
-import { render, screen } from '@testing-library/react-native';
+import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import WriteReviewScreen from '../review';
 import { useVenue } from '@/hooks/useVenues';
 import { useMyReview } from '@/hooks/useReviews';
 import { useUser } from '@/hooks/useAuth';
+import { router } from 'expo-router';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -61,9 +64,20 @@ jest.mock('@/components/reviews/ReviewForm', () => ({
 // SafeAreaView must render its children so the screen content is accessible.
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useSafeAreaInsets: () => ({ top: 44, bottom: 34, left: 0, right: 0 }),
 }));
 
-// react-native-svg — not available in Jest jsdom.
+// V2Background reads the same coarse, cached weather fetch Home already
+// makes — default it to "no data yet" (null) so the atmosphere resolves
+// deterministically without ever making a real network call (would
+// otherwise hang the test process — see
+// app/venue/__tests__/venueDetailBackground.test.tsx for the same pattern).
+jest.mock('@/hooks/useWeather', () => ({
+  useWeather: jest.fn(() => null),
+}));
+
+// react-native-svg — not available in Jest jsdom. Extended (Defs/RadialGradient/
+// Stop) beyond Icon.tsx's needs because <V2Background/> is now mounted here too.
 jest.mock('react-native-svg', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -76,8 +90,26 @@ jest.mock('react-native-svg', () => {
     Path: Noop,
     Circle: Noop,
     Rect: Noop,
+    Defs: Noop,
+    RadialGradient: Noop,
+    Stop: Noop,
   };
 });
+
+// ---------------------------------------------------------------------------
+// Helper: find a testID anywhere in a rendered tree — V2Background is
+// intentionally hidden from the accessibility tree (accessibilityElementsHidden
+// / importantForAccessibility), which also excludes it from testing-library's
+// default queries, so walk toJSON() directly (same pattern as
+// app/venue/__tests__/venueDetailBackground.test.tsx).
+// ---------------------------------------------------------------------------
+type JsonNode = { props?: Record<string, unknown>; children?: JsonNode[] | null } | null;
+function containsTestID(node: JsonNode | JsonNode[], testID: string): boolean {
+  if (!node) return false;
+  if (Array.isArray(node)) return node.some((n) => containsTestID(n, testID));
+  if (node.props?.testID === testID) return true;
+  return containsTestID(node.children ?? null, testID);
+}
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -155,6 +187,14 @@ describe('WriteReviewScreen — auth gate', () => {
     setup({ user: null });
     render(<WriteReviewScreen />);
     expect(screen.queryByText('Post review')).toBeNull();
+  });
+
+  // "Sign in" must route to the login screen, not silently no-op.
+  it('routes to /(auth)/login when "Sign in" is pressed', () => {
+    setup({ user: null });
+    render(<WriteReviewScreen />);
+    fireEvent.press(screen.getByText('Sign in'));
+    expect(router.push).toHaveBeenCalledWith('/(auth)/login');
   });
 });
 
@@ -273,5 +313,91 @@ describe('WriteReviewScreen — happy path', () => {
     setup();
     render(<WriteReviewScreen />);
     expect(screen.queryByText('Sign in to write a review')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v2 dark restyle — shared background (Step 9, feat/exact-v2-design)
+//
+// <V2Background/> must be mounted behind every gate state — the happy-path
+// eligible state is excluded here because ReviewForm is stubbed to null in
+// this file; its own <V2Background/> mount is covered by
+// components/reviews/__tests__/ReviewForm.test.tsx.
+// ---------------------------------------------------------------------------
+
+describe('WriteReviewScreen — shared v2 background mounted in every gate state', () => {
+  it('mounts <V2Background/> on the auth gate', () => {
+    setup({ user: null });
+    const tree = render(<WriteReviewScreen />).toJSON();
+    expect(containsTestID(tree, 'v2-background')).toBe(true);
+  });
+
+  it('mounts <V2Background/> on the loading state', () => {
+    setup({ venueLoading: true });
+    const tree = render(<WriteReviewScreen />).toJSON();
+    expect(containsTestID(tree, 'v2-background')).toBe(true);
+  });
+
+  it('mounts <V2Background/> on the own-venue gate', () => {
+    // Cast needed because `defaultVenue`'s inferred type pins claimed_by to
+    // the `null` literal — the same pre-existing pattern used by the "own
+    // venue gate" tests above (see e.g. line 234).
+    setup({ venue: { ...defaultVenue, claimed_by: 'user-abc', submitted_by: null } as unknown as typeof defaultVenue });
+    const tree = render(<WriteReviewScreen />).toJSON();
+    expect(containsTestID(tree, 'v2-background')).toBe(true);
+  });
+
+  it('mounts <V2Background/> on the duplicate-review gate (approved variant)', () => {
+    setup({ myReview: { moderation_status: 'approved' } });
+    const tree = render(<WriteReviewScreen />).toJSON();
+    expect(containsTestID(tree, 'v2-background')).toBe(true);
+  });
+
+  it('mounts <V2Background/> on the duplicate-review gate (pending variant)', () => {
+    setup({ myReview: { moderation_status: 'pending' } });
+    const tree = render(<WriteReviewScreen />).toJSON();
+    expect(containsTestID(tree, 'v2-background')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v2 dark restyle — source guards
+//
+// Regex checks against the raw source guard against regressions that unit
+// tests alone wouldn't catch: a banned legacy colour literal slipping back
+// in, or a direct weather/atmosphere call bypassing <V2Background/>.
+// ---------------------------------------------------------------------------
+
+describe('WriteReviewScreen — v2 palette + background source guards', () => {
+  const src = fs.readFileSync(path.resolve(__dirname, '../review.tsx'), 'utf8');
+
+  it('never uses the legacy coral literal (#FF6B6B)', () => {
+    expect(src).not.toMatch(/#FF6B6B/i);
+  });
+
+  it('never uses the legacy cream literal (#FBF6EC)', () => {
+    expect(src).not.toMatch(/#FBF6EC/i);
+  });
+
+  it('never uses the legacy teal literal (#2FB8B0)', () => {
+    expect(src).not.toMatch(/#2FB8B0/i);
+  });
+
+  it('never imports the legacy <WeatherBackground/>', () => {
+    expect(src).not.toMatch(/WeatherBackground/);
+  });
+
+  it('never resolves weather/atmosphere directly (that stays inside <V2Background/>)', () => {
+    expect(src).not.toMatch(/useWeather\(/);
+    expect(src).not.toMatch(/resolveAtmosphere\(/);
+  });
+
+  it('imports and mounts <V2Background/>', () => {
+    expect(src).toMatch(/import\s*{\s*V2Background\s*}\s*from\s*'@\/components\/ui\/V2Background'/);
+    expect(src).toMatch(/<V2Background\s*\/>/);
+  });
+
+  it('never uses a raw "Nunito-" font literal (replaced by FontFamily tokens)', () => {
+    expect(src).not.toMatch(/Nunito-/);
   });
 });

@@ -23,6 +23,8 @@
  */
 
 import React from 'react';
+import fs from 'fs';
+import path from 'path';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 import { ReviewForm } from '../ReviewForm';
 import { useSubmitReview } from '@/hooks/useReviews';
@@ -37,13 +39,25 @@ jest.mock('expo-router', () => ({
 
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useSafeAreaInsets: () => ({ top: 44, bottom: 34, left: 0, right: 0 }),
 }));
 
 jest.mock('@/hooks/useReviews', () => ({
   useSubmitReview: jest.fn(),
 }));
 
+// V2Background (mounted by ReviewForm itself, Step 9) reads the same coarse,
+// cached weather fetch Home/Search/Venue-Detail already read — default it to
+// "no data yet" (null) so the atmosphere resolves deterministically without
+// ever making a real network call (would otherwise hang the test process —
+// see app/venue/__tests__/venueDetailBackground.test.tsx for the same pattern).
+jest.mock('@/hooks/useWeather', () => ({
+  useWeather: jest.fn(() => null),
+}));
+
 // react-native-svg components aren't available in Jest — stub them out.
+// Extended (Defs/RadialGradient/Stop) beyond Icon.tsx's needs because
+// <V2Background/> is now mounted here too.
 jest.mock('react-native-svg', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -56,8 +70,24 @@ jest.mock('react-native-svg', () => {
     Path: Noop,
     Circle: Noop,
     Rect: Noop,
+    Defs: Noop,
+    RadialGradient: Noop,
+    Stop: Noop,
   };
 });
+
+// ---------------------------------------------------------------------------
+// Helper: find a testID anywhere in a rendered tree — V2Background is
+// intentionally hidden from the accessibility tree, so walk toJSON()
+// directly (same pattern as app/venue/__tests__/venueDetailBackground.test.tsx).
+// ---------------------------------------------------------------------------
+type JsonNode = { props?: Record<string, unknown>; children?: JsonNode[] | null } | null;
+function containsTestID(node: JsonNode | JsonNode[], testID: string): boolean {
+  if (!node) return false;
+  if (Array.isArray(node)) return node.some((n) => containsTestID(n, testID));
+  if (node.props?.testID === testID) return true;
+  return containsTestID(node.children ?? null, testID);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -246,7 +276,7 @@ describe('ReviewForm — step 2: tags and body', () => {
       : [counter.props.style];
     const hasErrorColour = styleArr.some((s: unknown) => {
       if (!s || typeof s !== 'object') return false;
-      return (s as Record<string, unknown>).color === '#FF6B6B'; // PP.coral
+      return (s as Record<string, unknown>).color === '#FF3B30'; // PP.error (v2 dark)
     });
     expect(hasErrorColour).toBe(true);
   });
@@ -524,5 +554,79 @@ describe('validateVisitDate — utility tests', () => {
       expect.objectContaining({ visitDate: null }),
       expect.any(Object),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v2 dark restyle — shared background (Step 9, feat/exact-v2-design)
+//
+// <V2Background/> is mounted once at the form's root and stays mounted
+// across all three steps (it sits outside the step-conditional JSX) — these
+// tests guard that it's actually there in each step, not just at step 1.
+// ---------------------------------------------------------------------------
+
+describe('ReviewForm — shared v2 background mounted in every step', () => {
+  it('mounts <V2Background/> on step 1 (rating)', () => {
+    const tree = renderForm().toJSON();
+    expect(containsTestID(tree, 'v2-background')).toBe(true);
+  });
+
+  it('mounts <V2Background/> on step 2 (tags/body)', () => {
+    renderForm();
+    goToStep2();
+    expect(containsTestID(screen.toJSON(), 'v2-background')).toBe(true);
+  });
+
+  it('mounts <V2Background/> on step 3 (success)', () => {
+    mockMutate.mockImplementation(
+      (_p: unknown, cbs: { onSuccess: () => void }) => cbs.onSuccess(),
+    );
+    renderForm();
+    goToStep2(4);
+    typeBody('Lovely park, plenty of space for the kids to run around.');
+    fireEvent.press(screen.getByText('Post review'));
+    expect(containsTestID(screen.toJSON(), 'v2-background')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v2 dark restyle — source guards
+//
+// Regex checks against the raw source guard against regressions that unit
+// tests alone wouldn't catch: a banned legacy colour literal slipping back
+// in, or a direct weather/atmosphere call bypassing <V2Background/>.
+// ---------------------------------------------------------------------------
+
+describe('ReviewForm — v2 palette + background source guards', () => {
+  const src = fs.readFileSync(path.resolve(__dirname, '../ReviewForm.tsx'), 'utf8');
+
+  it('never uses the legacy coral literal (#FF6B6B)', () => {
+    expect(src).not.toMatch(/#FF6B6B/i);
+  });
+
+  it('never uses the legacy cream literal (#FBF6EC)', () => {
+    expect(src).not.toMatch(/#FBF6EC/i);
+  });
+
+  it('never uses the legacy teal literal (#2FB8B0)', () => {
+    expect(src).not.toMatch(/#2FB8B0/i);
+  });
+
+  it('never imports the legacy <WeatherBackground/>', () => {
+    expect(src).not.toMatch(/WeatherBackground/);
+  });
+
+  it('never resolves weather/atmosphere directly (that stays inside <V2Background/>)', () => {
+    expect(src).not.toMatch(/useWeather\(/);
+    expect(src).not.toMatch(/resolveAtmosphere\(/);
+  });
+
+  it('imports and mounts <V2Background/>', () => {
+    expect(src).toMatch(/import\s*{\s*V2Background\s*}\s*from\s*'@\/components\/ui\/V2Background'/);
+    expect(src).toMatch(/<V2Background\s*\/>/);
+  });
+
+  it('never uses a raw "Nunito-" font literal (replaced by FontFamily tokens)', () => {
+    expect(src).not.toMatch(/Nunito-/);
   });
 });

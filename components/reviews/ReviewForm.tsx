@@ -14,6 +14,15 @@
  *   Step 1 — Rate your visit (star rating)
  *   Step 2 — Tell other parents (tags + body + anonymous toggle)
  *   Step 3 — Thanks! (success preview card)
+ *
+ * v2 dark restyle (Step 9, feat/exact-v2-design): VISUAL LAYER ONLY. The
+ * rating ladder, tag list, body validation (min/max), the "Post anonymously"
+ * copy and default (false), submitLocked double-tap guard, and the
+ * handleSubmit payload shape are byte-identical to the pre-restyle version —
+ * only the JSX/styling changed. <V2Background/> is mounted per the frozen
+ * background architecture behind a transparent root; FlowHeader is the one
+ * deliberate header for this component (restyled dark, not duplicated
+ * elsewhere); FlowFooter stays absolute and safe-area-aware.
  */
 
 import { useState, useRef } from 'react';
@@ -28,31 +37,38 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useSubmitReview } from '@/hooks/useReviews';
 import { Icon } from '@/components/ui/Icon';
 import { Stars } from '@/components/ui';
+import { V2Background } from '@/components/ui/V2Background';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { Themes, FontFamily, ocean } from '@/constants/theme';
 
 // ---------------------------------------------------------------------------
-// Design tokens — PlayPlanner palette (inline StyleSheet, no NativeWind)
+// Design tokens — v2 dark palette (inline StyleSheet, no NativeWind)
 // ---------------------------------------------------------------------------
+
+const T = Themes.dark;
+const ACCENT = ocean;
+// Single destructive/error red used across the v2 dark screens (matches the
+// "Weak" password-strength colour already shipped on app/(auth)/register.tsx).
+const ERROR_RED = '#FF3B30';
 
 const PP = {
-  ink:       '#1D2630',
-  inkSoft:   '#4A5560',
-  mute:      '#7B8794',
-  line:      '#E6E2DB',
-  lineSoft:  '#F1ECE2',
-  sand:      '#FBF6EC',
-  paper:     '#FFFFFF',
-  sky:       '#2FB8B0',
-  skyDeep:   '#1B8A85',
-  skyWash:   '#EEF9F8',
-  coral:     '#FF6B6B',
-  coralSoft: '#FFE2DE',
-  star:      '#F5A524',
-  leaf:      '#5BC08A',
+  ink:      T.label,
+  inkSoft:  T.label2,
+  mute:     T.label3,
+  line:     T.separator,
+  lineSoft: T.fill,
+  paper:    T.surface,
+  sky:      ACCENT.accent,
+  skyWash:  ACCENT.light,
+  skyText:  ACCENT.tagText,
+  // Amber rating stars — same value used on ReviewCard / venue detail.
+  star:     '#F5A524',
+  error:    ERROR_RED,
 };
 
 // ---------------------------------------------------------------------------
@@ -105,7 +121,7 @@ interface ReviewFormProps {
 }
 
 // ---------------------------------------------------------------------------
-// FlowHeader sub-component
+// FlowHeader sub-component — the one deliberate header for this form
 // ---------------------------------------------------------------------------
 
 function FlowHeader({
@@ -135,7 +151,7 @@ function FlowHeader({
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
-          <Text style={styles.stepLabel}>STEP {step} OF {total}</Text>
+          <Text style={styles.stepLabel} maxFontSizeMultiplier={1.3}>STEP {step} OF {total}</Text>
           <Text style={styles.stepTitle}>{title}</Text>
         </View>
 
@@ -167,7 +183,7 @@ function FlowHeader({
 }
 
 // ---------------------------------------------------------------------------
-// FlowFooter sub-component
+// FlowFooter sub-component — absolute, safe-area-aware
 // ---------------------------------------------------------------------------
 
 function FlowFooter({
@@ -183,8 +199,13 @@ function FlowFooter({
   onSecondary?: () => void;
   disabled?: boolean;
 }) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={styles.footer}>
+    <GlassSurface
+      style={[styles.footer, { paddingBottom: Math.max(28, insets.bottom + 12) }]}
+      tintColor="rgba(12,12,17,0.9)"
+    >
       {secondary && (
         <TouchableOpacity
           onPress={onSecondary}
@@ -209,7 +230,7 @@ function FlowFooter({
           {primary}
         </Text>
       </TouchableOpacity>
-    </View>
+    </GlassSurface>
   );
 }
 
@@ -332,288 +353,293 @@ export function ReviewForm({
   const stepTitles = ['Rate your visit', 'Tell other parents', 'Thanks!'];
 
   return (
-    <SafeAreaView style={styles.root}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <FlowHeader
-          step={step}
-          total={3}
-          title={stepTitles[step - 1]}
-          onBack={handleBack}
-          onClose={handleClose}
-        />
-
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+    <View style={styles.outer}>
+      <V2Background />
+      <SafeAreaView style={styles.root}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          {/* ----------------------------------------------------------------
-              STEP 1 — Star rating
-          ---------------------------------------------------------------- */}
-          {step === 1 && (
-            <View>
-              {/* Venue mini card */}
-              <View style={styles.venueMiniCard}>
-                <View style={styles.venueMiniIcon}>
-                  <Icon name="map" size={20} color={PP.sky} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.venueMiniName}>{venueName}</Text>
-                  <Text style={styles.venueMiniLabel}>Write a review</Text>
-                </View>
-                <View style={styles.venueMiniPill}>
-                  <Text style={styles.venueMiniPillText}>REVIEW</Text>
-                </View>
-              </View>
+          <FlowHeader
+            step={step}
+            total={3}
+            title={stepTitles[step - 1]}
+            onBack={handleBack}
+            onClose={handleClose}
+          />
 
-              {/* Rating block */}
-              <View style={styles.ratingBlock}>
-                <Text style={styles.ratingCopy}>{RATING_COPY[rating]}</Text>
-                {rating === 0 && (
-                  <Text style={styles.ratingHint}>Tap a star</Text>
-                )}
-
-                {/* Stars row */}
-                <View style={styles.starsRow}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <TouchableOpacity
-                      key={n}
-                      onPress={() => setRating(n)}
-                      hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Rate ${n} star${n !== 1 ? 's' : ''}`}
-                    >
-                      <Icon
-                        name={rating >= n ? 'star' : 'starLine'}
-                        size={46}
-                        color={rating >= n ? PP.star : PP.line}
-                      />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {ratingError ? (
-                  <Text style={styles.fieldError}>{ratingError}</Text>
-                ) : null}
-              </View>
-
-              {/* Trust note — GDPR Art.13 transparency */}
-              <View style={styles.trustNote}>
-                <Icon name="shield" size={16} color={PP.mute} />
-                <Text style={styles.trustNoteText}>
-                  Honest reviews help other parents. We remove anything with
-                  identifying details about children.
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* ----------------------------------------------------------------
-              STEP 2 — Tags + body + anonymous toggle
-          ---------------------------------------------------------------- */}
-          {step === 2 && (
-            <View>
-              {/* Tags */}
-              <Text style={styles.fieldLabel}>What stood out?</Text>
-              <View style={styles.tagRow}>
-                {TAG_LIST.map((tag) => {
-                  const selected = !!tags[tag.id];
-                  return (
-                    <TouchableOpacity
-                      key={tag.id}
-                      onPress={() =>
-                        setTags((prev) => ({
-                          ...prev,
-                          [tag.id]: !prev[tag.id],
-                        }))
-                      }
-                      style={[
-                        styles.tagChip,
-                        selected ? styles.tagChipSelected : styles.tagChipUnselected,
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={tag.label}
-                      accessibilityState={{ selected }}
-                    >
-                      <Text
-                        style={[
-                          styles.tagChipText,
-                          selected
-                            ? styles.tagChipTextSelected
-                            : styles.tagChipTextUnselected,
-                        ]}
-                      >
-                        {tag.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {/* Body */}
-              <Text style={styles.fieldLabel}>
-                Your review <Text style={{ color: PP.coral }}>*</Text>
-              </Text>
-              <View
-                style={[
-                  styles.bodyContainer,
-                  (bodyFocused || body.length > 0) && styles.bodyContainerFocused,
-                ]}
-              >
-                <TextInput
-                  style={styles.bodyInput}
-                  value={body}
-                  onChangeText={setBody}
-                  onFocus={() => setBodyFocused(true)}
-                  onBlur={() => setBodyFocused(false)}
-                  multiline
-                  numberOfLines={5}
-                  autoFocus
-                  textAlignVertical="top"
-                  maxLength={BODY_MAX}
-                  placeholder="What would you tell another parent? Parking? Facilities? Age suitability?"
-                  placeholderTextColor={PP.mute}
-                />
-              </View>
-
-              {/* Char counter */}
-              <View style={styles.charCountRow}>
-                <Text
-                  style={[
-                    styles.charCount,
-                    body.length >= BODY_MAX && styles.charCountOver,
-                  ]}
-                  testID="char-counter"
-                >
-                  {body.length}/{BODY_MAX}
-                </Text>
-              </View>
-
-              {bodyError ? (
-                <Text style={styles.fieldError}>{bodyError}</Text>
-              ) : null}
-
-              {/* Anonymous toggle */}
-              <TouchableOpacity
-                onPress={() => setAnonymous((a) => !a)}
-                style={styles.anonRow}
-                activeOpacity={0.8}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: anonymous }}
-              >
-                <View
-                  style={[
-                    styles.checkbox,
-                    anonymous && styles.checkboxChecked,
-                  ]}
-                >
-                  {anonymous && (
-                    <Icon name="check" size={12} color="#fff" />
-                  )}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.anonTitle}>Post anonymously</Text>
-                  <Text style={styles.anonSub}>
-                    Your name is hidden; kids' names always are.
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* ----------------------------------------------------------------
-              STEP 3 — Success
-          ---------------------------------------------------------------- */}
-          {step === 3 && (
-            <View style={styles.successWrap}>
-              {/* Hero circles */}
-              <View style={styles.heroouter}>
-                <View style={styles.heroInner}>
-                  <Icon name="heartFill" size={30} color="#fff" />
-                </View>
-              </View>
-
-              <Text style={styles.successHeading} testID="success-heading">Thanks!</Text>
-              <Text style={styles.successSub}>
-                Your review is with our team. It usually goes live within 24 hours.
-              </Text>
-
-              {/* Preview card */}
-              <View style={styles.previewCard}>
-                <View style={styles.previewHeader}>
-                  {/* Avatar */}
-                  <View style={styles.previewAvatar}>
-                    <Text style={styles.previewAvatarText}>
-                      {anonymous ? '?' : 'Y'}
-                    </Text>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* ----------------------------------------------------------------
+                STEP 1 — Star rating
+            ---------------------------------------------------------------- */}
+            {step === 1 && (
+              <View>
+                {/* Venue mini card */}
+                <View style={styles.venueMiniCard}>
+                  <View style={styles.venueMiniIcon}>
+                    <Icon name="map" size={20} color={PP.sky} />
                   </View>
-
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.previewName}>
-                      {anonymous ? 'Anonymous parent' : 'You'}
-                    </Text>
-                    <Text style={styles.previewTime}>Just now</Text>
+                    <Text style={styles.venueMiniName}>{venueName}</Text>
+                    <Text style={styles.venueMiniLabel}>Write a review</Text>
                   </View>
-
-                  <Stars rating={rating} size={12} />
+                  <View style={styles.venueMiniPill}>
+                    <Text style={styles.venueMiniPillText} maxFontSizeMultiplier={1.3}>REVIEW</Text>
+                  </View>
                 </View>
 
-                {/* Body preview — truncated, no logging */}
-                {body.trim().length > 0 && (
-                  <Text style={styles.previewBody}>
-                    &quot;
-                    {body.trim().length > 120
-                      ? `${body.trim().slice(0, 120)}...`
-                      : body.trim()}
-                    &quot;
-                  </Text>
-                )}
+                {/* Rating block */}
+                <View style={styles.ratingBlock}>
+                  <Text style={styles.ratingCopy}>{RATING_COPY[rating]}</Text>
+                  {rating === 0 && (
+                    <Text style={styles.ratingHint}>Tap a star</Text>
+                  )}
 
-                {/* Tag pills */}
-                {activeTags.length > 0 && (
-                  <View style={styles.previewTagRow}>
-                    {activeTags.map((t) => (
-                      <View key={t.id} style={styles.previewTag}>
-                        <Text style={styles.previewTagText}>{t.label}</Text>
-                      </View>
+                  {/* Stars row — amber filled vs dark-outline, selected state
+                      obvious at a glance. Size unchanged (46). */}
+                  <View style={styles.starsRow}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <TouchableOpacity
+                        key={n}
+                        onPress={() => setRating(n)}
+                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Rate ${n} star${n !== 1 ? 's' : ''}`}
+                      >
+                        <Icon
+                          name={rating >= n ? 'star' : 'starLine'}
+                          size={46}
+                          color={rating >= n ? PP.star : PP.mute}
+                        />
+                      </TouchableOpacity>
                     ))}
                   </View>
-                )}
-              </View>
-            </View>
-          )}
-        </ScrollView>
 
-        {/* Footer CTAs */}
-        {step === 1 && (
-          <FlowFooter
-            primary="Next"
-            onPrimary={handleNextStep1}
-            disabled={rating === 0}
-          />
-        )}
-        {step === 2 && (
-          <FlowFooter
-            primary={isSubmitting ? 'Posting...' : 'Post review'}
-            onPrimary={handleSubmit}
-            secondary="Back"
-            onSecondary={() => setStep(1)}
-            disabled={
-              isSubmitting ||
-              body.trim().length < BODY_MIN ||
-              body.trim().length > BODY_MAX
-            }
-          />
-        )}
-        {step === 3 && (
-          <FlowFooter primary="Back to venue" onPrimary={onSuccess} />
-        )}
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+                  {ratingError ? (
+                    <Text style={styles.fieldError}>{ratingError}</Text>
+                  ) : null}
+                </View>
+
+                {/* Trust note — GDPR Art.13 transparency */}
+                <View style={styles.trustNote}>
+                  <Icon name="shield" size={16} color={PP.mute} />
+                  <Text style={styles.trustNoteText}>
+                    Honest reviews help other parents. We remove anything with
+                    identifying details about children.
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* ----------------------------------------------------------------
+                STEP 2 — Tags + body + anonymous toggle
+            ---------------------------------------------------------------- */}
+            {step === 2 && (
+              <View>
+                {/* Tags */}
+                <Text style={styles.fieldLabel}>What stood out?</Text>
+                <View style={styles.tagRow}>
+                  {TAG_LIST.map((tag) => {
+                    const selected = !!tags[tag.id];
+                    return (
+                      <TouchableOpacity
+                        key={tag.id}
+                        onPress={() =>
+                          setTags((prev) => ({
+                            ...prev,
+                            [tag.id]: !prev[tag.id],
+                          }))
+                        }
+                        style={[
+                          styles.tagChip,
+                          selected ? styles.tagChipSelected : styles.tagChipUnselected,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={tag.label}
+                        accessibilityState={{ selected }}
+                      >
+                        <Text
+                          style={[
+                            styles.tagChipText,
+                            selected
+                              ? styles.tagChipTextSelected
+                              : styles.tagChipTextUnselected,
+                          ]}
+                        >
+                          {tag.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Body */}
+                <Text style={styles.fieldLabel}>
+                  Your review <Text style={{ color: PP.error }}>*</Text>
+                </Text>
+                <View
+                  style={[
+                    styles.bodyContainer,
+                    (bodyFocused || body.length > 0) && styles.bodyContainerFocused,
+                  ]}
+                >
+                  <TextInput
+                    style={styles.bodyInput}
+                    value={body}
+                    onChangeText={setBody}
+                    onFocus={() => setBodyFocused(true)}
+                    onBlur={() => setBodyFocused(false)}
+                    multiline
+                    numberOfLines={5}
+                    autoFocus
+                    textAlignVertical="top"
+                    maxLength={BODY_MAX}
+                    placeholder="What would you tell another parent? Parking? Facilities? Age suitability?"
+                    placeholderTextColor={T.label4}
+                  />
+                </View>
+
+                {/* Char counter */}
+                <View style={styles.charCountRow}>
+                  <Text
+                    style={[
+                      styles.charCount,
+                      body.length >= BODY_MAX && styles.charCountOver,
+                    ]}
+                    testID="char-counter"
+                    maxFontSizeMultiplier={1.3}
+                  >
+                    {body.length}/{BODY_MAX}
+                  </Text>
+                </View>
+
+                {bodyError ? (
+                  <Text style={styles.fieldError}>{bodyError}</Text>
+                ) : null}
+
+                {/* Anonymous toggle */}
+                <TouchableOpacity
+                  onPress={() => setAnonymous((a) => !a)}
+                  style={styles.anonRow}
+                  activeOpacity={0.8}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: anonymous }}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      anonymous && styles.checkboxChecked,
+                    ]}
+                  >
+                    {anonymous && (
+                      <Icon name="check" size={12} color="#fff" />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.anonTitle}>Post anonymously</Text>
+                    <Text style={styles.anonSub}>
+                      Your name is hidden; kids' names always are.
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* ----------------------------------------------------------------
+                STEP 3 — Success
+            ---------------------------------------------------------------- */}
+            {step === 3 && (
+              <View style={styles.successWrap}>
+                {/* Hero circles — Ocean accent (was coral) */}
+                <View style={styles.heroouter}>
+                  <View style={styles.heroInner}>
+                    <Icon name="heartFill" size={30} color="#fff" />
+                  </View>
+                </View>
+
+                <Text style={styles.successHeading} testID="success-heading">Thanks!</Text>
+                <Text style={styles.successSub}>
+                  Your review is with our team. It usually goes live within 24 hours.
+                </Text>
+
+                {/* Preview card */}
+                <View style={styles.previewCard}>
+                  <View style={styles.previewHeader}>
+                    {/* Avatar */}
+                    <View style={styles.previewAvatar}>
+                      <Text style={styles.previewAvatarText} maxFontSizeMultiplier={1.3}>
+                        {anonymous ? '?' : 'Y'}
+                      </Text>
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.previewName}>
+                        {anonymous ? 'Anonymous parent' : 'You'}
+                      </Text>
+                      <Text style={styles.previewTime}>Just now</Text>
+                    </View>
+
+                    <Stars rating={rating} size={12} color={PP.star} />
+                  </View>
+
+                  {/* Body preview — truncated, no logging */}
+                  {body.trim().length > 0 && (
+                    <Text style={styles.previewBody}>
+                      &quot;
+                      {body.trim().length > 120
+                        ? `${body.trim().slice(0, 120)}...`
+                        : body.trim()}
+                      &quot;
+                    </Text>
+                  )}
+
+                  {/* Tag pills */}
+                  {activeTags.length > 0 && (
+                    <View style={styles.previewTagRow}>
+                      {activeTags.map((t) => (
+                        <View key={t.id} style={styles.previewTag}>
+                          <Text style={styles.previewTagText}>{t.label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Footer CTAs */}
+          {step === 1 && (
+            <FlowFooter
+              primary="Next"
+              onPrimary={handleNextStep1}
+              disabled={rating === 0}
+            />
+          )}
+          {step === 2 && (
+            <FlowFooter
+              primary={isSubmitting ? 'Posting...' : 'Post review'}
+              onPrimary={handleSubmit}
+              secondary="Back"
+              onSecondary={() => setStep(1)}
+              disabled={
+                isSubmitting ||
+                body.trim().length < BODY_MIN ||
+                body.trim().length > BODY_MAX
+              }
+            />
+          )}
+          {step === 3 && (
+            <FlowFooter primary="Back to venue" onPrimary={onSuccess} />
+          )}
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -623,9 +649,15 @@ export function ReviewForm({
 
 const styles = StyleSheet.create({
   // Layout
+  outer: {
+    flex: 1,
+    // Transparent so the shared <V2Background/> atmosphere shows through —
+    // matches Home / Venue Detail / Plan Visit. Cards/inputs stay opaque.
+    backgroundColor: 'transparent',
+  },
   root: {
     flex: 1,
-    backgroundColor: PP.sand,
+    backgroundColor: 'transparent',
   },
 
   // Header
@@ -643,6 +675,10 @@ const styles = StyleSheet.create({
   iconBtn: {
     width: 36,
     height: 36,
+    borderRadius: 12,
+    backgroundColor: PP.paper,
+    borderWidth: 1,
+    borderColor: PP.line,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -650,14 +686,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   stepLabel: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.caption,
     fontSize: 11,
     color: PP.mute,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   stepTitle: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 22,
     color: PP.ink,
     letterSpacing: -0.4,
@@ -692,21 +728,21 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 28,
-    backgroundColor: 'transparent',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   footerPrimary: {
     flex: 1.4,
-    backgroundColor: PP.ink,
+    backgroundColor: PP.sky,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
   },
   footerPrimaryDisabled: {
-    backgroundColor: PP.line,
+    backgroundColor: PP.lineSoft,
   },
   footerPrimaryText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
     color: '#fff',
   },
@@ -723,7 +759,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   footerSecondaryText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
     color: PP.ink,
   },
@@ -749,12 +785,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   venueMiniName: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 13,
     color: PP.ink,
   },
   venueMiniLabel: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 11,
     color: PP.mute,
   },
@@ -765,9 +801,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   venueMiniPillText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.caption,
     fontSize: 10,
-    color: PP.skyDeep,
+    color: PP.skyText,
   },
 
   // Step 1 — rating
@@ -777,13 +813,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ratingCopy: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.heading,
     fontSize: 16,
     color: PP.ink,
     textAlign: 'center',
   },
   ratingHint: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
     color: PP.mute,
     marginTop: 4,
@@ -802,14 +838,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: PP.line,
-    backgroundColor: PP.sand,
+    backgroundColor: PP.paper,
     flexDirection: 'row',
     gap: 10,
     alignItems: 'flex-start',
   },
   trustNoteText: {
     flex: 1,
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 12,
     color: PP.inkSoft,
     lineHeight: 18,
@@ -817,7 +853,7 @@ const styles = StyleSheet.create({
 
   // Step 2 — shared label
   fieldLabel: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
     color: PP.inkSoft,
     marginBottom: 10,
@@ -840,15 +876,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tagChipSelected: {
-    backgroundColor: PP.ink,
-    borderColor: PP.ink,
+    backgroundColor: PP.sky,
+    borderColor: PP.sky,
   },
   tagChipUnselected: {
     backgroundColor: PP.paper,
     borderColor: PP.line,
   },
   tagChipText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
   },
   tagChipTextSelected: {
@@ -860,7 +896,7 @@ const styles = StyleSheet.create({
 
   // Step 2 — body
   bodyContainer: {
-    backgroundColor: PP.paper,
+    backgroundColor: T.bg,
     borderWidth: 1.5,
     borderColor: PP.line,
     borderRadius: 12,
@@ -868,11 +904,11 @@ const styles = StyleSheet.create({
     minHeight: 110,
   },
   bodyContainerFocused: {
-    borderColor: PP.ink,
+    borderColor: PP.sky,
   },
   bodyInput: {
     flex: 1,
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 14,
     color: PP.ink,
     lineHeight: 21,
@@ -885,12 +921,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   charCount: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 11,
     color: PP.mute,
   },
   charCountOver: {
-    color: PP.coral,
+    color: PP.error,
   },
 
   // Step 2 — anonymous toggle
@@ -917,16 +953,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   checkboxChecked: {
-    backgroundColor: PP.ink,
-    borderColor: PP.ink,
+    backgroundColor: PP.sky,
+    borderColor: PP.sky,
   },
   anonTitle: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
     color: PP.ink,
   },
   anonSub: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 11,
     color: PP.mute,
     marginTop: 2,
@@ -941,7 +977,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: PP.coralSoft,
+    backgroundColor: PP.skyWash,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -950,12 +986,12 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: PP.coral,
+    backgroundColor: PP.sky,
     alignItems: 'center',
     justifyContent: 'center',
   },
   successHeading: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.display,
     fontSize: 24,
     color: PP.ink,
     letterSpacing: -0.5,
@@ -963,7 +999,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   successSub: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 14,
     color: PP.inkSoft,
     lineHeight: 21,
@@ -990,27 +1026,27 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: PP.ink,
+    backgroundColor: PP.sky,
     alignItems: 'center',
     justifyContent: 'center',
   },
   previewAvatarText: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
     color: '#fff',
   },
   previewName: {
-    fontFamily: 'Nunito-ExtraBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
     color: PP.ink,
   },
   previewTime: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.body,
     fontSize: 11,
     color: PP.mute,
   },
   previewBody: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: FontFamily.body,
     fontSize: 13,
     color: PP.inkSoft,
     lineHeight: 19.5,
@@ -1029,16 +1065,16 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   previewTagText: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 10,
-    color: PP.skyDeep,
+    color: PP.skyText,
   },
 
   // Shared error text
   fieldError: {
-    fontFamily: 'Nunito-SemiBold',
+    fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
-    color: '#D63031',
+    color: PP.error,
     marginTop: 6,
   },
 });
