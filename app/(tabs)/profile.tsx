@@ -452,10 +452,33 @@ export default function ProfileScreen() {
             />
           </MenuGroup>
 
-          {/* Admin/business controls intentionally NOT surfaced here — the
-              consumer-facing Profile screen never exposes admin navigation,
-              regardless of profile.is_admin. Admin tooling lives entirely
-              under app/admin/ and is reached by other means. */}
+          {/* ── Admin ─────────────────────────────────────────────────────── */}
+          {/* Restored 2026-07-17 per Liam's instruction (was removed in
+              834776e "v2 profile ecosystem" — audit found the removal was
+              cosmetic only; the real security boundary was never touched).
+              Hiding this row is a UX convenience, NOT the access control:
+              even if this condition were deleted entirely, app/admin/
+              moderation.tsx independently redirects non-admins
+              (`if (!isAdmin) return <Redirect href="/(tabs)" />`) and every
+              query on that screen is gated `enabled: isAdmin`, backed by
+              Supabase RLS server-side. No email or user-ID is hard-coded
+              here or anywhere in the admin gate — visibility is driven
+              solely by the authenticated user's own profile.is_admin flag. */}
+          {profile?.is_admin === true && (
+            <>
+              <SectionLabel label="Admin" />
+              <MenuGroup>
+                <MenuItem
+                  icon="shield"
+                  label="Admin panel"
+                  onPress={() => router.push('/admin/moderation')}
+                  iconBg="rgba(124,79,204,0.16)"
+                  iconColor="#B299E0"
+                  last
+                />
+              </MenuGroup>
+            </>
+          )}
 
           {/* ── Footer ────────────────────────────────────────────────────── */}
           <View style={styles.footer}>

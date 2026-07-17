@@ -19,6 +19,8 @@
  * file's assertions are unchanged by this restyle and are not duplicated here.
  */
 import React from 'react';
+import fs from 'fs';
+import path from 'path';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert, Linking, StyleSheet } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -292,21 +294,88 @@ describe('Profile v2 — Help modal', () => {
   });
 });
 
-// ── Admin/business controls never surfaced in consumer Profile ─────────────
-describe('Profile v2 — admin controls never surfaced in the consumer screen', () => {
-  it('does NOT render the Admin section for a non-admin profile', () => {
+// ── Admin panel — restored 2026-07-17, gated strictly on profile.is_admin ──
+// Hiding the row is a UX nicety, not the security boundary: app/admin/
+// moderation.tsx independently redirects non-admins and gates every query
+// on `enabled: isAdmin`, backed by RLS. These tests only cover the Profile
+// screen's own visibility wiring, not the admin route's gate itself.
+describe('Profile v2 — admin panel row visibility (profile.is_admin gated)', () => {
+  it('does NOT render the Admin section for a non-admin profile (is_admin: false)', () => {
     const { queryByText, queryByLabelText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
     expect(queryByText('ADMIN')).toBeNull();
-    expect(queryByLabelText('Moderation panel')).toBeNull();
+    expect(queryByLabelText('Admin panel')).toBeNull();
   });
 
-  it('still does NOT render the Admin section / Moderation panel row even when profile.is_admin is true', () => {
-    mockUseProfile.mockReturnValue({ ...baseProfile, is_admin: true });
-    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
+  it('does NOT render the Admin section when is_admin is undefined', () => {
+    const { is_admin: _omit, ...rest } = baseProfile;
+    mockUseProfile.mockReturnValue(rest);
     const { queryByText, queryByLabelText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
     expect(queryByText('ADMIN')).toBeNull();
-    expect(queryByLabelText('Moderation panel')).toBeNull();
-    expect(router.push).not.toHaveBeenCalledWith('/admin/moderation');
+    expect(queryByLabelText('Admin panel')).toBeNull();
+  });
+
+  it('does NOT render the Admin section when is_admin is null', () => {
+    mockUseProfile.mockReturnValue({ ...baseProfile, is_admin: null });
+    const { queryByText, queryByLabelText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    expect(queryByText('ADMIN')).toBeNull();
+    expect(queryByLabelText('Admin panel')).toBeNull();
+  });
+
+  it('renders the Admin section / Admin panel row when profile.is_admin is true', () => {
+    mockUseProfile.mockReturnValue({ ...baseProfile, is_admin: true });
+    const { getByText, getByLabelText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    expect(getByText('ADMIN')).toBeTruthy();
+    expect(getByLabelText('Admin panel')).toBeTruthy();
+  });
+
+  it('pressing the Admin panel row navigates to the real /admin/moderation route', () => {
+    mockUseProfile.mockReturnValue({ ...baseProfile, is_admin: true });
+    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
+    const { getByLabelText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    fireEvent.press(getByLabelText('Admin panel'));
+    expect(router.push).toHaveBeenCalledWith('/admin/moderation');
+  });
+});
+
+// ── Source-level guard: visibility is is_admin driven, no bypass literals ──
+// Reads the raw source of profile.tsx rather than the rendered tree, so it
+// catches a regression even if someone changes the row's copy/label later.
+// Scoped narrowly (no email/UUID literal near the admin gate; the push to
+// /admin/moderation only ever appears inside the `profile?.is_admin === true`
+// guard) so it never collides with the legitimate "Contact us" mailto link
+// elsewhere in the same file.
+describe('Profile v2 — admin gate source guard (no hard-coded bypass)', () => {
+  const source: string = fs.readFileSync(
+    path.join(__dirname, '..', 'profile.tsx'),
+    'utf8',
+  );
+
+  it('gates the admin section strictly on `profile?.is_admin === true`', () => {
+    expect(source).toMatch(/profile\?\.is_admin === true/);
+  });
+
+  it('never pushes to /admin/moderation outside the is_admin guard', () => {
+    const guardIndex = source.indexOf('profile?.is_admin === true');
+    const pushIndex = source.indexOf("router.push('/admin/moderation')");
+    expect(guardIndex).toBeGreaterThan(-1);
+    expect(pushIndex).toBeGreaterThan(guardIndex);
+
+    // Only one admin-route push in the whole file, and it is the one we just
+    // located after the guard — i.e. there is no second, unguarded copy.
+    const occurrences = source.split("router.push('/admin/moderation')").length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it('contains no hard-coded email literal within the admin section itself', () => {
+    const guardIndex = source.indexOf('profile?.is_admin === true');
+    const sectionEnd = source.indexOf('{/* ── Footer', guardIndex);
+    const adminSection = source.slice(guardIndex, sectionEnd);
+    expect(adminSection).not.toMatch(/[\w.-]+@[\w.-]+\.\w+/);
+  });
+
+  it('contains no hard-coded UUID literal anywhere in the file', () => {
+    const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    expect(source).not.toMatch(uuidPattern);
   });
 });
 
