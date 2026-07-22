@@ -12,13 +12,19 @@
  * back button (`onRequestClose`, wired automatically by RN's <Modal>) all
  * call the same onClose — there is exactly one way out, not several
  * inconsistent ones.
+ *
+ * Step 10A Part 2 (dual-theme foundation, proof set): tokens now come from
+ * useAppTheme() instead of a hard-coded `Themes.dark`, so this modal follows
+ * the resolved theme (dark unchanged from before; light gets a readable
+ * white-surface sheet). Copy, structure, and the mailto/close/backdrop
+ * handlers are byte-identical to before.
  */
+import { useMemo } from 'react';
 import { Linking, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { FontFamily, type ThemeTokens, type AccentPalette } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
-const T = Themes.dark;
-const ACCENT = ocean;
 const SUPPORT_EMAIL = 'support@playplanner.app';
 
 export interface HelpModalProps {
@@ -27,6 +33,9 @@ export interface HelpModalProps {
 }
 
 export function HelpModal({ visible, onClose }: HelpModalProps) {
+  const { tokens: T, accent: ACCENT } = useAppTheme();
+  const styles = useMemo(() => createStyles(T, ACCENT), [T, ACCENT]);
+
   return (
     <Modal
       visible={visible}
@@ -90,82 +99,84 @@ export function HelpModal({ visible, onClose }: HelpModalProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: T.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderColor: T.separator,
-    borderBottomWidth: 0,
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 36,
-    alignItems: 'center',
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: T.label4,
-    marginBottom: 18,
-  },
-  iconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: ACCENT.light,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  title: {
-    fontFamily: FontFamily.display,
-    fontSize: 20,
-    color: T.label,
-    letterSpacing: -0.4,
-    marginBottom: 10,
-  },
-  body: {
-    fontFamily: FontFamily.body,
-    fontSize: 14.5,
-    color: T.label2,
-    lineHeight: 21,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  email: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 14.5,
-    color: ACCENT.accent,
-    marginBottom: 20,
-  },
-  primaryBtn: {
-    width: '100%',
-    backgroundColor: ACCENT.accent,
-    borderRadius: 14,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  primaryBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  closeBtn: {
-    width: '100%',
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  closeBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 15,
-    color: T.label3,
-  },
-});
+function createStyles(T: ThemeTokens, ACCENT: AccentPalette) {
+  return StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: T.surface,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      borderWidth: 1,
+      borderColor: T.separator,
+      borderBottomWidth: 0,
+      paddingHorizontal: 24,
+      paddingTop: 12,
+      paddingBottom: 36,
+      alignItems: 'center',
+    },
+    handle: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: T.label4,
+      marginBottom: 18,
+    },
+    iconBox: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      backgroundColor: ACCENT.light,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 14,
+    },
+    title: {
+      fontFamily: FontFamily.display,
+      fontSize: 20,
+      color: T.label,
+      letterSpacing: -0.4,
+      marginBottom: 10,
+    },
+    body: {
+      fontFamily: FontFamily.body,
+      fontSize: 14.5,
+      color: T.label2,
+      lineHeight: 21,
+      textAlign: 'center',
+      marginBottom: 12,
+    },
+    email: {
+      fontFamily: FontFamily.bodyStrong,
+      fontSize: 14.5,
+      color: ACCENT.accent,
+      marginBottom: 20,
+    },
+    primaryBtn: {
+      width: '100%',
+      backgroundColor: ACCENT.accent,
+      borderRadius: 14,
+      paddingVertical: 15,
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    primaryBtnText: {
+      fontFamily: FontFamily.bodyStrong,
+      fontSize: 16,
+      color: '#FFFFFF',
+    },
+    closeBtn: {
+      width: '100%',
+      paddingVertical: 13,
+      alignItems: 'center',
+    },
+    closeBtnText: {
+      fontFamily: FontFamily.bodyStrong,
+      fontSize: 15,
+      color: T.label3,
+    },
+  });
+}

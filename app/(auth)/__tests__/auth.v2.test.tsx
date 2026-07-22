@@ -31,6 +31,7 @@ import RegisterScreen from '../register';
 import PrivacyScreen from '../privacy';
 import TermsScreen from '../terms';
 import WelcomeScreen from '../welcome';
+import { useThemeStore } from '@/store/themeStore';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -96,6 +97,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSignInWithPassword.mockResolvedValue({ error: null });
   mockResetPasswordForEmail.mockResolvedValue({ error: null });
+  // Step 10A Part 2 (dual-theme foundation): reset to the default so tests
+  // above (written before theming existed) stay unaffected by the
+  // light/dark-specific Welcome block added below.
+  useThemeStore.setState({ preference: 'system' });
 });
 
 // ---------------------------------------------------------------------------
@@ -347,6 +352,26 @@ describe('Terms/Privacy navigation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Welcome — renders in both light and dark (Step 10A Part 2 proof set)
+// ---------------------------------------------------------------------------
+
+describe('Welcome — renders in both light and dark (Step 10A Part 2 proof set)', () => {
+  it('renders without crashing in dark mode, with real copy intact', () => {
+    useThemeStore.setState({ preference: 'dark' });
+    render(<WelcomeScreen />);
+    expect(screen.getByText('Create free account')).toBeTruthy();
+    expect(screen.getByText('Sign in')).toBeTruthy();
+  });
+
+  it('renders without crashing in light mode, with real copy intact', () => {
+    useThemeStore.setState({ preference: 'light' });
+    render(<WelcomeScreen />);
+    expect(screen.getByText('Create free account')).toBeTruthy();
+    expect(screen.getByText('Sign in')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Privacy/Terms — single header + exact "Last updated" line (wording guard)
 // ---------------------------------------------------------------------------
 
@@ -369,16 +394,28 @@ describe('Privacy/Terms — single header + exact Last updated line', () => {
 // (same technique as app/profile/__tests__/profileAtmosphere.test.tsx)
 // ---------------------------------------------------------------------------
 
-const BG_SCREEN_FILES = [
+// Light-theme correction (feat/exact-v2-design, v2 Light pass): every auth
+// content screen (welcome.tsx from the Step 10A Part 2 proof set, plus
+// onboarding-1/2/3, privacy.tsx, terms.tsx, login.tsx and register.tsx) has
+// now been migrated to mount <ThemedBackground/> instead of a direct
+// <V2Background/> (dark path stays byte-identical — see
+// components/ui/ThemedBackground.tsx, a thin pass-through). V2_DIRECT_BG_FILES
+// is kept (now empty) so the regression coverage below stays in place if a
+// future screen is ever added back as a direct-V2Background exception.
+const V2_DIRECT_BG_FILES: string[] = [];
+
+const THEMED_BACKGROUND_BG_FILES = [
   'app/(auth)/onboarding-1.tsx',
   'app/(auth)/onboarding-2.tsx',
   'app/(auth)/onboarding-3.tsx',
+  'app/(auth)/privacy.tsx',
+  'app/(auth)/terms.tsx',
   'app/(auth)/welcome.tsx',
   'app/(auth)/login.tsx',
   'app/(auth)/register.tsx',
-  'app/(auth)/privacy.tsx',
-  'app/(auth)/terms.tsx',
 ];
+
+const BG_SCREEN_FILES = [...V2_DIRECT_BG_FILES, ...THEMED_BACKGROUND_BG_FILES];
 
 const ALL_AUTH_FILES = [
   ...BG_SCREEN_FILES,
@@ -391,13 +428,24 @@ function readScreen(relPath: string): string {
 }
 
 describe('Auth ecosystem — every content screen mounts its own background; roots stay transparent', () => {
-  it.each(BG_SCREEN_FILES)('%s imports and mounts <V2Background/>', (file) => {
+  // V2_DIRECT_BG_FILES is currently empty (every auth screen has been
+  // migrated to ThemedBackground) — `it.each` throws on an empty array, so
+  // this guard only runs when there is something to assert.
+  if (V2_DIRECT_BG_FILES.length > 0) {
+    it.each(V2_DIRECT_BG_FILES)('%s imports and mounts <V2Background/>', (file) => {
+      const src = readScreen(file);
+      expect(src).toMatch(/import\s*{\s*V2Background\s*}\s*from\s*'@\/components\/ui\/V2Background'/);
+      expect(src).toMatch(/<V2Background\s*\/>/);
+    });
+  }
+
+  it.each(THEMED_BACKGROUND_BG_FILES)('%s imports and mounts <ThemedBackground/> (mode-aware chrome)', (file) => {
     const src = readScreen(file);
-    expect(src).toMatch(/import\s*{\s*V2Background\s*}\s*from\s*'@\/components\/ui\/V2Background'/);
-    expect(src).toMatch(/<V2Background\s*\/>/);
+    expect(src).toMatch(/import\s*{\s*ThemedBackground\s*}\s*from\s*'@\/components\/ui\/ThemedBackground'/);
+    expect(src).toMatch(/<ThemedBackground\s*\/>/);
   });
 
-  it.each(BG_SCREEN_FILES)('%s keeps a transparent root and safe area so V2Background shows through', (file) => {
+  it.each(BG_SCREEN_FILES)('%s keeps a transparent root and safe area so its background shows through', (file) => {
     const src = readScreen(file);
     expect(src).toMatch(/root:\s*{\s*flex:\s*1,\s*backgroundColor:\s*'transparent'/);
     expect(src).toMatch(/safe:\s*{\s*flex:\s*1,\s*backgroundColor:\s*'transparent'/);

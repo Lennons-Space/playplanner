@@ -20,9 +20,8 @@
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Icon } from '@/components/ui/Icon';
-import { Themes, FontFamily } from '@/constants/theme';
-
-const T = Themes.dark;
+import { FontFamily } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 export interface V2HeaderProps {
   title: string;
@@ -33,10 +32,11 @@ export interface V2HeaderProps {
 }
 
 export function V2Header({ title, onBack, right }: V2HeaderProps) {
+  const { tokens: T } = useAppTheme();
   return (
     <View style={styles.header}>
       <TouchableOpacity
-        style={styles.backBtn}
+        style={[styles.backBtn, { backgroundColor: T.fill, borderColor: T.separator }]}
         onPress={onBack ?? (() => router.back())}
         activeOpacity={0.7}
         accessibilityRole="button"
@@ -45,7 +45,7 @@ export function V2Header({ title, onBack, right }: V2HeaderProps) {
       >
         <Icon name="chevL" size={20} color={T.label} />
       </TouchableOpacity>
-      <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
+      <Text style={[styles.title, { color: T.label }]} numberOfLines={1} accessibilityRole="header">
         {title}
       </Text>
       <View style={styles.trailing}>{right}</View>
@@ -66,9 +66,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: T.fill,
     borderWidth: 1,
-    borderColor: T.separator,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -76,7 +74,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: FontFamily.display,
     fontSize: 19,
-    color: T.label,
     letterSpacing: -0.3,
   },
   trailing: {

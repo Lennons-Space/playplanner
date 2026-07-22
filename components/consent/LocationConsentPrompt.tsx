@@ -4,26 +4,36 @@
  * ICO Children's Code Standard 10: users must understand WHY location is
  * needed and that it is OFF by default, before the OS dialog appears.
  *
- * `variant` is PURELY visual: 'light' (default) is the original skin used by
- * the legacy screens; 'dark' matches the Play Planner v2 dark theme and is
- * rendered by the v2 Map screen over its V2Background (transparent root so
- * the atmosphere shows through). Copy, button order, handlers, and
- * accessibility labels are identical in both variants — consent semantics
- * must never differ by theme.
+ * `variant` is PURELY visual: 'light' (default) is the ORIGINAL legacy skin
+ * (NativeWind classNames + the old `Colors` constants — unrelated to the v2
+ * dark/light theme system, kept byte-for-byte unchanged); 'v2' renders the
+ * Play Planner v2 chrome and is rendered by the v2 Map screen over its
+ * ThemedBackground (transparent root so the atmosphere shows through) — it
+ * now resolves its colours from useAppTheme() so it follows the app's
+ * current v2 mode (dark or light) instead of being hardcoded to
+ * Themes.dark. Copy, button order, handlers, and accessibility labels are
+ * identical across all variants — consent semantics must never differ by
+ * theme.
+ *
+ * `'dark'` is kept as a deprecated alias of `'v2'` so existing call sites
+ * (e.g. app/explore/map.tsx passing variant="dark") keep compiling and
+ * behaving the same — they now render the v2 chrome in the CURRENT resolved
+ * mode rather than being frozen to dark.
  */
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Themes, ocean, FontFamily } from '@/constants/theme';
+import { ocean, FontFamily } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 interface Props {
   onAccept: () => void;
   onDecline: () => void;
-  variant?: 'light' | 'dark';
+  /** @deprecated 'dark' is an alias of 'v2' — kept for existing call sites. */
+  variant?: 'light' | 'dark' | 'v2';
 }
 
-const T = Themes.dark;
-
 export function LocationConsentPrompt({ onAccept, onDecline, variant = 'light' }: Props) {
-  const dark = variant === 'dark';
+  const { tokens: T } = useAppTheme();
+  const dark = variant === 'dark' || variant === 'v2';
   return (
     <View
       className={dark ? undefined : 'flex-1 bg-slate items-center justify-center px-6'}
@@ -31,13 +41,13 @@ export function LocationConsentPrompt({ onAccept, onDecline, variant = 'light' }
     >
       <Text
         className={dark ? undefined : 'text-2xl text-charcoal text-center mb-3'}
-        style={dark ? s.darkTitle : { fontFamily: 'Nunito-ExtraBold' }}
+        style={dark ? [s.darkTitle, { color: T.label }] : { fontFamily: 'Nunito-ExtraBold' }}
       >
         Find venues near you?
       </Text>
       <Text
         className={dark ? undefined : 'text-base text-grey text-center mb-8'}
-        style={dark ? s.darkBody : { fontFamily: 'Nunito-Regular' }}
+        style={dark ? [s.darkBody, { color: T.label2 }] : { fontFamily: 'Nunito-Regular' }}
       >
         {/*
           Wording note (GDPR Art.7 — informed consent):
@@ -68,7 +78,7 @@ export function LocationConsentPrompt({ onAccept, onDecline, variant = 'light' }
       </TouchableOpacity>
       <TouchableOpacity
         className={dark ? undefined : 'w-full border-2 border-sky rounded-2xl items-center justify-center'}
-        style={dark ? [s.darkBtnBase, s.darkDecline] : { height: 52 }}
+        style={dark ? [s.darkBtnBase, s.darkDecline, { backgroundColor: T.surface, borderColor: T.separator }] : { height: 52 }}
         onPress={onDecline}
         accessibilityRole="button"
         accessibilityLabel="Browse without location"
@@ -84,11 +94,13 @@ export function LocationConsentPrompt({ onAccept, onDecline, variant = 'light' }
   );
 }
 
-// v2 dark skin — mirrors the accepted dark screens (Themes.dark + ocean).
+// v2 chrome — layout/typography only here; colours that flip with the app
+// theme (label / label2 / surface / separator) are applied inline from
+// useAppTheme() above so this stays a pure lookup of geometry, not colour.
 const s = StyleSheet.create({
   darkRoot: {
     flex: 1,
-    backgroundColor: 'transparent', // parent mounts V2Background behind
+    backgroundColor: 'transparent', // parent mounts ThemedBackground behind
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -97,7 +109,6 @@ const s = StyleSheet.create({
     fontFamily: FontFamily.display,
     fontSize: 24,
     letterSpacing: -0.5,
-    color: T.label,
     textAlign: 'center',
     marginBottom: 12,
   },
@@ -105,7 +116,6 @@ const s = StyleSheet.create({
     fontFamily: FontFamily.body,
     fontSize: 15,
     lineHeight: 23,
-    color: T.label2,
     textAlign: 'center',
     marginBottom: 32,
   },
@@ -117,6 +127,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   darkAccept: {
+    // Accent stays ocean in BOTH modes — not theme-flipped.
     backgroundColor: ocean.accent,
     marginBottom: 12,
   },
@@ -126,9 +137,8 @@ const s = StyleSheet.create({
     color: '#FFFFFF',
   },
   darkDecline: {
-    backgroundColor: T.surface,
     borderWidth: 1,
-    borderColor: T.separator,
+    // backgroundColor / borderColor: mode-aware, applied inline.
   },
   darkDeclineText: {
     fontFamily: FontFamily.caption,

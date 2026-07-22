@@ -19,6 +19,7 @@ import { Alert } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { useUser } from '@/hooks/useAuth';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useThemeStore } from '@/store/themeStore';
 import NotificationsScreen from '../notifications';
 
 // ---------------------------------------------------------------------------
@@ -89,6 +90,9 @@ beforeEach(() => {
     register: mockRegister,
     unregister: mockUnregister,
   });
+  // Step 10A Part 2 (dual-theme foundation): reset to the default so tests
+  // above (written before theming existed) stay unaffected by the block below.
+  useThemeStore.setState({ preference: 'system' });
 });
 
 // ---------------------------------------------------------------------------
@@ -196,5 +200,32 @@ describe('NotificationsScreen — GDPR/ICO copy preserved', () => {
     render(<NotificationsScreen />, { wrapper: makeWrapper() });
     expect(screen.getByText(/never send marketing messages/i)).toBeTruthy();
     expect(screen.getByText(/deleted automatically if you delete your account/i)).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Step 10A Part 2 (dual-theme foundation) — proof-set both-theme render
+// ---------------------------------------------------------------------------
+
+describe('NotificationsScreen — renders in both light and dark (Step 10A Part 2 proof set)', () => {
+  it('renders without crashing in dark mode, with content intact', () => {
+    useThemeStore.setState({ preference: 'dark' });
+    render(<NotificationsScreen />, { wrapper: makeWrapper() });
+    expect(screen.getByText('Push notifications')).toBeTruthy();
+    expect(screen.getByText('Notifications')).toBeTruthy();
+  });
+
+  it('renders without crashing in light mode, with content intact', () => {
+    useThemeStore.setState({ preference: 'light' });
+    render(<NotificationsScreen />, { wrapper: makeWrapper() });
+    expect(screen.getByText('Push notifications')).toBeTruthy();
+    expect(screen.getByText('Notifications')).toBeTruthy();
+  });
+
+  it('signed-out guard also renders without crashing in light mode', () => {
+    useThemeStore.setState({ preference: 'light' });
+    mockUseUser.mockReturnValue(null);
+    render(<NotificationsScreen />, { wrapper: makeWrapper() });
+    expect(screen.getByText('Sign in to manage notifications')).toBeTruthy();
   });
 });

@@ -31,6 +31,7 @@
  * transient-state convention used elsewhere (e.g. PlanVisitScreen's
  * LoadingScreen).
  */
+import { useMemo } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,11 +40,11 @@ import { useMyReview } from '@/hooks/useReviews';
 import { useUser } from '@/hooks/useAuth';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { Icon } from '@/components/ui/Icon';
-import { V2Background } from '@/components/ui/V2Background';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
+import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
-const T = Themes.dark;
 const ACCENT = ocean;
 // Positive accent for the approved-review card — same green used for "open
 // now" state on venue detail / plan-visit.
@@ -55,7 +56,7 @@ const OPEN_GREEN = '#34C77B';
  * detail screen. The loading spinner (no header) and the eligible ReviewForm
  * (which supplies its own FlowHeader) do not use this.
  */
-function GateHeader() {
+function GateHeader({ styles, T }: { styles: Styles; T: ThemeTokens }) {
   return (
     <View style={styles.gateHeaderRow}>
       <TouchableOpacity
@@ -71,7 +72,11 @@ function GateHeader() {
   );
 }
 
+type Styles = ReturnType<typeof createStyles>;
+
 export default function WriteReviewScreen() {
+  const { tokens: T } = useAppTheme();
+  const styles = useMemo(() => createStyles(T), [T]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const user    = useUser();
 
@@ -88,9 +93,9 @@ export default function WriteReviewScreen() {
   if (!user) {
     return (
       <View style={styles.outer}>
-        <V2Background />
+        <ThemedBackground />
         <SafeAreaView style={styles.root} edges={['top']}>
-          <GateHeader />
+          <GateHeader styles={styles} T={T} />
           <View style={styles.centred}>
             <Icon name="shield" size={40} color={T.label3} />
             <Text style={styles.gateTitle}>Sign in to write a review</Text>
@@ -126,7 +131,7 @@ export default function WriteReviewScreen() {
   if (venueLoading || reviewLoading) {
     return (
       <View style={styles.outer}>
-        <V2Background />
+        <ThemedBackground />
         <SafeAreaView style={styles.root} edges={['top']}>
           <View style={styles.centred}>
             <ActivityIndicator color={ACCENT.accent} size="large" />
@@ -155,9 +160,9 @@ export default function WriteReviewScreen() {
   if (isOwnVenue) {
     return (
       <View style={styles.outer}>
-        <V2Background />
+        <ThemedBackground />
         <SafeAreaView style={styles.root} edges={['top']}>
-          <GateHeader />
+          <GateHeader styles={styles} T={T} />
           <View style={styles.centred}>
             <Icon name="shield" size={40} color={T.label3} />
             <Text style={styles.gateTitle}>Can't review your own venue</Text>
@@ -188,9 +193,9 @@ export default function WriteReviewScreen() {
 
     return (
       <View style={styles.outer}>
-        <V2Background />
+        <ThemedBackground />
         <SafeAreaView style={styles.root} edges={['top']}>
-          <GateHeader />
+          <GateHeader styles={styles} T={T} />
           <View style={styles.centred}>
             <Icon name="info" size={40} color={isApproved ? OPEN_GREEN : T.label3} />
             <Text style={styles.gateTitle}>You've already reviewed this venue</Text>
@@ -241,10 +246,14 @@ export default function WriteReviewScreen() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+// createStyles(T) — called via useMemo inside WriteReviewScreen so every
+// colour resolves per the current app theme mode (same pattern as
+// app/(tabs)/profile.tsx).
+function createStyles(T: ThemeTokens) {
+  return StyleSheet.create({
   outer: {
     flex: 1,
-    // Transparent so the shared <V2Background/> atmosphere shows through —
+    // Transparent so the shared <ThemedBackground/> atmosphere shows through —
     // matches Home / Venue Detail / Plan Visit. Cards/buttons stay opaque.
     backgroundColor: 'transparent',
   },
@@ -329,4 +338,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-});
+  });
+}

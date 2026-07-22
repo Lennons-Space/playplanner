@@ -35,41 +35,49 @@ import { supabase } from '@/lib/supabase';
 import { Icon } from '@/components/ui/Icon';
 import type { IconName } from '@/components/ui/Icon';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import type { Venue } from '@/types';
-import { Themes, ocean, FontFamily, BorderRadius } from '@/constants/theme';
+import { ocean, FontFamily, BorderRadius, type ThemeTokens } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 const OPEN_GREEN = '#34C77B'; // matches [id].tsx's OPEN_GREEN, used for "open now" text/dot in dark mode
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 // Icon/checkmark glyphs drawn on top of a solid saturated accent circle must
 // stay white regardless of theme — they are not drawn on the card surface,
-// so they must NOT resolve to pp.paper (which is now a dark surface colour).
+// so they must NOT resolve to pp.paper (which is a surface colour).
 const ON_ACCENT = '#FFFFFF';
 
-const pp = {
-  ink:      T.label,       // '#F4F4F6'
-  inkSoft:  T.label2,      // 'rgba(235,235,245,0.76)'
-  mute:     T.label3,      // 'rgba(235,235,245,0.44)'
-  line:     T.separator,   // 'rgba(255,255,255,0.08)'
-  lineSoft: T.fill,        // 'rgba(255,255,255,0.07)'
-  sand:     T.bg,          // '#0C0C11' — screen background
-  paper:    T.surface,     // '#17171F' — card surface
-  sky:      ACCENT.accent, // '#4C8DF6' Ocean
-  skyDeep:  ACCENT.accent,
-  skySoft:  'rgba(76,141,246,0.16)',
-  skyWash:  'rgba(76,141,246,0.16)',
-  star:     T.star,        // '#FFB23E'
-  starSoft: 'rgba(255,178,62,0.16)',
-  coral:    '#FF6B6B',
-  coralSoft:'rgba(255,107,107,0.16)',
-  leaf:     '#5BC08A',
-  leafSoft: 'rgba(91,192,138,0.16)',
-  purple:   '#8E6BD8',
-  purpleSoft:'rgba(142,107,216,0.16)',
-};
+// pp — this screen's own semantic colour aliases layered over the resolved
+// theme tokens (T). Was a module-scope const baking in Themes.dark; now a
+// factory called with the current mode's T (see PlanVisitScreen's
+// `useMemo(() => createPP(T), [T])` and each sub-component's own
+// useAppTheme() call) so every colour below flips with the app theme.
+function createPP(T: ThemeTokens) {
+  return {
+    ink:      T.label,
+    inkSoft:  T.label2,
+    mute:     T.label3,
+    line:     T.separator,
+    lineSoft: T.fill,
+    sand:     T.bg,          // screen background
+    paper:    T.surface,     // card surface
+    sky:      ACCENT.accent, // '#4C8DF6' Ocean — not theme-flipped
+    skyDeep:  ACCENT.accent,
+    skySoft:  'rgba(76,141,246,0.16)',
+    skyWash:  'rgba(76,141,246,0.16)',
+    star:     T.star,
+    starSoft: 'rgba(255,178,62,0.16)',
+    coral:    '#FF6B6B',
+    coralSoft:'rgba(255,107,107,0.16)',
+    leaf:     '#5BC08A',
+    leafSoft: 'rgba(91,192,138,0.16)',
+    purple:   '#8E6BD8',
+    purpleSoft:'rgba(142,107,216,0.16)',
+  };
+}
+type PP = ReturnType<typeof createPP>;
 
 // ─── Opening hours types ──────────────────────────────────────────────────────
 interface HoursRow {
@@ -211,7 +219,7 @@ interface Tip {
   body:  string;
 }
 
-function buildTips(venue: Venue): Tip[] {
+function buildTips(venue: Venue, pp: PP): Tip[] {
   const hours = (venue.opening_hours ?? []) as HoursRow[];
   const now   = new Date();
   const dow   = now.getDay();
@@ -341,6 +349,8 @@ export function getChecklistItems(slug?: string | null): string[] {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function TipCard({ tip }: { tip: Tip }) {
+  const { tokens: T } = useAppTheme();
+  const styles = createStyles(createPP(T));
   return (
     <View style={styles.tipCard}>
       <View style={[styles.tipIconCircle, { backgroundColor: tip.bg }]}>
@@ -371,6 +381,8 @@ function ActionTile({
   loading?:  boolean;
   active?:   boolean;
 }) {
+  const { tokens: T } = useAppTheme();
+  const styles = createStyles(createPP(T));
   return (
     <TouchableOpacity
       style={styles.actionTile}
@@ -401,6 +413,8 @@ function CheckItem({
   checked:  boolean;
   onToggle: () => void;
 }) {
+  const { tokens: T } = useAppTheme();
+  const styles = createStyles(createPP(T));
   return (
     <TouchableOpacity
       style={styles.checkItem}
@@ -422,9 +436,12 @@ function CheckItem({
 
 // ─── Loading / Error screens ──────────────────────────────────────────────────
 function LoadingScreen() {
+  const { tokens: T } = useAppTheme();
+  const pp = createPP(T);
+  const styles = createStyles(pp);
   return (
     <View style={{ flex: 1 }}>
-      <V2Background />
+      <ThemedBackground />
       <SafeAreaView style={styles.root} edges={['top']}>
         <View style={styles.centred}>
           <ActivityIndicator size="large" color={pp.sky} />
@@ -435,9 +452,12 @@ function LoadingScreen() {
 }
 
 function ErrorScreen({ message }: { message: string }) {
+  const { tokens: T } = useAppTheme();
+  const pp = createPP(T);
+  const styles = createStyles(pp);
   return (
     <View style={{ flex: 1 }}>
-      <V2Background />
+      <ThemedBackground />
       <SafeAreaView style={styles.root} edges={['top']}>
         <View style={styles.centred}>
           <Icon name="info" size={44} color={pp.mute} />
@@ -454,6 +474,9 @@ function ErrorScreen({ message }: { message: string }) {
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function PlanVisitScreen() {
+  const { tokens: T } = useAppTheme();
+  const pp = useMemo(() => createPP(T), [T]);
+  const styles = useMemo(() => createStyles(pp), [pp]);
   const { venueId: rawId, distance_km: rawDistanceKm } = useLocalSearchParams<{ venueId: string; distance_km?: string }>();
   const venueId = Array.isArray(rawId) ? rawId[0] : rawId ?? '';
 
@@ -513,7 +536,7 @@ export default function PlanVisitScreen() {
   const checkedCount = Object.values(checked).filter(Boolean).length;
 
   // ── Derived display values ─────────────────────────────────────────────────
-  const tips     = useMemo(() => (venue ? buildTips(venue) : []), [venue]);
+  const tips     = useMemo(() => (venue ? buildTips(venue, pp) : []), [venue, pp]);
   const hours    = (venue?.opening_hours ?? []) as HoursRow[];
   const openNow  = isOpenNow(hours);
   const todayRow = todayHoursRow(hours);
@@ -620,7 +643,7 @@ export default function PlanVisitScreen() {
       {/* Shared v2 atmosphere layer — SAME component Home and Venue Detail
           mount, reading the identical coarse/cached weather fetch, so the
           background never diverges between screens. */}
-      <V2Background />
+      <ThemedBackground />
       <SafeAreaView style={styles.root} edges={['top']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -786,10 +809,15 @@ export default function PlanVisitScreen() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+// createStyles(pp) — called via useMemo inside PlanVisitScreen (and directly,
+// unmemoised, inside the small sub-components below — same pattern as
+// app/explore/map.tsx's GlassBtn/DarkChip) so every colour resolves per the
+// current pp (itself derived from the resolved theme mode).
+function createStyles(pp: PP) {
+  return StyleSheet.create({
   root: {
     flex: 1,
-    // Transparent so the shared <V2Background/> atmosphere (rendered as a
+    // Transparent so the shared <ThemedBackground/> atmosphere (rendered as a
     // sibling behind this SafeAreaView) shows through between the cards —
     // matches Home/Venue Detail. Card surfaces (pp.paper) stay opaque on top.
     backgroundColor: 'transparent',
@@ -1094,4 +1122,5 @@ const styles = StyleSheet.create({
     backgroundColor: pp.lineSoft,
     marginHorizontal: 16,
   },
-});
+  });
+}

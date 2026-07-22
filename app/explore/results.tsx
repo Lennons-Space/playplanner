@@ -44,18 +44,19 @@ import {
 } from '@/lib/quickFilters';
 import type { Category } from '@/types';
 import { LocationConsentPrompt } from '@/components/consent';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { Icon } from '@/components/ui';
 import { VenueCard2 } from '@/components/home/VenueCard2';
-import { Themes, ocean, FontFamily, BorderRadius } from '@/constants/theme';
+import { ocean, FontFamily, BorderRadius } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { DEFAULT_FILTERS } from '@/types';
 import type { Coordinates } from '@/types';
 
-// ─── v2 dark design tokens ───────────────────────────────────────────
-// Same tokens as the other accepted v2 dark screens (Home, Map, Venue
-// Detail, Saved, Profile) — a local `const T = Themes.dark` per screen.
-const T = Themes.dark;
+// ─── v2 design tokens ─────────────────────────────────────────────────
+// Same tokens as the other accepted v2 screens (Home, Map, Venue Detail,
+// Saved, Profile) — resolved per-render via useAppTheme() inside each
+// component below rather than a module-scope Themes.dark constant.
 const ACCENT = ocean.accent; // '#4C8DF6'
 
 const VALID_MOODS: Mood[] = ['auto', 'indoor', 'outdoor', 'active', 'calm', 'free', 'surprise'];
@@ -96,6 +97,8 @@ function parseQuickFilters(raw: string | string[] | undefined): QuickFilterId[] 
 
 // ─── Default export: consent gate ───────────────────────────────────
 export default function ResultsScreen() {
+  const { mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
   const params = useLocalSearchParams<{ mood?: string; quickFilters?: string }>();
   const mood = parseMood(params.mood);
   // Memoised so the array reference stays stable between renders.
@@ -114,8 +117,8 @@ export default function ResultsScreen() {
   if (status === 'checking') {
     return (
       <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-        <V2Background />
-        <StatusBar style="light" />
+        <ThemedBackground />
+        <StatusBar style={statusBarStyle} />
       </View>
     );
   }
@@ -123,12 +126,13 @@ export default function ResultsScreen() {
   if (status === 'undecided') {
     // Consent prompt renders over the shared v2 atmosphere. Copy, handlers,
     // and accessibility labels are byte-identical to the light variant —
-    // only the skin (variant="dark") differs. ICO Children's Code Standard
-    // 10: location stays OFF until the parent explicitly accepts here.
+    // only the v2 chrome skin (variant="dark", a back-compat alias for the
+    // mode-aware v2 chrome) differs. ICO Children's Code Standard 10:
+    // location stays OFF until the parent explicitly accepts here.
     return (
       <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-        <V2Background />
-        <StatusBar style="light" />
+        <ThemedBackground />
+        <StatusBar style={statusBarStyle} />
         <LocationConsentPrompt onAccept={grant} onDecline={decline} variant="dark" />
       </View>
     );
@@ -176,6 +180,8 @@ interface ResultsBodyProps {
 }
 
 function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFallback }: ResultsBodyProps) {
+  const { tokens: T, mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
   // Refine state. `mood` can be nudged by the Indoor/Outdoor/Free chips.
   const [mood, setMood] = useState<Mood>(paramMood);
   const [openNow, setOpenNow] = useState(false);
@@ -290,8 +296,8 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
 
   return (
     <View style={{ flex: 1 }}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
       {/* ── Header ───────────────────────────────────────────────── */}
       <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10 }}>
@@ -386,6 +392,7 @@ function ResultsBody({ mood: paramMood, quickFilters, coords, locLoading, isFall
 // and used as-is by other (still-light-loading-state) screens — see
 // app/explore/map.tsx's SkeletonRow for the same pattern.
 function ResultRowSkeleton() {
+  const { tokens: T } = useAppTheme();
   return (
     <View
       testID="venue-row-skeleton"
@@ -446,6 +453,7 @@ function CuratedResult({
 
 // ─── RefineChip ─────────────────────────────────────────────────────
 function RefineChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const { tokens: T } = useAppTheme();
   return (
     <Pressable
       onPress={onPress}
@@ -473,6 +481,7 @@ function RefineChip({ label, active, onPress }: { label: string; active: boolean
 // Accessible) matched zero venues — meaning we don't have confirmed data yet,
 // not that there are no nearby venues. A specific message prevents confusion.
 function HardFilterEmptyState({ onOpenMap }: { onOpenMap: () => void }) {
+  const { tokens: T } = useAppTheme();
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
       <Text style={{ fontSize: 40 }}>🔍</Text>
@@ -496,6 +505,7 @@ function HardFilterEmptyState({ onOpenMap }: { onOpenMap: () => void }) {
 
 // ─── EmptyState ─────────────────────────────────────────────────────
 function EmptyState({ onOpenMap }: { onOpenMap: () => void }) {
+  const { tokens: T } = useAppTheme();
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
       <Text style={{ fontSize: 40 }}>🧭</Text>
@@ -519,6 +529,7 @@ function EmptyState({ onOpenMap }: { onOpenMap: () => void }) {
 
 // ─── ErrorState ─────────────────────────────────────────────────────
 function ErrorState({ onRetry }: { onRetry: () => void }) {
+  const { tokens: T } = useAppTheme();
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
       <Text style={{ fontSize: 40 }}>⚠️</Text>

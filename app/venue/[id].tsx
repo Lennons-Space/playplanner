@@ -65,11 +65,13 @@ import { Icon } from '@/components/ui/Icon';
 import { Stars } from '@/components/ui/Stars';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
 import { RecommendationExplanation } from '@/components/venues/RecommendationExplanation';
-import { V2Background } from '@/components/ui/V2Background';
-import { Themes, ocean, FontFamily, BorderRadius } from '@/constants/theme';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
+import { ocean, FontFamily, BorderRadius, type ThemeTokens } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
-// v2 dark tokens — this screen is dark-only, same as Home (see useAppTheme).
-const T = Themes.dark;
+// v2 design tokens — T is resolved per-render via useAppTheme() inside
+// VenueDetailScreen/LoadingSkeleton below (createStyles(T) mirrors the
+// pattern already used by app/(tabs)/profile.tsx).
 const ACCENT = ocean;
 
 // Prototype literals with no token equivalent.
@@ -134,10 +136,11 @@ function getTodayClosingTime(hours: HoursRow[]): string | null {
 
 // ─── LoadingSkeleton ──────────────────────────────────────────────────────────
 function LoadingSkeleton() {
+  const { mode } = useAppTheme();
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <Skeleton width="100%" height={300} borderRadius={0} />
       <View style={{ padding: 20, gap: 12 }}>
         <Skeleton width="70%" height={28} borderRadius={8} />
@@ -155,6 +158,9 @@ function LoadingSkeleton() {
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function VenueDetailScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(T), [T]);
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   // Expo Router can produce string[] when a param appears multiple times in a deep link.
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
@@ -320,8 +326,8 @@ export default function VenueDetailScreen() {
           paddingHorizontal: 24,
         }}
       >
-        <V2Background />
-        <StatusBar style="light" />
+        <ThemedBackground />
+        <StatusBar style={statusBarStyle} />
         <Icon name="info" size={48} color={T.label3} />
         <Text
           style={{
@@ -388,8 +394,8 @@ export default function VenueDetailScreen() {
       {/* Shared v2 atmosphere layer — SAME component Home mounts, reading the
           identical coarse/cached weather fetch, so the background never
           diverges between screens (see V2Background's own doc comment). */}
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
 
       {/* ── ScrollView ──────────────────────────────────────────────────── */}
       <ScrollView
@@ -784,21 +790,31 @@ export default function VenueDetailScreen() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+// createStyles(T) — same pattern as app/(tabs)/profile.tsx: called via
+// useMemo(() => createStyles(T), [T]) inside VenueDetailScreen so every
+// colour resolves per the current app theme mode. The hero photo + its
+// scrim + floating glass buttons are an INTENTIONAL dark exception (image-
+// led chrome, per the design brief) and use fixed literals regardless of
+// mode — everything else (sheet, info cards, reviews, stat tiles, bottom
+// bar) follows T.
+function createStyles(T: ThemeTokens) {
+  const isDark = T.mode === 'dark';
+  return StyleSheet.create({
   root: {
     flex: 1,
-    // Transparent so the shared <V2Background/> atmosphere (rendered as the
-    // first child, behind everything below) shows through in the status-bar
-    // zone, scroll overscroll, and any other gap — the hero, sheet, cards and
-    // sticky bar all still render fully opaque on top of it.
+    // Transparent so the shared <ThemedBackground/> atmosphere (rendered as
+    // the first child, behind everything below) shows through in the
+    // status-bar zone, scroll overscroll, and any other gap — the hero,
+    // sheet, cards and sticky bar all still render fully opaque on top of it.
     backgroundColor: 'transparent',
   },
 
-  // ── Hero ──
+  // ── Hero ── — intentional dark exception (image-led; matches the
+  // CategoryPlaceholder variant="dark" fallback used in the same slot).
   hero: {
     height: 300,
     overflow: 'hidden',
-    backgroundColor: T.bg,
+    backgroundColor: '#0C0C11',
   },
 
   // ── Image attribution (CC licence requirement) ──
@@ -820,19 +836,21 @@ const styles = StyleSheet.create({
   },
 
   // ── Sheet (jsx: surface, 20px top radius, −20 overlap) ──
-  // Translucent (not T.surface's opaque hex) so the shared <V2Background/>
+  // Translucent (not T.surface's opaque hex) so the shared <ThemedBackground/>
   // atmosphere — mounted behind this sheet at the screen root — remains
   // visible through every section that has no card background of its own
   // (headerBlock, facility pills, About, report/ODbL row, etc). Island cards
   // (statTile/infoCard/hoursCard/ReviewCard) keep their own opaque T.bg fill
-  // on top, so their text stays fully legible.
+  // on top, so their text stays fully legible. Dark values unchanged; light
+  // uses a translucent white + the same hairline convention as GlassSurface's
+  // light branch.
   sheet: {
-    backgroundColor: 'rgba(14,14,20,0.5)',
+    backgroundColor: isDark ? 'rgba(14,14,20,0.5)' : 'rgba(255,255,255,0.55)',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     marginTop: -20,
     borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(20,18,28,0.08)',
   },
   handleRow: {
     alignItems: 'center',
@@ -1159,4 +1177,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: -0.2,
   },
-});
+  });
+}

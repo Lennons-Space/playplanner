@@ -4,8 +4,13 @@
  * v2 dark restyle (Step 6, feat/exact-v2-design): VISUAL LAYER ONLY. Both
  * CTAs' destinations, the legal footer semantics, and accessibility labels
  * are byte-identical to the pre-restyle version — only styling changed.
- * Mounts <V2Background/> as the first child of a transparent root, matching
- * the frozen per-screen background architecture (see app/(tabs)/profile.tsx).
+ *
+ * Step 10A Part 2 (dual-theme foundation, proof set): mounts
+ * <ThemedBackground/> instead of a direct <V2Background/> — the dark path is
+ * byte-identical (ThemedBackground selects the same V2Background component
+ * unchanged), and tokens now come from useAppTheme() so this screen also
+ * renders correctly in light mode (see components/ui/ThemedBackground.tsx
+ * for why the light surface is a temporary placeholder, not final).
  *
  * ICO Children's Code + UK GDPR:
  *  - No location requested here. Location is opt-in, prompted only when needed.
@@ -15,24 +20,26 @@
  *  - Terms and Privacy Policy linked before sign-up.
  */
 
+import { useMemo } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Icon } from '@/components/ui';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
-
-const T = Themes.dark;
-const ACCENT = ocean;
+import { FontFamily, type ThemeTokens, type AccentPalette } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 export default function WelcomeScreen() {
+  const { tokens: T, accent: ACCENT, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(T, ACCENT), [T, ACCENT]);
+
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={styles.safe}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -142,177 +149,179 @@ export default function WelcomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: 'transparent' },
-  safe: { flex: 1, backgroundColor: 'transparent' },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 24,
-  },
+function createStyles(T: ThemeTokens, ACCENT: AccentPalette) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: 'transparent' },
+    safe: { flex: 1, backgroundColor: 'transparent' },
+    scrollContent: {
+      paddingHorizontal: 20,
+      paddingTop: 24,
+      paddingBottom: 24,
+    },
 
-  // ── Hero ────────────────────────────────────────────────────────────────
-  heroCard: {
-    borderRadius: 28,
-    padding: 22,
-    minHeight: 260,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  heroHalo: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 180,
-  },
-  heroIllustration: {
-    position: 'absolute',
-    top: 24,
-    left: 0,
-    right: 0,
-    height: 120,
-  },
-  // Teardrop shape: three rounded corners + one sharp corner, rotated -45deg
-  pinLeafOuter: {
-    position: 'absolute',
-    top: 8,
-    left: 36,
-    width: 52,
-    height: 64,
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 34,
-    borderBottomLeftRadius: 34,
-    borderBottomRightRadius: 0,
-    backgroundColor: '#3AA36A',
-    transform: [{ rotate: '-45deg' }],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Counter-rotate icon so it stays upright inside the pin
-  pinLeafInner: {
-    transform: [{ rotate: '45deg' }],
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinAccentOuter: {
-    position: 'absolute',
-    top: 24,
-    right: 44,
-    width: 52,
-    height: 64,
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 34,
-    borderBottomLeftRadius: 34,
-    borderBottomRightRadius: 0,
-    backgroundColor: ACCENT.accent,
-    transform: [{ rotate: '-45deg' }],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinAccentInner: {
-    transform: [{ rotate: '45deg' }],
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroTextWrap: {
-    marginTop: 100,
-  },
-  eyebrow: {
-    fontFamily: FontFamily.caption,
-    fontSize: 12,
-    letterSpacing: 1.5,
-    color: ACCENT.tagText,
-    textTransform: 'uppercase',
-  },
-  headline: {
-    fontFamily: FontFamily.display,
-    fontSize: 28,
-    color: T.label,
-    lineHeight: 34,
-    letterSpacing: -0.6,
-    marginTop: 8,
-  },
-  subtitle: {
-    fontFamily: FontFamily.body,
-    fontSize: 14.5,
-    color: T.label2,
-    lineHeight: 21,
-    marginTop: 10,
-  },
+    // ── Hero ────────────────────────────────────────────────────────────────
+    heroCard: {
+      borderRadius: 28,
+      padding: 22,
+      minHeight: 260,
+      justifyContent: 'flex-end',
+      overflow: 'hidden',
+    },
+    heroHalo: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 180,
+    },
+    heroIllustration: {
+      position: 'absolute',
+      top: 24,
+      left: 0,
+      right: 0,
+      height: 120,
+    },
+    // Teardrop shape: three rounded corners + one sharp corner, rotated -45deg
+    pinLeafOuter: {
+      position: 'absolute',
+      top: 8,
+      left: 36,
+      width: 52,
+      height: 64,
+      borderTopLeftRadius: 34,
+      borderTopRightRadius: 34,
+      borderBottomLeftRadius: 34,
+      borderBottomRightRadius: 0,
+      backgroundColor: '#3AA36A',
+      transform: [{ rotate: '-45deg' }],
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // Counter-rotate icon so it stays upright inside the pin
+    pinLeafInner: {
+      transform: [{ rotate: '45deg' }],
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pinAccentOuter: {
+      position: 'absolute',
+      top: 24,
+      right: 44,
+      width: 52,
+      height: 64,
+      borderTopLeftRadius: 34,
+      borderTopRightRadius: 34,
+      borderBottomLeftRadius: 34,
+      borderBottomRightRadius: 0,
+      backgroundColor: ACCENT.accent,
+      transform: [{ rotate: '-45deg' }],
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pinAccentInner: {
+      transform: [{ rotate: '45deg' }],
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    heroTextWrap: {
+      marginTop: 100,
+    },
+    eyebrow: {
+      fontFamily: FontFamily.caption,
+      fontSize: 12,
+      letterSpacing: 1.5,
+      color: ACCENT.tagText,
+      textTransform: 'uppercase',
+    },
+    headline: {
+      fontFamily: FontFamily.display,
+      fontSize: 28,
+      color: T.label,
+      lineHeight: 34,
+      letterSpacing: -0.6,
+      marginTop: 8,
+    },
+    subtitle: {
+      fontFamily: FontFamily.body,
+      fontSize: 14.5,
+      color: T.label2,
+      lineHeight: 21,
+      marginTop: 10,
+    },
 
-  // ── Privacy strip ──────────────────────────────────────────────────────
-  privacyStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginTop: 16,
-    gap: 10,
-  },
-  privacyText: {
-    flex: 1,
-    fontFamily: FontFamily.body,
-    fontSize: 13,
-    color: T.label2,
-    lineHeight: 18,
-  },
-  privacyBold: {
-    fontFamily: FontFamily.bodyStrong,
-    color: T.label,
-  },
+    // ── Privacy strip ──────────────────────────────────────────────────────
+    privacyStrip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      marginTop: 16,
+      gap: 10,
+    },
+    privacyText: {
+      flex: 1,
+      fontFamily: FontFamily.body,
+      fontSize: 13,
+      color: T.label2,
+      lineHeight: 18,
+    },
+    privacyBold: {
+      fontFamily: FontFamily.bodyStrong,
+      color: T.label,
+    },
 
-  // ── CTAs ────────────────────────────────────────────────────────────────
-  ctaBlock: {
-    marginTop: 20,
-    gap: 12,
-  },
-  primaryBtn: {
-    height: 54,
-    backgroundColor: ACCENT.accent,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  secondaryBtn: {
-    height: 54,
-    backgroundColor: T.fill,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: T.separator,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 16,
-    color: T.label,
-  },
+    // ── CTAs ────────────────────────────────────────────────────────────────
+    ctaBlock: {
+      marginTop: 20,
+      gap: 12,
+    },
+    primaryBtn: {
+      height: 54,
+      backgroundColor: ACCENT.accent,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    primaryBtnText: {
+      fontFamily: FontFamily.bodyStrong,
+      fontSize: 16,
+      color: '#FFFFFF',
+    },
+    secondaryBtn: {
+      height: 54,
+      backgroundColor: T.fill,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: T.separator,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    secondaryBtnText: {
+      fontFamily: FontFamily.bodyStrong,
+      fontSize: 16,
+      color: T.label,
+    },
 
-  // ── Legal ───────────────────────────────────────────────────────────────
-  legalBlock: {
-    marginTop: 16,
-  },
-  legalText: {
-    fontFamily: FontFamily.body,
-    fontSize: 11.5,
-    color: T.label3,
-    textAlign: 'center',
-    lineHeight: 17,
-  },
-  legalLink: {
-    fontFamily: FontFamily.bodyStrong,
-    textDecorationLine: 'underline',
-    color: T.label2,
-  },
-});
+    // ── Legal ───────────────────────────────────────────────────────────────
+    legalBlock: {
+      marginTop: 16,
+    },
+    legalText: {
+      fontFamily: FontFamily.body,
+      fontSize: 11.5,
+      color: T.label3,
+      textAlign: 'center',
+      lineHeight: 17,
+    },
+    legalLink: {
+      fontFamily: FontFamily.bodyStrong,
+      textDecorationLine: 'underline',
+      color: T.label2,
+    },
+  });
+}

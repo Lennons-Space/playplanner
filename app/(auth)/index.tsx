@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Redirect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { Themes } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 export const ONBOARDING_KEY = 'onboarding_complete';
 
 export default function AuthIndex() {
+  const { tokens: T } = useAppTheme();
   const [checked, setChecked] = useState(false);
   const [seen, setSeen] = useState(false);
 
@@ -16,9 +17,10 @@ export default function AuthIndex() {
       .catch(() => setChecked(true));
   }, []);
 
-  // Pre-check flash — v2 dark floor (not Colors.slate, the legacy light bg)
-  // so there is no light flash before the redirect resolves.
-  if (!checked) return <View style={{ flex: 1, backgroundColor: Themes.dark.bg }} />;
+  // Pre-check flash — mode-matched floor (not Colors.slate, the legacy
+  // light-only bg) so there is no wrong-mode flash before the redirect
+  // resolves.
+  if (!checked) return <View style={{ flex: 1, backgroundColor: T.bg }} />;
   if (seen) return <Redirect href="/(auth)/welcome" />;
   return <Redirect href="/(auth)/onboarding-1" />;
 }

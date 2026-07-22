@@ -19,7 +19,7 @@
  * Raw coordinates are NEVER shown to the user and are not logged
  * (UK GDPR data minimisation).
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -40,11 +40,11 @@ import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { V2Background } from '@/components/ui/V2Background';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
+import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import type { Category } from '@/types';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
 const LIMITS = {
@@ -100,6 +100,13 @@ async function lookupPostcode(raw: string): Promise<PostcodeResult | null> {
 }
 
 export default function AddVenueScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(T), [T]);
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
+  // Lighter than GlassSurface's mode default — see app/profile/my-venues.tsx
+  // for why (keeps the shared animated background visible between cards).
+  const cardTint = mode === 'dark' ? 'rgba(14,14,20,0.55)' : 'rgba(255,255,255,0.55)';
+  const stickyBarTint = mode === 'dark' ? 'rgba(12,12,17,0.92)' : 'rgba(255,255,255,0.92)';
   const user = useUser();
   const insets = useSafeAreaInsets();
 
@@ -253,8 +260,8 @@ export default function AddVenueScreen() {
 
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={styles.safe} edges={['top']}>
 
         {/* Header — "Cancel" text action, not a back chevron: this is a modal
@@ -296,7 +303,7 @@ export default function AddVenueScreen() {
                 which GlassSurface each block sits inside. */}
 
             {/* Card 1: what it is */}
-            <GlassSurface style={styles.formCard} tintColor="rgba(14,14,20,0.55)">
+            <GlassSurface style={styles.formCard} tintColor={cardTint}>
 
               {/* Venue name */}
               <View style={styles.field}>
@@ -358,7 +365,7 @@ export default function AddVenueScreen() {
             </GlassSurface>
 
             {/* Card 2: where it is */}
-            <GlassSurface style={styles.formCard} tintColor="rgba(14,14,20,0.55)">
+            <GlassSurface style={styles.formCard} tintColor={cardTint}>
 
               {/* ── Postcode lookup ───────────────────────────────────────────── */}
               <View style={styles.field}>
@@ -419,7 +426,7 @@ export default function AddVenueScreen() {
             </GlassSurface>
 
             {/* Card 3: contact + suitability */}
-            <GlassSurface style={styles.formCard} tintColor="rgba(14,14,20,0.55)">
+            <GlassSurface style={styles.formCard} tintColor={cardTint}>
 
               {/* Phone */}
               <View style={styles.field}>
@@ -479,7 +486,7 @@ export default function AddVenueScreen() {
           {/* Submit — sticky, safe-area aware above Android nav */}
           <GlassSurface
             style={[styles.stickyBar, { paddingBottom: insets.bottom + 14 }]}
-            tintColor="rgba(12,12,17,0.92)"
+            tintColor={stickyBarTint}
           >
             <TouchableOpacity
               style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
@@ -501,7 +508,11 @@ export default function AddVenueScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+// createStyles(T) — called via useMemo inside AddVenueScreen so every colour
+// resolves per the current app theme mode (same pattern as
+// app/(tabs)/profile.tsx).
+function createStyles(T: ThemeTokens) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
   safe: { flex: 1, backgroundColor: 'transparent' },
   flex: { flex: 1 },
@@ -655,4 +666,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#FFFFFF',
   },
-});
+  });
+}

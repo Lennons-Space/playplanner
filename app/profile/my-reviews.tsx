@@ -27,11 +27,11 @@ import { useAuthStore } from '@/store/authStore';
 import { useMyReviews, useDeleteReview } from '@/hooks/useDataRights';
 import { ModerationBadge } from '@/components/profile/ModerationBadge';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { FontFamily, ocean } from '@/constants/theme';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
 // ---------------------------------------------------------------------------
@@ -39,6 +39,7 @@ const ACCENT = ocean;
 // ---------------------------------------------------------------------------
 
 function StarRating({ rating }: { rating: number }) {
+  const { tokens: T } = useAppTheme();
   return (
     <View style={styles.starsRow}>
       {[1, 2, 3, 4, 5].map((star) => (
@@ -61,6 +62,11 @@ function StarRating({ rating }: { rating: number }) {
 // ---------------------------------------------------------------------------
 
 export default function MyReviewsScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
+  // See app/profile/my-venues.tsx for why this is lighter than GlassSurface's
+  // mode default.
+  const cardTint = mode === 'dark' ? 'rgba(14,14,20,0.55)' : 'rgba(255,255,255,0.55)';
   const userId  = useAuthStore((s) => s.user?.id);
   const { data: reviews, isLoading, isError } = useMyReviews(userId);
   const { mutate: deleteReview } = useDeleteReview();
@@ -85,8 +91,8 @@ export default function MyReviewsScreen() {
 
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <V2Header title="My Reviews" />
 
@@ -100,7 +106,7 @@ export default function MyReviewsScreen() {
         {/* Error */}
         {isError && !isLoading && (
           <View style={styles.centred}>
-            <Text style={styles.errorText}>
+            <Text style={[styles.errorText, { color: T.label2 }]}>
               Could not load your reviews. Please check your connection and try again.
             </Text>
           </View>
@@ -115,7 +121,7 @@ export default function MyReviewsScreen() {
             {/* Empty state */}
             {(!reviews || reviews.length === 0) && (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyHeading}>
+                <Text style={[styles.emptyHeading, { color: T.label2 }]}>
                   You haven&apos;t written any reviews yet.
                 </Text>
                 <TouchableOpacity
@@ -130,12 +136,12 @@ export default function MyReviewsScreen() {
 
             {/* Review cards */}
             {reviews && reviews.map((review: any) => (
-              <GlassSurface key={review.id} style={styles.card} tintColor="rgba(14,14,20,0.55)">
+              <GlassSurface key={review.id} style={styles.card} tintColor={cardTint}>
 
                 {/* Row 1: badge + date */}
                 <View style={styles.badgeDateRow}>
                   <ModerationBadge status={review.moderation_status} />
-                  <Text style={styles.dateText}>
+                  <Text style={[styles.dateText, { color: T.label3 }]}>
                     {format(new Date(review.created_at), 'd MMM yyyy')}
                   </Text>
                 </View>
@@ -144,13 +150,13 @@ export default function MyReviewsScreen() {
                 <StarRating rating={review.rating} />
 
                 {/* Row 3: venue name */}
-                <Text style={styles.venueName}>
+                <Text style={[styles.venueName, { color: T.label }]}>
                   {(review.venues as any)?.name ?? 'Unknown venue'}
                 </Text>
 
                 {/* Row 4: review body */}
                 {review.body ? (
-                  <Text style={styles.reviewBody} numberOfLines={2}>
+                  <Text style={[styles.reviewBody, { color: T.label2 }]} numberOfLines={2}>
                     {review.body}
                   </Text>
                 ) : null}
@@ -161,7 +167,7 @@ export default function MyReviewsScreen() {
                 {review.moderation_status === 'rejected' && review.moderation_notes ? (
                   <View style={styles.rejectionNote}>
                     <Text style={styles.rejectionLabel}>Reason for rejection</Text>
-                    <Text style={styles.rejectionText}>{review.moderation_notes}</Text>
+                    <Text style={[styles.rejectionText, { color: T.label2 }]}>{review.moderation_notes}</Text>
                   </View>
                 ) : null}
 
@@ -201,7 +207,6 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label2,
     textAlign: 'center',
   },
   scrollContent: {
@@ -216,7 +221,6 @@ const styles = StyleSheet.create({
   emptyHeading: {
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label2,
     textAlign: 'center',
   },
   emptyLink: {
@@ -241,7 +245,6 @@ const styles = StyleSheet.create({
   dateText: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: T.label3,
   },
   starsRow: {
     flexDirection: 'row',
@@ -254,13 +257,11 @@ const styles = StyleSheet.create({
   venueName: {
     fontFamily: FontFamily.heading,
     fontSize: 15,
-    color: T.label,
     marginBottom: 4,
   },
   reviewBody: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: T.label2,
     lineHeight: 19,
     marginBottom: 8,
   },
@@ -293,7 +294,6 @@ const styles = StyleSheet.create({
   rejectionText: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: T.label2,
     lineHeight: 18,
   },
 });

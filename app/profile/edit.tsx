@@ -34,15 +34,21 @@ import { useProfile, useUser } from '@/hooks/useAuth';
 import { useUpdateProfile, useUploadAvatar } from '@/hooks/useProfile';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { FontFamily, ocean } from '@/constants/theme';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 const MAX_BIO_LENGTH = 300;
 
 export default function EditProfileScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
+  // See app/profile/my-venues.tsx for why cards are lighter than
+  // GlassSurface's mode default; the sticky bar stays close to opaque.
+  const cardTint = mode === 'dark' ? 'rgba(14,14,20,0.55)' : 'rgba(255,255,255,0.55)';
+  const stickyBarTint = mode === 'dark' ? 'rgba(12,12,17,0.92)' : 'rgba(255,255,255,0.92)';
   const user           = useUser();
   const profile        = useProfile();
   const { mutateAsync, isPending }           = useUpdateProfile();
@@ -121,8 +127,8 @@ export default function EditProfileScreen() {
 
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={styles.safe} edges={['top']}>
         <V2Header title="Edit Profile" />
 
@@ -148,7 +154,7 @@ export default function EditProfileScreen() {
                 {profile?.avatar_url ? (
                   <Image
                     source={{ uri: profile.avatar_url }}
-                    style={styles.avatarImg}
+                    style={[styles.avatarImg, { backgroundColor: T.fill }]}
                     accessibilityLabel="Your profile photo"
                   />
                 ) : (
@@ -180,12 +186,12 @@ export default function EditProfileScreen() {
               </TouchableOpacity>
             </View>
 
-            <GlassSurface style={styles.card} tintColor="rgba(14,14,20,0.55)">
+            <GlassSurface style={styles.card} tintColor={cardTint}>
               {/* Full name */}
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Full name</Text>
+                <Text style={[styles.fieldLabel, { color: T.label2 }]}>Full name</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: T.bg, borderColor: T.separator, color: T.label }]}
                   value={fullName}
                   onChangeText={setFullName}
                   placeholder="Your name"
@@ -198,11 +204,11 @@ export default function EditProfileScreen() {
 
               {/* Username */}
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Username</Text>
-                <View style={styles.usernameRow}>
-                  <Text style={styles.usernameAt}>@</Text>
+                <Text style={[styles.fieldLabel, { color: T.label2 }]}>Username</Text>
+                <View style={[styles.usernameRow, { backgroundColor: T.bg, borderColor: T.separator }]}>
+                  <Text style={[styles.usernameAt, { color: T.label3 }]}>@</Text>
                   <TextInput
-                    style={styles.usernameInput}
+                    style={[styles.usernameInput, { color: T.label }]}
                     value={username}
                     onChangeText={(t) => setUsername(t.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                     placeholder="your_username"
@@ -213,14 +219,18 @@ export default function EditProfileScreen() {
                     autoCorrect={false}
                   />
                 </View>
-                <Text style={styles.fieldHint}>Usernames are visible to others</Text>
+                <Text style={[styles.fieldHint, { color: T.label3 }]}>Usernames are visible to others</Text>
               </View>
 
               {/* Bio */}
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Bio</Text>
+                <Text style={[styles.fieldLabel, { color: T.label2 }]}>Bio</Text>
                 <TextInput
-                  style={[styles.input, styles.bioInput]}
+                  style={[
+                    styles.input,
+                    styles.bioInput,
+                    { backgroundColor: T.bg, borderColor: T.separator, color: T.label },
+                  ]}
                   value={bio}
                   onChangeText={(t) => setBio(t.slice(0, MAX_BIO_LENGTH))}
                   placeholder="Tell other parents a little about yourself..."
@@ -229,14 +239,14 @@ export default function EditProfileScreen() {
                   multiline
                   maxLength={MAX_BIO_LENGTH}
                 />
-                <Text style={styles.bioCounter} accessibilityLiveRegion="polite">
+                <Text style={[styles.bioCounter, { color: T.label3 }]} accessibilityLiveRegion="polite">
                   {bio.length} / {MAX_BIO_LENGTH}
                 </Text>
               </View>
             </GlassSurface>
 
             {/* Children's ages — link to dedicated screen */}
-            <GlassSurface style={styles.card} tintColor="rgba(14,14,20,0.55)">
+            <GlassSurface style={styles.card} tintColor={cardTint}>
               <TouchableOpacity
                 style={styles.linkRow}
                 onPress={() => router.push('/profile/children-ages')}
@@ -248,8 +258,8 @@ export default function EditProfileScreen() {
                   <Icon name="stroller" size={18} color={ACCENT.accent} />
                 </View>
                 <View style={styles.flex}>
-                  <Text style={styles.linkLabel}>Children&apos;s ages</Text>
-                  <Text style={styles.linkSub}>
+                  <Text style={[styles.linkLabel, { color: T.label }]}>Children&apos;s ages</Text>
+                  <Text style={[styles.linkSub, { color: T.label3 }]}>
                     {(profile.children_ages ?? []).length > 0
                       ? (profile.children_ages ?? []).join(', ')
                       : 'Not set — only you can see this'}
@@ -260,15 +270,15 @@ export default function EditProfileScreen() {
             </GlassSurface>
 
             {/* Postcode — private section */}
-            <GlassSurface style={styles.card} tintColor="rgba(14,14,20,0.55)">
+            <GlassSurface style={styles.card} tintColor={cardTint}>
               <View style={styles.field}>
                 <View style={styles.privateLabelRow}>
                   <Icon name="pin" size={15} color={T.label3} />
-                  <Text style={styles.fieldLabel}>Your postcode</Text>
+                  <Text style={[styles.fieldLabel, { color: T.label2 }]}>Your postcode</Text>
                   <Text style={styles.privateTag}>Only you can see this</Text>
                 </View>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: T.bg, borderColor: T.separator, color: T.label }]}
                   value={postcode}
                   onChangeText={(t) => setPostcode(t.toUpperCase())}
                   placeholder="e.g. SW1A 1AA"
@@ -278,7 +288,7 @@ export default function EditProfileScreen() {
                   autoCorrect={false}
                   returnKeyType="done"
                 />
-                <Text style={styles.fieldHint}>
+                <Text style={[styles.fieldHint, { color: T.label3 }]}>
                   Used to show venues near your area. Never shared with other users.
                 </Text>
               </View>
@@ -289,7 +299,7 @@ export default function EditProfileScreen() {
           {/* Save button — sticky, safe-area aware above Android nav */}
           <GlassSurface
             style={[styles.stickyBar, { paddingBottom: insets.bottom + 14 }]}
-            tintColor="rgba(12,12,17,0.92)"
+            tintColor={stickyBarTint}
           >
             <TouchableOpacity
               style={[styles.saveBtn, isPending && styles.saveBtnDisabled]}
@@ -335,7 +345,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: T.fill,
+    // backgroundColor: mode-aware, applied inline (T.fill).
   },
   avatarPlaceholder: {
     width: 88,
@@ -374,23 +384,19 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
-    color: T.label2,
   },
   fieldHint: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: T.label3,
   },
   input: {
-    backgroundColor: T.bg,
     borderWidth: 1,
-    borderColor: T.separator,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label,
+    // backgroundColor / borderColor / color: mode-aware, applied inline.
   },
   bioInput: {
     minHeight: 80,
@@ -399,31 +405,28 @@ const styles = StyleSheet.create({
   bioCounter: {
     fontFamily: FontFamily.body,
     fontSize: 11,
-    color: T.label3,
     textAlign: 'right',
   },
   usernameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: T.bg,
     borderWidth: 1,
-    borderColor: T.separator,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    // backgroundColor / borderColor: mode-aware, applied inline.
   },
   usernameAt: {
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label3,
     marginRight: 2,
   },
   usernameInput: {
     flex: 1,
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label,
     padding: 0,
+    // color: mode-aware, applied inline (T.label).
   },
 
   // Children's ages link row
@@ -443,12 +446,10 @@ const styles = StyleSheet.create({
   linkLabel: {
     fontFamily: FontFamily.heading,
     fontSize: 15,
-    color: T.label,
   },
   linkSub: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: T.label3,
     marginTop: 2,
   },
 

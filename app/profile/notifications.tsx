@@ -11,6 +11,16 @@
  * above this screen's own. See app/profile/_layout.tsx (headerShown:false)
  * for the fix; this screen's header is now the ONLY header rendered.
  *
+ * Step 10A Part 2 (dual-theme foundation, proof set): the screen BODY now
+ * follows the resolved theme via useAppTheme() and mounts
+ * <ThemedBackground/> instead of a direct <V2Background/> (dark path is
+ * byte-identical). <V2Header/> itself is INTENTIONALLY left hard-coded dark
+ * this phase — it is shared chrome used by the ~28 screens not yet
+ * converted, so making it dynamic here would flip it to light while every
+ * other screen using it stays dark. Known consequence: in light mode this
+ * screen's header text stays dark-styled (near-white) — a scoped, documented
+ * gap that a later phase closes once V2Header itself is migrated.
+ *
  * GDPR / ICO Children's Code
  * --------------------------
  * Notifications are opt-in only. The user must actively toggle the switch to
@@ -22,7 +32,7 @@
  * (GDPR Art.5(1)(a) fair and transparent processing).
  */
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { View, Text, Switch, Alert, StyleSheet } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,15 +44,15 @@ import { useUser } from '@/hooks/useAuth';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
-
-const T = Themes.dark;
-const ACCENT = ocean;
+import { FontFamily, type ThemeTokens, type AccentPalette } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 export default function NotificationsScreen() {
   const user = useUser();
+  const { tokens: T, accent: ACCENT, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(T, ACCENT), [T, ACCENT]);
   const { isRegistered, isLoading: hookLoading, register, unregister } = usePushNotifications();
 
   // If OS permission is revoked while the app is backgrounded, the toggle would
@@ -107,8 +117,8 @@ export default function NotificationsScreen() {
   if (!user) {
     return (
       <View style={styles.root}>
-        <V2Background />
-        <StatusBar style="light" />
+        <ThemedBackground />
+        <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
         <SafeAreaView style={styles.safe} edges={['top']}>
           <V2Header title="Notifications" />
           <View style={styles.signedOutBody}>
@@ -123,8 +133,8 @@ export default function NotificationsScreen() {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <V2Header title="Notifications" />
 
@@ -185,79 +195,81 @@ export default function NotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: 'transparent' },
-  safe: { flex: 1, backgroundColor: 'transparent' },
-  flex: { flex: 1 },
+function createStyles(T: ThemeTokens, ACCENT: AccentPalette) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: 'transparent' },
+    safe: { flex: 1, backgroundColor: 'transparent' },
+    flex: { flex: 1 },
 
-  signedOutBody: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  signedOutText: {
-    fontFamily: FontFamily.heading,
-    fontSize: 15,
-    color: T.label2,
-    textAlign: 'center',
-  },
+    signedOutBody: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 20,
+      gap: 12,
+    },
+    signedOutText: {
+      fontFamily: FontFamily.heading,
+      fontSize: 15,
+      color: T.label2,
+      textAlign: 'center',
+    },
 
-  body: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-  },
+    body: {
+      paddingHorizontal: 20,
+      paddingTop: 8,
+    },
 
-  toggleCard: {
-    borderRadius: 18,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: ACCENT.light,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toggleLabel: {
-    fontFamily: FontFamily.heading,
-    fontSize: 15,
-    color: T.label,
-  },
-  toggleSub: {
-    fontFamily: FontFamily.body,
-    fontSize: 13,
-    color: T.label3,
-    marginTop: 2,
-  },
+    toggleCard: {
+      borderRadius: 18,
+      padding: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+    },
+    iconBox: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: ACCENT.light,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    toggleLabel: {
+      fontFamily: FontFamily.heading,
+      fontSize: 15,
+      color: T.label,
+    },
+    toggleSub: {
+      fontFamily: FontFamily.body,
+      fontSize: 13,
+      color: T.label3,
+      marginTop: 2,
+    },
 
-  explainer: {
-    fontFamily: FontFamily.body,
-    fontSize: 13,
-    color: T.label3,
-    lineHeight: 19,
-    marginTop: 16,
-    paddingHorizontal: 4,
-  },
+    explainer: {
+      fontFamily: FontFamily.body,
+      fontSize: 13,
+      color: T.label3,
+      lineHeight: 19,
+      marginTop: 16,
+      paddingHorizontal: 4,
+    },
 
-  privacyCard: {
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginTop: 16,
-  },
-  privacyText: {
-    flex: 1,
-    fontFamily: FontFamily.body,
-    fontSize: 13,
-    color: T.label2,
-    lineHeight: 19,
-  },
-});
+    privacyCard: {
+      borderRadius: 14,
+      padding: 14,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginTop: 16,
+    },
+    privacyText: {
+      flex: 1,
+      fontFamily: FontFamily.body,
+      fontSize: 13,
+      color: T.label2,
+      lineHeight: 19,
+    },
+  });
+}

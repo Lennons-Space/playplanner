@@ -42,11 +42,11 @@ import { useAuthStore } from '@/store/authStore';
 import { buildDataExport } from '@/hooks/useDataRights';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { FontFamily, ocean } from '@/constants/theme';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
 const STORAGE_KEY   = 'playplanner.last_data_export';
@@ -57,6 +57,11 @@ const COOLDOWN_MS   = 86_400_000; // 24 hours
 // ---------------------------------------------------------------------------
 
 export default function DataDownloadScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
+  // See app/profile/my-venues.tsx for why the info box is lighter than
+  // GlassSurface's mode default.
+  const infoBoxTint = mode === 'dark' ? 'rgba(14,14,20,0.55)' : 'rgba(255,255,255,0.55)';
   const userId = useAuthStore((s) => s.user?.id);
   const insets = useSafeAreaInsets();
 
@@ -139,8 +144,8 @@ export default function DataDownloadScreen() {
 
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={styles.safe} edges={['top']}>
         <V2Header title="Download My Data" />
 
@@ -150,12 +155,12 @@ export default function DataDownloadScreen() {
         >
 
           {/* Info box */}
-          <GlassSurface style={styles.infoBox} tintColor="rgba(14,14,20,0.55)">
+          <GlassSurface style={styles.infoBox} tintColor={infoBoxTint}>
             <View style={styles.infoIconRow}>
               <Icon name="info" size={18} color={ACCENT.accent} />
-              <Text style={styles.infoHeading}>What&apos;s included</Text>
+              <Text style={[styles.infoHeading, { color: T.label }]}>What&apos;s included</Text>
             </View>
-            <Text style={styles.infoBody}>
+            <Text style={[styles.infoBody, { color: T.label2 }]}>
               Your download includes your profile, reviews, saved venues, submitted
               venues, location consent history, and a log of privacy actions. It does
               not include payment information, your profile photo, or data about other
@@ -242,12 +247,10 @@ const styles = StyleSheet.create({
   infoHeading: {
     fontFamily: FontFamily.heading,
     fontSize: 15,
-    color: T.label,
   },
   infoBody: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: T.label2,
     lineHeight: 20,
   },
   cooldownBox: {

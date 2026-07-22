@@ -57,15 +57,16 @@ import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
 import { useFilterStore } from '@/store/filterStore';
-import { Themes, ocean, FontFamily } from '@/constants/theme';
+import { ocean, FontFamily } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import type { Category, Facility, PriceRange, VenueFilters } from '@/types';
 import { DEFAULT_FILTERS } from '@/types';
 
-// ─── v2 dark design tokens ────────────────────────────────────────────────────
-// VISUAL-ONLY restyle (Step 8): FilterSheet now opens as a modal over the v2
-// dark Search screen — a cream/light sheet would clash badly. Same tokens as
-// the other accepted v2 dark screens; zero logic/handler/query changes.
-const T = Themes.dark;
+// ─── v2 design tokens ─────────────────────────────────────────────────────────
+// VISUAL-ONLY restyle (Step 8): FilterSheet opens as a modal over the v2
+// Search screen — resolved per-render via useAppTheme() inside FilterSheet
+// below so it follows the app's current mode; zero logic/handler/query
+// changes.
 const ACCENT = ocean.accent; // '#4C8DF6'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -147,6 +148,7 @@ const Chip = memo(function Chip({
   icon?: string;
   accentColor?: string;
 }) {
+  const { tokens: T } = useAppTheme();
   const bg = selected ? (accentColor ?? ACCENT) : T.fill;
   const textColor = selected ? '#FFFFFF' : T.label;
   const borderColor = selected ? 'transparent' : T.separator;
@@ -199,6 +201,7 @@ const AgeStepper = memo(function AgeStepper({
   max: number;
   onChange: (v: number | null) => void;
 }) {
+  const { tokens: T } = useAppTheme();
   const displayed = value ?? min; // show min when null (unset)
 
   function increment() {
@@ -275,6 +278,7 @@ const AgeStepper = memo(function AgeStepper({
 // ─── Section header ───────────────────────────────────────────────────────────
 
 const SectionTitle = memo(function SectionTitle({ title }: { title: string }) {
+  const { tokens: T } = useAppTheme();
   return (
     <Text
       style={{
@@ -368,6 +372,7 @@ const FacilityChip = memo(function FacilityChip({ fac, selected, onToggle }: Fac
  *   </TouchableOpacity>
  */
 export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
+  const { tokens: T } = useAppTheme();
   // Read current filters and store actions from Zustand.
   const { filters: storedFilters, setFilters, resetFilters } = useFilterStore();
 

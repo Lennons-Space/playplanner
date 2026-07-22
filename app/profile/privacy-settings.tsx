@@ -36,11 +36,11 @@ import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { FontFamily, ocean } from '@/constants/theme';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
 // ---------------------------------------------------------------------------
@@ -48,6 +48,11 @@ const ACCENT = ocean;
 // ---------------------------------------------------------------------------
 
 export default function PrivacySettingsScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
+  // See app/profile/my-venues.tsx for why cards are lighter than
+  // GlassSurface's mode default.
+  const cardTint = mode === 'dark' ? 'rgba(14,14,20,0.55)' : 'rgba(255,255,255,0.55)';
   // 'unknown' while the async check is in-flight; resolved to 'on' or 'off'.
   const [locationStatus, setLocationStatus] = useState<'on' | 'off' | 'unknown'>('unknown');
 
@@ -76,8 +81,8 @@ export default function PrivacySettingsScreen() {
 
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={styles.safe} edges={['top']}>
         <V2Header title="Privacy & data" />
 
@@ -87,23 +92,23 @@ export default function PrivacySettingsScreen() {
         >
 
           {/* ── Location ─────────────────────────────────────────────────── */}
-          <Text style={styles.sectionLabel}>LOCATION</Text>
-          <GlassSurface style={styles.card} tintColor="rgba(14,14,20,0.55)">
+          <Text style={[styles.sectionLabel, { color: T.label3 }]}>LOCATION</Text>
+          <GlassSurface style={styles.card} tintColor={cardTint}>
             <View style={styles.cardRow}>
               <View style={styles.iconBox}>
                 <Icon name="pin" size={18} color={ACCENT.accent} />
               </View>
               <View style={styles.cardTextBlock}>
-                <Text style={styles.cardRowLabel}>Location access</Text>
-                <Text style={styles.cardRowSub}>{locationSubtitle}</Text>
+                <Text style={[styles.cardRowLabel, { color: T.label }]}>Location access</Text>
+                <Text style={[styles.cardRowSub, { color: T.label3 }]}>{locationSubtitle}</Text>
               </View>
               <View style={[
                 styles.statusPill,
-                locationStatus === 'on' ? styles.statusPillOn : styles.statusPillOff,
+                locationStatus === 'on' ? styles.statusPillOn : [styles.statusPillOff, { backgroundColor: T.fill }],
               ]}>
                 <Text style={[
                   styles.statusPillText,
-                  locationStatus === 'on' ? styles.statusPillTextOn : styles.statusPillTextOff,
+                  locationStatus === 'on' ? styles.statusPillTextOn : [styles.statusPillTextOff, { color: T.label3 }],
                 ]}>
                   {locationLabel}
                 </Text>
@@ -112,8 +117,8 @@ export default function PrivacySettingsScreen() {
           </GlassSurface>
 
           {/* ── Your data ────────────────────────────────────────────────── */}
-          <Text style={styles.sectionLabel}>YOUR DATA</Text>
-          <GlassSurface style={styles.card} tintColor="rgba(14,14,20,0.55)">
+          <Text style={[styles.sectionLabel, { color: T.label3 }]}>YOUR DATA</Text>
+          <GlassSurface style={styles.card} tintColor={cardTint}>
             <TouchableOpacity
               style={styles.cardRow}
               onPress={() => router.push('/profile/data-download')}
@@ -125,8 +130,8 @@ export default function PrivacySettingsScreen() {
                 <Icon name="info" size={18} color={ACCENT.accent} />
               </View>
               <View style={styles.cardTextBlock}>
-                <Text style={styles.cardRowLabel}>Download my data</Text>
-                <Text style={styles.cardRowSub}>Export a copy of your personal data</Text>
+                <Text style={[styles.cardRowLabel, { color: T.label }]}>Download my data</Text>
+                <Text style={[styles.cardRowSub, { color: T.label3 }]}>Export a copy of your personal data</Text>
               </View>
               <Icon name="chevR" size={16} color={T.label3} />
             </TouchableOpacity>
@@ -135,7 +140,7 @@ export default function PrivacySettingsScreen() {
           {/* ── Privacy note ─────────────────────────────────────────────── */}
           <GlassSurface style={styles.privacyNote} tintColor={ACCENT.light}>
             <Icon name="shield" size={16} color={ACCENT.accent} />
-            <Text style={styles.privacyNoteText}>
+            <Text style={[styles.privacyNoteText, { color: T.label }]}>
               PlayPlanner is built with privacy-first design. Your data is never sold.{' '}
               <Text
                 style={styles.privacyNoteLink}
@@ -172,7 +177,6 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontFamily: FontFamily.caption,
     fontSize: 11,
-    color: T.label3,
     letterSpacing: 0.6,
     marginBottom: 8,
     marginTop: 4,
@@ -204,12 +208,10 @@ const styles = StyleSheet.create({
   cardRowLabel: {
     fontFamily: FontFamily.heading,
     fontSize: 14,
-    color: T.label,
   },
   cardRowSub: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: T.label3,
     marginTop: 2,
     lineHeight: 18,
   },
@@ -224,7 +226,7 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT.light,
   },
   statusPillOff: {
-    backgroundColor: T.fill,
+    // backgroundColor: mode-aware, applied inline (T.fill).
   },
   statusPillText: {
     fontFamily: FontFamily.caption,
@@ -234,7 +236,7 @@ const styles = StyleSheet.create({
     color: ACCENT.accent,
   },
   statusPillTextOff: {
-    color: T.label3,
+    // color: mode-aware, applied inline (T.label3).
   },
 
   // Privacy note
@@ -249,7 +251,6 @@ const styles = StyleSheet.create({
   privacyNoteText: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: T.label,
     flex: 1,
     lineHeight: 20,
   },

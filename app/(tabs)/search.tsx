@@ -76,15 +76,17 @@ import { useFilterStore } from '@/store/filterStore';
 import { useMapStore } from '@/store/mapStore';
 import FilterSheet from '@/components/filters/FilterSheet';
 import { Icon } from '@/components/ui';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { VenueCard2 } from '@/components/home/VenueCard2';
-import { Themes, ocean, FontFamily } from '@/constants/theme';
+import { ocean, FontFamily } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import { MAX_SEARCH_RADIUS_KM } from '@/constants/location';
 import { getVenueAttributes } from '@/lib/venueAttributes';
 import type { Venue, VenueFilters, PriceRange, Coordinates } from '@/types';
 
-// ─── v2 dark design tokens ───────────────────────────────────────────
-const T = Themes.dark;
+// ─── v2 design tokens ─────────────────────────────────────────────────
+// T is resolved per-render via useAppTheme() inside each component below —
+// no module-scope Themes.dark constant.
 const ACCENT = ocean.accent; // '#4C8DF6'
 
 // Matches full UK postcodes (SW1A 1AA) and outward-only districts (SW1A, M1, B1).
@@ -214,6 +216,7 @@ function getEmptyStateContent(
 // Local dark equivalent of components/ui/ScreenTitle (which hard-codes the
 // legacy light `Colors` export). Same layout/role, v2 dark tokens.
 function DarkScreenTitle({ title, trailing }: { title: string; trailing?: React.ReactNode }) {
+  const { tokens: T } = useAppTheme();
   return (
     <View
       style={{
@@ -258,6 +261,7 @@ function DarkIconBtn({
   onPress: () => void;
   accessibilityLabel: string;
 }) {
+  const { tokens: T } = useAppTheme();
   return (
     <Pressable
       onPress={onPress}
@@ -286,6 +290,7 @@ function DarkIconBtn({
 // `Colors`). Keeps the same testID/accessibilityLabel/accessibilityState shape
 // so existing chip-press tests keep working unchanged.
 function SearchChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const { tokens: T } = useAppTheme();
   return (
     <Pressable
       onPress={onPress}
@@ -344,6 +349,7 @@ function SearchNearbyResults({
   savedIds,
   onToggleSave,
 }: SearchNearbyResultsProps) {
+  const { tokens: T } = useAppTheme();
   // Safe to call here: this component is only mounted when consent is granted.
   const { coords: rawCoords, isLoading: locLoading } = useLocation();
 
@@ -425,6 +431,8 @@ function SearchNearbyResults({
 
 // ─── SearchScreen ─────────────────────────────────────────────────────────────
 export default function SearchScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
   const [query, setQuery]               = useState('');
   const [inputFocused, setInputFocused] = useState(false);
   const debouncedQuery                  = useDebounce(query, 300);
@@ -647,8 +655,8 @@ export default function SearchScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
 
       {/* ── Header ──────────────────────────────────────────────── */}

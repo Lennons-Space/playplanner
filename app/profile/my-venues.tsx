@@ -29,12 +29,12 @@ import { useAuthStore } from '@/store/authStore';
 import { useMyVenues } from '@/hooks/useDataRights';
 import { ModerationBadge } from '@/components/profile/ModerationBadge';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { FontFamily, ocean } from '@/constants/theme';
 import type { ModerationStatus } from '@/types';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
 // ---------------------------------------------------------------------------
@@ -42,6 +42,13 @@ const ACCENT = ocean;
 // ---------------------------------------------------------------------------
 
 export default function MyVenuesScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
+  // Lighter than GlassSurface's mode default so the shared animated
+  // background stays visible between rows even in a long list, instead of
+  // reading as one solid stacked column (unchanged intent from the accepted
+  // dark-only 0.55 tint — now resolved per mode).
+  const cardTint = mode === 'dark' ? 'rgba(14,14,20,0.55)' : 'rgba(255,255,255,0.55)';
   const userId = useAuthStore((s) => s.user?.id);
   const { data: venues, isLoading, isError } = useMyVenues(userId);
 
@@ -60,8 +67,8 @@ export default function MyVenuesScreen() {
 
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <V2Header title="My Submitted Venues" />
 
@@ -75,7 +82,7 @@ export default function MyVenuesScreen() {
         {/* Error */}
         {isError && !isLoading && (
           <View style={styles.centred}>
-            <Text style={styles.errorText}>
+            <Text style={[styles.errorText, { color: T.label2 }]}>
               Could not load your submitted venues. Please check your connection and try again.
             </Text>
           </View>
@@ -90,7 +97,7 @@ export default function MyVenuesScreen() {
             {/* Empty state */}
             {(!venues || venues.length === 0) && (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyHeading}>
+                <Text style={[styles.emptyHeading, { color: T.label2 }]}>
                   You haven&apos;t submitted any venues yet.
                 </Text>
                 <TouchableOpacity
@@ -105,7 +112,7 @@ export default function MyVenuesScreen() {
 
             {/* Venue rows */}
             {venues && venues.map((venue: any) => (
-              <GlassSurface key={venue.id} style={styles.card} tintColor="rgba(14,14,20,0.55)">
+              <GlassSurface key={venue.id} style={styles.card} tintColor={cardTint}>
                 <TouchableOpacity
                   style={styles.cardRow}
                   onPress={() => handleVenuePress(venue.id, venue.moderation_status)}
@@ -114,9 +121,9 @@ export default function MyVenuesScreen() {
                 >
                   {/* Left: name, city, date */}
                   <View style={styles.cardLeft}>
-                    <Text style={styles.venueName}>{venue.name}</Text>
-                    <Text style={styles.venueCity}>{venue.city}</Text>
-                    <Text style={styles.submittedDate}>
+                    <Text style={[styles.venueName, { color: T.label }]}>{venue.name}</Text>
+                    <Text style={[styles.venueCity, { color: T.label3 }]}>{venue.city}</Text>
+                    <Text style={[styles.submittedDate, { color: T.label4 }]}>
                       {format(new Date(venue.created_at), 'd MMM yyyy')}
                     </Text>
                   </View>
@@ -150,7 +157,6 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label2,
     textAlign: 'center',
   },
   scrollContent: {
@@ -165,7 +171,6 @@ const styles = StyleSheet.create({
   emptyHeading: {
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label2,
     textAlign: 'center',
   },
   emptyLink: {
@@ -193,18 +198,15 @@ const styles = StyleSheet.create({
   venueName: {
     fontFamily: FontFamily.heading,
     fontSize: 15,
-    color: T.label,
     marginBottom: 2,
   },
   venueCity: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: T.label3,
   },
   submittedDate: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: T.label4,
     marginTop: 2,
   },
 });

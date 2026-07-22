@@ -26,7 +26,7 @@ import { render } from '@testing-library/react-native';
 
 // ─── Imports (after mocks) ───────────────────────────────────────────────────
 import { useAuthStore } from '@/store/authStore';
-import TabsLayout from '../_layout';
+import TabsLayout, { TabBarBackground } from '../_layout';
 
 // ─── Module mocks ────────────────────────────────────────────────────────────
 
@@ -84,19 +84,63 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 // useAppTheme: TabsLayout reads accent.accent for the active tab tint (v2
-// dark glass tab bar) — stub it so the test doesn't depend on the real
-// Themes/ocean token module.
+// dark glass tab bar) plus `mode` (Phase A, v2 Light-theme correction) for
+// the status bar / tab bar background — stub it so the test doesn't depend
+// on the real Themes/ocean token module. Exposed as a jest.fn() so
+// individual tests can override the resolved mode via mockReturnValueOnce.
+const DARK_APP_THEME = {
+  mode: 'dark' as const,
+  tokens: {
+    mode: 'dark', bg: '#0C0C11', warm: '#0E0E14', surface: '#17171F', surface2: '#1F1F29',
+    label: '#F4F4F6', label2: 'rgba(235,235,245,0.76)', label3: 'rgba(235,235,245,0.44)',
+    label4: 'rgba(235,235,245,0.22)', separator: 'rgba(255,255,255,0.08)',
+    fill: 'rgba(255,255,255,0.07)', fill2: 'rgba(255,255,255,0.04)', star: '#FFB23E', appBg: '#060608',
+  },
+  accent: { accent: '#4C8DF6', light: 'rgba(76,141,246,0.16)', tagText: '#82AEFA' },
+};
+const LIGHT_APP_THEME = {
+  mode: 'light' as const,
+  tokens: {
+    mode: 'light', bg: '#F1F0F4', warm: '#FBFAFC', surface: '#FFFFFF', surface2: '#F5F4F8',
+    label: '#16151A', label2: 'rgba(20,18,28,0.74)', label3: 'rgba(20,18,28,0.48)',
+    label4: 'rgba(20,18,28,0.26)', separator: 'rgba(20,18,28,0.10)',
+    fill: 'rgba(20,18,28,0.05)', fill2: 'rgba(20,18,28,0.03)', star: '#FF9F0A', appBg: '#E4E3E8',
+  },
+  accent: { accent: '#4C8DF6', light: 'rgba(76,141,246,0.16)', tagText: '#82AEFA' },
+};
+// Return type is the union of both stubs so individual tests can override the
+// resolved mode with mockReturnValue(LIGHT_APP_THEME) without a literal-type
+// mismatch (DARK_APP_THEME.mode is `'dark' as const`).
+const mockUseAppTheme = jest.fn(
+  (): typeof DARK_APP_THEME | typeof LIGHT_APP_THEME => DARK_APP_THEME,
+);
 jest.mock('@/hooks/useAppTheme', () => ({
-  useAppTheme: () => ({
-    mode: 'dark',
-    tokens: {
-      mode: 'dark', bg: '#0C0C11', warm: '#0E0E14', surface: '#17171F', surface2: '#1F1F29',
-      label: '#F4F4F6', label2: 'rgba(235,235,245,0.76)', label3: 'rgba(235,235,245,0.44)',
-      label4: 'rgba(235,235,245,0.22)', separator: 'rgba(255,255,255,0.08)',
-      fill: 'rgba(255,255,255,0.07)', fill2: 'rgba(255,255,255,0.04)', star: '#FFB23E', appBg: '#060608',
-    },
-    accent: { accent: '#4C8DF6', light: 'rgba(76,141,246,0.16)', tagText: '#82AEFA' },
-  }),
+  useAppTheme: () => mockUseAppTheme(),
+}));
+
+// expo-linear-gradient: TabBarBackground renders a <LinearGradient> — replace
+// with a plain View (same pattern as ThemedBackground.test.tsx /
+// V2Background.test.tsx) so `colors` is inspectable via props on the JSON tree.
+jest.mock('expo-linear-gradient', () => {
+  const ReactActual = require('react');
+  const { View } = require('react-native');
+  return {
+    LinearGradient: ({ children, ...props }: { children?: React.ReactNode }) =>
+      ReactActual.createElement(View, props, children),
+  };
+});
+
+// expo-status-bar: react-native's OWN underlying <StatusBar/> is a
+// non-visual, imperative-only native module — it renders null under Jest
+// (nothing with a `style` prop appears in the JSON tree), so the only way to
+// observe what `style` TabsLayout passes down is to capture the prop at the
+// mock boundary rather than inspect toJSON() output.
+const mockStatusBarStyle = jest.fn();
+jest.mock('expo-status-bar', () => ({
+  StatusBar: ({ style }: { style: string }) => {
+    mockStatusBarStyle(style);
+    return null;
+  },
 }));
 
 // ─── Typed mock helper ───────────────────────────────────────────────────────
@@ -201,5 +245,59 @@ describe('TabsLayout — legacy ambient background fully removed (source guard)'
   it('no longer imports or mounts the legacy <WeatherBackground/>', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../_layout.tsx'), 'utf8');
     expect(src).not.toMatch(/WeatherBackground/);
+  });
+});
+
+// =============================================================================
+// Phase A (v2 Light-theme correction, 2026-07-17) — TabBarBackground and the
+// shared <StatusBar/> default are now mode-aware. expo-router's Tabs is
+// mocked as a dumb passthrough in this file (see MockTabs above), so
+// screenOptions.tabBarBackground never actually renders inside <TabsLayout/>'s
+// own tree — TabBarBackground is mounted directly here instead (now exported
+// from _layout.tsx for exactly this reason).
+// =============================================================================
+describe('TabBarBackground — mode-aware glass gradient + border', () => {
+  it('dark: renders the unchanged dark gradient/border', () => {
+    const tree = render(<TabBarBackground mode="dark" />).toJSON() as {
+      children: [{ props: Record<string, unknown> }, { props: Record<string, unknown> }];
+    };
+    const [gradientNode, borderNode] = tree.children;
+    expect(gradientNode.props.colors).toEqual([
+      'rgba(14,14,20,0.28)',
+      'rgba(14,14,20,0.80)',
+      'rgba(14,14,20,0.92)',
+    ]);
+    const { StyleSheet } = require('react-native');
+    expect(StyleSheet.flatten(borderNode.props.style).backgroundColor).toBe('rgba(255,255,255,0.12)');
+  });
+
+  it('light: renders a distinct light gradient/border', () => {
+    const tree = render(<TabBarBackground mode="light" />).toJSON() as {
+      children: [{ props: Record<string, unknown> }, { props: Record<string, unknown> }];
+    };
+    const [gradientNode, borderNode] = tree.children;
+    expect(gradientNode.props.colors).toEqual([
+      'rgba(255,255,255,0.35)',
+      'rgba(255,255,255,0.85)',
+      'rgba(255,255,255,0.94)',
+    ]);
+    const { StyleSheet } = require('react-native');
+    expect(StyleSheet.flatten(borderNode.props.style).backgroundColor).toBe('rgba(20,18,28,0.12)');
+  });
+});
+
+describe('TabsLayout — shared <StatusBar/> default follows resolved mode', () => {
+  it('passes style="light" content when the resolved mode is dark', () => {
+    mockUseAppTheme.mockReturnValue(DARK_APP_THEME);
+    mockStore({ session: { access_token: 'tok', user: { id: 'user-1' } }, isLoading: false });
+    render(<TabsLayout />);
+    expect(mockStatusBarStyle).toHaveBeenCalledWith('light');
+  });
+
+  it('passes style="dark" content when the resolved mode is light', () => {
+    mockUseAppTheme.mockReturnValue(LIGHT_APP_THEME);
+    mockStore({ session: { access_token: 'tok', user: { id: 'user-1' } }, isLoading: false });
+    render(<TabsLayout />);
+    expect(mockStatusBarStyle).toHaveBeenCalledWith('dark');
   });
 });

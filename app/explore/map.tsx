@@ -67,22 +67,26 @@ import { getWeatherBadge, getWeatherBanner, scoreVenueForWeather } from '@/lib/w
 import { useFilterStore } from '@/store/filterStore';
 import { useShallow } from 'zustand/react/shallow';
 import { LocationConsentPrompt } from '@/components/consent';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import FilterSheet from '@/components/filters/FilterSheet';
 import { Icon } from '@/components/ui';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import { FALLBACK_LOCATION } from '@/constants/location';
-import { Themes, ocean, FontFamily } from '@/constants/theme';
+import { ocean, FontFamily } from '@/constants/theme';
 import { getCategoryMeta } from '@/constants/categories';
 import { resolveVenueCategory, buildCategoryLookup } from '@/lib/venues/resolveVenueCategory';
 import { useMapStore } from '@/store/mapStore';
 import { supabase } from '@/lib/supabase';
 import type { Venue, Coordinates } from '@/types';
 
-// ─── v2 dark design tokens ──────────────────────────────────────────────────
-// The whole screen chrome themes against Themes.dark + the Ocean accent —
-// identical tokens to the accepted Home / Venue Detail / Saved screens.
-const T = Themes.dark;
+// ─── v2 design tokens ────────────────────────────────────────────────────────
+// The whole screen chrome themes against useAppTheme() (Themes.dark /
+// Themes.light, resolved per-render inside each component below) + the Ocean
+// accent, which is NOT theme-flipped — identical tokens to the accepted Home
+// / Venue Detail / Saved screens. `T` is intentionally NOT a module-scope
+// constant anymore (it used to hard-pin Themes.dark) — every function
+// component below that renders themed chrome calls `useAppTheme()` itself.
 const ACCENT = ocean.accent; // '#4C8DF6'
 const OPEN_GREEN = '#34C77B'; // matches [id].tsx / plan-visit.tsx open state
 
@@ -166,6 +170,7 @@ const VenueRow = memo(function VenueRow({
   selected: boolean;
   onPress: (venue: Venue) => void;
 }) {
+  const { tokens: T } = useAppTheme();
   const [imgError, setImgError] = useState(false);
   const photoUrl = !imgError ? (venue.cover_photo_url ?? null) : null;
 
@@ -237,6 +242,7 @@ const VenueRow = memo(function VenueRow({
 
 // Stable separator — module-level so FlatList never sees it as changed.
 function VenueRowSeparator() {
+  const { tokens: T } = useAppTheme();
   return <View style={{ height: 1, backgroundColor: T.separator, marginLeft: 72 }} />;
 }
 
@@ -359,6 +365,7 @@ function GlassBtn({
   accessibilityLabel: string;
   children: React.ReactNode;
 }) {
+  const { tokens: T } = useAppTheme();
   return (
     <Pressable
       style={{
@@ -394,6 +401,7 @@ function DarkChip({
   accessibilityLabel: string;
   children: React.ReactNode;
 }) {
+  const { tokens: T } = useAppTheme();
   return (
     <Pressable
       style={{
@@ -426,6 +434,7 @@ function DarkChip({
 // Local because the shared VenueRowSkeleton is light-themed and used by the
 // legacy screens.
 function SkeletonRow() {
+  const { tokens: T } = useAppTheme();
   return (
     <View
       testID="venue-row-skeleton"
@@ -458,6 +467,7 @@ function AreaVenueCard({
   weatherBadge: string | null;
   onPress: () => void;
 }) {
+  const { tokens: T } = useAppTheme();
   const catMeta = getCategoryMeta(venue.category?.slug);
   const tint = venue.category?.color ?? ACCENT;
   const rating = Number(venue.average_rating ?? 0);
@@ -576,6 +586,8 @@ function MapScreen({
   viewMode,
   onViewModeChange,
 }: MapScreenProps) {
+  const { tokens: T, mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // This screen renders BOTH inside the tab navigator (Map tab) and as a
@@ -995,7 +1007,7 @@ function MapScreen({
           accessibilityLabel="Map view"
           accessibilityState={{ selected: viewMode === 'map' }}
         >
-          <Text style={viewMode === 'map' ? pillStyles.labelActive : pillStyles.labelInactive}>Map</Text>
+          <Text style={viewMode === 'map' ? pillStyles.labelActive : [pillStyles.labelInactive, { color: T.label3 }]}>Map</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[pillStyles.tab, viewMode === 'list' && pillStyles.tabActive]}
@@ -1004,7 +1016,7 @@ function MapScreen({
           accessibilityLabel="List view"
           accessibilityState={{ selected: viewMode === 'list' }}
         >
-          <Text style={viewMode === 'list' ? pillStyles.labelActive : pillStyles.labelInactive}>List</Text>
+          <Text style={viewMode === 'list' ? pillStyles.labelActive : [pillStyles.labelInactive, { color: T.label3 }]}>List</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1158,8 +1170,8 @@ function MapScreen({
   if (viewMode === 'list') {
     return (
       <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-        <V2Background />
-        <StatusBar style="light" />
+        <ThemedBackground />
+        <StatusBar style={statusBarStyle} />
         <View style={{
           paddingTop: insets.top + 52, paddingHorizontal: 16, paddingBottom: 10,
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -1245,9 +1257,9 @@ function MapScreen({
       {/* Same accepted v2 atmosphere as Home/Venue Detail/Saved — frozen
           component, plain mount (never the map-centre weather, which would
           make this screen's backdrop diverge from the other v2 screens). */}
-      <V2Background />
-      <StatusBar style="light" />
-      {/* ── v2 dark scrollable feed ─────────────────────────────────────── */}
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
+      {/* ── v2 scrollable feed ───────────────────────────────────────────── */}
       <ScrollView
         style={{ flex: 1, backgroundColor: 'transparent', marginBottom: tabSafeZone }}
         contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: 32 + (tabSafeZone === 0 ? insets.bottom : 0) }}
@@ -1682,7 +1694,8 @@ const pillStyles = StyleSheet.create({
   tab:           { paddingHorizontal: 28, paddingVertical: 8, borderRadius: 999 },
   tabActive:     { backgroundColor: ACCENT },
   labelActive:   { fontFamily: FontFamily.bodyStrong, fontSize: 15, color: '#fff' },
-  labelInactive: { fontFamily: FontFamily.body, fontSize: 15, color: T.label3 },
+  // color: mode-aware, applied inline where used (T.label3).
+  labelInactive: { fontFamily: FontFamily.body, fontSize: 15 },
 });
 
 // ─── MapWithLocation ───────────────────────────────────────────────────────
@@ -1741,6 +1754,8 @@ const LocationFallbackMap = memo(function LocationFallbackMap({
 //   'declined'  → fallback map (London, no GPS)
 //   'granted'   → live map with GPS
 export default function ExploreScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
   const { status, grant, decline } = useLocationConsent();
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
@@ -1750,17 +1765,19 @@ export default function ExploreScreen() {
   const handleViewModeChange   = useCallback((mode: 'map' | 'list') => setViewMode(mode), []);
 
   // State 1: still reading SecureStore — render nothing to avoid consent prompt flash.
-  // Dark base matches V2Background's floor so there is no light flash.
-  if (status === 'checking') return <View style={{ flex: 1, backgroundColor: Themes.dark.bg }} />;
+  // Mode-matched base so there is no flash of the wrong-mode colour underneath
+  // ThemedBackground once it mounts.
+  if (status === 'checking') return <View style={{ flex: 1, backgroundColor: T.bg }} />;
 
   // State 2: consent not yet given — show the plain-English prompt first,
   // over the shared v2 atmosphere. Copy, actions, and consent semantics are
-  // untouched (ICO Children's Code Standard 10) — only the dark variant skin.
+  // untouched (ICO Children's Code Standard 10) — only the v2 chrome skin,
+  // which now follows the resolved app theme mode.
   if (status === 'undecided') {
     return (
       <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-        <V2Background />
-        <StatusBar style="light" />
+        <ThemedBackground />
+        <StatusBar style={statusBarStyle} />
         <LocationConsentPrompt variant="dark" onAccept={grant} onDecline={decline} />
       </View>
     );

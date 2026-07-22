@@ -31,11 +31,8 @@ import {
   type FacilitySlug,
   type FacilityStat,
 } from '@/hooks/useFacilities';
-import { Themes, ocean, FontFamily, BorderRadius } from '@/constants/theme';
-
-// v2 dark tokens (2026-07-09) — FacilityChips renders only on the (dark) v2
-// venue detail screen.
-const T = Themes.dark;
+import { ocean, FontFamily, BorderRadius } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 interface ChipDef {
   slug: FacilitySlug;
@@ -54,6 +51,7 @@ interface FacilityChipsProps {
 }
 
 export function FacilityChips({ venueId }: FacilityChipsProps) {
+  const { tokens: T } = useAppTheme();
   const user = useUser();
   const { data: stats } = useVenueFacilityStats(venueId);
   const castVote = useCastFacilityVote();
@@ -83,8 +81,8 @@ export function FacilityChips({ venueId }: FacilityChipsProps) {
 
   return (
     <View style={styles.section}>
-      <Text style={styles.heading}>What&apos;s here?</Text>
-      <Text style={styles.subheading}>Tap to let other parents know</Text>
+      <Text style={[styles.heading, { color: T.label }]}>What&apos;s here?</Text>
+      <Text style={[styles.subheading, { color: T.label3 }]}>Tap to let other parents know</Text>
       <View style={styles.row}>
         {CHIP_DEFS.map((def) => (
           <FacilityChip
@@ -110,6 +108,7 @@ interface FacilityChipProps {
 }
 
 function FacilityChip({ def, stat, onPress }: FacilityChipProps) {
+  const { tokens: T } = useAppTheme();
   const total = stat?.total ?? 0;
   const present = stat?.present ?? null;
   const confidence = stat?.confidence ?? 'low';
@@ -158,7 +157,7 @@ function FacilityChip({ def, stat, onPress }: FacilityChipProps) {
     display = (
       <>
         <Text style={styles.emoji}>{def.emoji}</Text>
-        <Text style={[styles.chipText, styles.chipTextOutline]} numberOfLines={1}>
+        <Text style={[styles.chipText, styles.chipTextOutline, { color: T.label }]} numberOfLines={1}>
           {def.label}
         </Text>
       </>
@@ -175,7 +174,10 @@ function FacilityChip({ def, stat, onPress }: FacilityChipProps) {
       accessibilityLabel={`${def.label}. ${stateLabel}`}
       accessibilityHint="Confirms whether this facility is available at this venue"
       android_ripple={{ color: 'rgba(255,255,255,0.10)', foreground: true }}
-      style={[styles.chip, filled ? styles.chipFilled : styles.chipOutline]}
+      style={[
+        styles.chip,
+        filled ? styles.chipFilled : [styles.chipOutline, { backgroundColor: T.bg, borderColor: T.separator }],
+      ]}
     >
       {display}
     </Pressable>
@@ -191,13 +193,11 @@ const styles = StyleSheet.create({
   heading: {
     fontFamily: FontFamily.heading,
     fontSize: 17,
-    color: T.label,
     marginBottom: 2,
   },
   subheading: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: T.label3,
     marginBottom: 12,
   },
   row: {
@@ -215,9 +215,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   chipOutline: {
-    backgroundColor: T.bg,
+    // backgroundColor / borderColor: mode-aware, applied inline.
     borderWidth: 1,
-    borderColor: T.separator,
   },
   chipFilled: {
     backgroundColor: ocean.accent,
@@ -231,7 +230,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   chipTextOutline: {
-    color: T.label,
+    // color: mode-aware, applied inline (T.label).
   },
   chipTextFilled: {
     color: '#FFFFFF',

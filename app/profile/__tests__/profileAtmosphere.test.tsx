@@ -48,29 +48,56 @@
 import fs from 'fs';
 import path from 'path';
 
-const SCREEN_FILES = [
+// Light-theme correction (feat/exact-v2-design, v2 Light pass): every
+// Profile-ecosystem screen (plus venue/add.tsx) has now been migrated to
+// mount <ThemedBackground/> instead of a direct <V2Background/> — same
+// pattern as the notifications.tsx proof-set screen from Step 10A Part 2
+// (dark path stays byte-identical — see components/ui/ThemedBackground.tsx,
+// a thin pass-through). This lets each screen's chrome (labels/surfaces/
+// separators) resolve via useAppTheme() instead of a hard-coded Themes.dark
+// import. V2_DIRECT_SCREEN_FILES is kept (now empty) so the regression
+// coverage below stays in place if a future screen is ever added back as a
+// direct-V2Background exception.
+const V2_DIRECT_SCREEN_FILES: string[] = [];
+
+const THEMED_BACKGROUND_SCREEN_FILES = [
   'app/profile/edit.tsx',
   'app/profile/children-ages.tsx',
-  'app/profile/notifications.tsx',
   'app/profile/privacy-settings.tsx',
   'app/profile/data-download.tsx',
   'app/profile/my-reviews.tsx',
   'app/profile/my-venues.tsx',
+  'app/profile/notifications.tsx',
   'app/venue/add.tsx',
 ];
+
+const SCREEN_FILES = [...V2_DIRECT_SCREEN_FILES, ...THEMED_BACKGROUND_SCREEN_FILES];
 
 function readScreen(relPath: string): string {
   return fs.readFileSync(path.resolve(__dirname, '../../../', relPath), 'utf8');
 }
 
 describe('Profile ecosystem — each screen mounts its own background; roots stay transparent', () => {
-  it.each(SCREEN_FILES)('%s imports and mounts <V2Background/> (restored per-screen architecture)', (file) => {
+  // V2_DIRECT_SCREEN_FILES is currently empty (every screen has been
+  // migrated to ThemedBackground) — `it.each` throws on an empty array, so
+  // this guard only runs when there is something to assert. Add a screen
+  // back here (and drop it from THEMED_BACKGROUND_SCREEN_FILES) if a future
+  // change ever needs a direct-V2Background exception again.
+  if (V2_DIRECT_SCREEN_FILES.length > 0) {
+    it.each(V2_DIRECT_SCREEN_FILES)('%s imports and mounts <V2Background/> (restored per-screen architecture)', (file) => {
+      const src = readScreen(file);
+      expect(src).toMatch(/import\s*{\s*V2Background\s*}\s*from\s*'@\/components\/ui\/V2Background'/);
+      expect(src).toMatch(/<V2Background\s*\/>/);
+    });
+  }
+
+  it.each(THEMED_BACKGROUND_SCREEN_FILES)('%s imports and mounts <ThemedBackground/> (mode-aware chrome)', (file) => {
     const src = readScreen(file);
-    expect(src).toMatch(/import\s*{\s*V2Background\s*}\s*from\s*'@\/components\/ui\/V2Background'/);
-    expect(src).toMatch(/<V2Background\s*\/>/);
+    expect(src).toMatch(/import\s*{\s*ThemedBackground\s*}\s*from\s*'@\/components\/ui\/ThemedBackground'/);
+    expect(src).toMatch(/<ThemedBackground\s*\/>/);
   });
 
-  it.each(SCREEN_FILES)('%s keeps a transparent root and SafeAreaView so V2Background shows through', (file) => {
+  it.each(SCREEN_FILES)('%s keeps a transparent root and SafeAreaView so the background shows through', (file) => {
     const src = readScreen(file);
     expect(src).toMatch(/root:\s*{\s*flex:\s*1,\s*backgroundColor:\s*'transparent'/);
     expect(src).toMatch(/safe:\s*{\s*flex:\s*1,\s*backgroundColor:\s*'transparent'/);

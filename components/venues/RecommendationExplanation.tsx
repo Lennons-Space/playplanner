@@ -21,9 +21,9 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
 import type { Venue } from '@/types';
 import { generateRecommendationExplanation } from '@/lib/recommendations/recommendationExplanation';
-import { Themes, ocean, FontFamily } from '@/constants/theme';
+import { ocean, FontFamily } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -42,6 +42,7 @@ interface Props {
  * human-readable title and reason strings produced by the engine.
  */
 export function RecommendationExplanation({ venue }: Props) {
+  const { tokens: T } = useAppTheme();
   const explanation = generateRecommendationExplanation(venue);
 
   // Engine found no honest reason — hide the section entirely.
@@ -64,7 +65,7 @@ export function RecommendationExplanation({ venue }: Props) {
         </View>
 
         {/* Headline from the explanation engine */}
-        <Text style={styles.headline}>{title}</Text>
+        <Text style={[styles.headline, { color: T.label2 }]}>{title}</Text>
 
         {/* Reasons list — check circles */}
         <View style={styles.reasonsList}>
@@ -78,7 +79,7 @@ export function RecommendationExplanation({ venue }: Props) {
               <View style={styles.checkCircle}>
                 <Icon name="check" size={9} color="#FFFFFF" strokeWidth={3} />
               </View>
-              <Text style={styles.reasonText}>{reason}</Text>
+              <Text style={[styles.reasonText, { color: T.label2 }]}>{reason}</Text>
             </View>
           ))}
         </View>
@@ -124,9 +125,9 @@ const styles = StyleSheet.create({
   headline: {
     fontFamily: FontFamily.body,
     fontSize: 14.5,
-    color: T.label2,
     lineHeight: 21,
     marginBottom: 11,
+    // color: mode-aware, applied inline (T.label2).
   },
 
   reasonsList: {
@@ -150,8 +151,8 @@ const styles = StyleSheet.create({
   reasonText: {
     fontFamily: FontFamily.body,
     fontSize: 14,
-    color: T.label2,
     lineHeight: 20,
     flexShrink: 1,
+    // color: mode-aware, applied inline (T.label2).
   },
 });

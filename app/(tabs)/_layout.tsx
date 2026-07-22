@@ -26,10 +26,13 @@
 // There is no shared background left for this layout to own; each screen's
 // own atmosphere continues underneath the (still shared) glass tab bar below.
 //
-// WHY the global <StatusBar> stays "dark": it is a harmless default — every
-// tab screen mounts its own local <StatusBar style="light"/> that wins while
-// it is focused (expo-status-bar stacks mounted instances) and reverts to
-// this shared "dark" default only if a future tab is added without one.
+// STATUS BAR (Phase A, v2 Light-theme correction, 2026-07-17): this shared
+// default is now mode-aware — 'light' content on dark mode, 'dark' content on
+// light mode — instead of hardcoded 'dark'. Every tab screen still mounts its
+// own local <StatusBar/> that wins while it is focused (expo-status-bar
+// stacks mounted instances); this is only the fallback for a future tab added
+// without one, and it should match that per-screen behavior rather than
+// always assuming dark-mode content.
 // ─────────────────────────────────────────────────────────────────────────
 
 import { Platform, StyleSheet, Text, View } from 'react-native';
@@ -56,7 +59,6 @@ const TAB_BAR_BOTTOM_CUSHION = Platform.select({ ios: 22, default: 6 });
 // Exact v2 glass spec — deliberately literal values, not theme tokens (the
 // design calls out numbers slightly different from the nearest token, e.g.
 // 0.4 alpha vs tokens.label3's 0.44).
-const GLASS_BORDER = 'rgba(255,255,255,0.12)';
 const INACTIVE_TINT = 'rgba(235,235,245,0.4)';
 // Vertical fade replacing the previous FLAT rgba(14,14,20,0.82) fill
 // (2026-07-09 visual review): without real blur (BlurView is banned — native
@@ -68,19 +70,32 @@ const INACTIVE_TINT = 'rgba(235,235,245,0.4)';
 // Lightened again in the round-3 pass (0.40/0.88/0.96 → 0.28/0.80/0.92):
 // the bar was still reading as a dark block; the icons sit in the ≥0.80
 // zone so legibility holds.
-const GLASS_GRADIENT = ['rgba(14,14,20,0.28)', 'rgba(14,14,20,0.80)', 'rgba(14,14,20,0.92)'] as const;
+//
+// Phase A (v2 Light-theme correction, 2026-07-17): mode-aware. `dark` is
+// UNCHANGED from before this pass (byte-identical literals); `light` is new.
+const GLASS = {
+  dark: {
+    border: 'rgba(255,255,255,0.12)',
+    gradient: ['rgba(14,14,20,0.28)', 'rgba(14,14,20,0.80)', 'rgba(14,14,20,0.92)'] as const,
+  },
+  light: {
+    border: 'rgba(20,18,28,0.12)',
+    gradient: ['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.85)', 'rgba(255,255,255,0.94)'] as const,
+  },
+} as const;
 
-function TabBarBackground() {
+export function TabBarBackground({ mode }: { mode: 'dark' | 'light' }) {
+  const glass = GLASS[mode];
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <LinearGradient
-        colors={GLASS_GRADIENT}
+        colors={glass.gradient}
         locations={[0, 0.45, 1]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View style={styles.topBorder} />
+      <View style={[styles.topBorder, { backgroundColor: glass.border }]} />
     </View>
   );
 }
@@ -105,7 +120,7 @@ export default function TabsLayout() {
   const session = useAuthStore((s) => s.session);
   const isLoading = useAuthStore((s) => s.isLoading);
   const insets = useSafeAreaInsets();
-  const { accent } = useAppTheme();
+  const { accent, mode } = useAppTheme();
 
   // During cold-start session restore, isLoading is true while Supabase replays
   // the cached session via INITIAL_SESSION. Returning null here prevents a
@@ -116,7 +131,7 @@ export default function TabsLayout() {
 
   return (
     <View style={{ flex: 1 }}>
-      <StatusBar style="dark" />
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -126,7 +141,7 @@ export default function TabsLayout() {
           // screen (Home, Map, Saved, Profile, Search) now mounts its own,
           // so this stays transparent for all of them.
           sceneStyle: { backgroundColor: 'transparent' },
-          tabBarBackground: TabBarBackground,
+          tabBarBackground: () => <TabBarBackground mode={mode} />,
           tabBarStyle: {
             position: 'absolute',
             backgroundColor: 'transparent',
@@ -194,6 +209,5 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 0.5,
-    backgroundColor: GLASS_BORDER,
   },
 });

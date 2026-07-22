@@ -16,19 +16,20 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Icon } from '@/components/ui';
-import { Themes, ocean, FontFamily } from '@/constants/theme';
+import { ocean, FontFamily } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
 export function SavedEmptyState() {
+  const { tokens: T } = useAppTheme();
   return (
     <View style={s.wrap}>
-      <View style={s.iconTile}>
+      <View style={[s.iconTile, { backgroundColor: T.surface, borderColor: T.separator }]}>
         <Icon name="heart" size={36} color={T.label3} />
       </View>
-      <Text style={s.title}>Nothing saved yet</Text>
-      <Text style={s.sub}>Tap the heart on any venue to save it here for later.</Text>
+      <Text style={[s.title, { color: T.label }]}>Nothing saved yet</Text>
+      <Text style={[s.sub, { color: T.label3 }]}>Tap the heart on any venue to save it here for later.</Text>
       <Pressable
         style={s.cta}
         android_ripple={{ color: 'rgba(255,255,255,0.18)' }}
@@ -54,9 +55,7 @@ const s = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 26,
-    backgroundColor: T.surface,
     borderWidth: 1,
-    borderColor: T.separator,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -65,14 +64,12 @@ const s = StyleSheet.create({
     fontFamily: FontFamily.display,
     fontSize: 22,
     letterSpacing: -0.5,
-    color: T.label,
     textAlign: 'center',
     marginBottom: 10,
   },
   sub: {
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label3,
     textAlign: 'center',
     lineHeight: 25, // prototype 1.65
     maxWidth: 260,

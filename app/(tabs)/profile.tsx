@@ -13,11 +13,20 @@
  * Android Fabric crash — see components/ui/GlassSurface.tsx); GlassSurface
  * renders a plain tinted View, not real blur.
  *
+ * Step 10A Part 2 (dual-theme foundation, proof set): tokens now come from
+ * useAppTheme() instead of a hard-coded `Themes.dark`, and the screen mounts
+ * <ThemedBackground/> instead of a direct <V2Background/> (dark path is
+ * byte-identical — see components/ui/ThemedBackground.tsx). The
+ * SectionLabel/MenuItem/MenuGroup helpers below take `styles`/`T` as props
+ * so their look also follows the resolved theme, since they render outside
+ * ProfileScreen's own component body. Adds a new "Appearance" row (System /
+ * Light / Dark) routing to app/profile/appearance.tsx.
+ *
  * GDPR Art.17 (right to erasure): "Delete account" calls delete_own_account()
  * server-side — never the auth API directly. The function handles cascading
  * deletion and writes a GDPR audit log before removing the row.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -38,19 +47,21 @@ import { useProfile } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
 import { Icon } from '@/components/ui';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
 import { HelpModal } from '@/components/profile/HelpModal';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 // iOS-standard destructive red — matches the v2 mock's sign-out/delete copy
 // (pp2-profile.jsx sign-out button: color: '#FF3B30').
 const DESTRUCTIVE = '#FF3B30';
 
+type Styles = ReturnType<typeof createStyles>;
+
 // ─── SectionLabel ────────────────────────────────────────────────────────────
-function SectionLabel({ label }: { label: string }) {
+function SectionLabel({ label, styles }: { label: string; styles: Styles }) {
   return (
     <Text style={styles.sectionLabel}>
       {label.toUpperCase()}
@@ -68,6 +79,8 @@ interface MenuItemProps {
   iconBg?: string;
   iconColor?: string;
   last?: boolean;
+  styles: Styles;
+  T: ThemeTokens;
 }
 
 function MenuItem({
@@ -79,6 +92,8 @@ function MenuItem({
   iconBg = ACCENT.light,
   iconColor = ACCENT.accent,
   last = false,
+  styles,
+  T,
 }: MenuItemProps) {
   return (
     <TouchableOpacity
@@ -112,7 +127,7 @@ function MenuItem({
 
 // ─── MenuGroup ───────────────────────────────────────────────────────────────
 // Wraps a group of MenuItems in a dark glass card with rounded corners.
-function MenuGroup({ children }: { children: React.ReactNode }) {
+function MenuGroup({ children, styles }: { children: React.ReactNode; styles: Styles }) {
   return (
     <GlassSurface style={styles.menuGroup}>
       {children}
@@ -126,6 +141,12 @@ export default function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
   const queryClient = useQueryClient();
+  const { tokens: T, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(T), [T]);
+  // Hero card tint — mode-aware (was hard-coded near-black; matches
+  // screens/profile-light.png's white hero card in light mode while keeping
+  // the accepted dark tint unchanged).
+  const heroCardTint = mode === 'dark' ? 'rgba(18,18,26,0.86)' : 'rgba(255,255,255,0.86)';
   const [deleting, setDeleting] = useState(false);
   // In-app Help modal — replaces the old native Alert.alert('Help', ...)
   // call so it matches the v2 dark design language. Conditionally rendered
@@ -274,8 +295,8 @@ export default function ProfileScreen() {
   if (!profile) {
     return (
       <View style={styles.root}>
-        <V2Background />
-        <StatusBar style="light" />
+        <ThemedBackground />
+        <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
         <SafeAreaView style={styles.safe} edges={['top']}>
           <View style={styles.skeletonHero} />
           <View style={styles.skeletonBlock1} />
@@ -297,11 +318,13 @@ export default function ProfileScreen() {
     <View style={styles.root}>
       {/* Same accepted v2 atmosphere as Home/Saved/Venue Detail/Map — the
           shared weather cache key + pure resolveAtmosphere() keep it
-          identical across screens. Each screen mounts its own instance. */}
-      <V2Background />
+          identical across screens (dark mode). ThemedBackground selects a
+          placeholder light surface when the resolved theme is light. */}
+      <ThemedBackground />
       {/* Local override of the tabs layout's shared "dark" status bar —
-          same stacking pattern as Home/Saved; reverts on the legacy light tabs. */}
-      <StatusBar style="light" />
+          same stacking pattern as Home/Saved; now themed instead of
+          hard-coded 'light'. */}
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={styles.safe} edges={['top']}>
         <ScrollView
           style={{ marginBottom: tabSafeZone }}
@@ -310,7 +333,7 @@ export default function ProfileScreen() {
         >
 
           {/* ── Hero card ─────────────────────────────────────────────────── */}
-          <GlassSurface style={styles.heroCard} tintColor="rgba(18,18,26,0.86)">
+          <GlassSurface style={styles.heroCard} tintColor={heroCardTint}>
             {/* Subtle accent halo, same Ocean/violet language as the shared
                 atmosphere layer — not a real blur, just a soft gradient tint. */}
             <LinearGradient
@@ -363,50 +386,72 @@ export default function ProfileScreen() {
           </GlassSurface>
 
           {/* ── Account ───────────────────────────────────────────────────── */}
-          <SectionLabel label="Account" />
-          <MenuGroup>
+          <SectionLabel label="Account" styles={styles} />
+          <MenuGroup styles={styles}>
             <MenuItem
               icon="user"
               label="Personal details"
               onPress={() => router.push('/profile/edit')}
+              styles={styles}
+              T={T}
             />
             <MenuItem
               icon="stroller"
               label="Family"
               detail="Children's age ranges"
               onPress={() => router.push('/profile/children-ages')}
+              styles={styles}
+              T={T}
             />
             <MenuItem
               icon="bell"
               label="Notifications"
               onPress={() => router.push('/profile/notifications')}
+              styles={styles}
+              T={T}
+            />
+            <MenuItem
+              icon="settings"
+              label="Appearance"
+              detail="System, light or dark"
+              onPress={() => router.push('/profile/appearance')}
+              styles={styles}
+              T={T}
             />
             <MenuItem
               icon="shield"
               label="Privacy & data"
               onPress={() => router.push('/profile/privacy-settings')}
+              styles={styles}
+              T={T}
             />
             <MenuItem
               icon="info"
               label="Download my data"
               onPress={() => router.push('/profile/data-download')}
               last
+              styles={styles}
+              T={T}
             />
           </MenuGroup>
 
           {/* ── My Activity ───────────────────────────────────────────────── */}
-          <SectionLabel label="My activity" />
-          <MenuGroup>
+          <SectionLabel label="My activity" styles={styles} />
+          <MenuGroup styles={styles}>
             <MenuItem
               icon="star"
               label="My reviews"
               onPress={() => router.push('/profile/my-reviews')}
+              styles={styles}
+              T={T}
             />
             <MenuItem
               icon="pin"
               label="My submitted venues"
               onPress={() => router.push('/profile/my-venues')}
               last
+              styles={styles}
+              T={T}
             />
           </MenuGroup>
 
@@ -416,13 +461,15 @@ export default function ProfileScreen() {
               is fully hardened. Remove this comment when reinstating. */}
 
           {/* ── Community ─────────────────────────────────────────────────── */}
-          <SectionLabel label="Community" />
-          <MenuGroup>
+          <SectionLabel label="Community" styles={styles} />
+          <MenuGroup styles={styles}>
             <MenuItem
               icon="plus"
               label="Add a venue"
               onPress={() => router.push('/venue/add')}
               last
+              styles={styles}
+              T={T}
             />
           </MenuGroup>
 
@@ -432,23 +479,29 @@ export default function ProfileScreen() {
               Remove this comment and restore the card when the flow is ready. */}
 
           {/* ── Support ───────────────────────────────────────────────────── */}
-          <SectionLabel label="Support" />
-          <MenuGroup>
+          <SectionLabel label="Support" styles={styles} />
+          <MenuGroup styles={styles}>
             <MenuItem
               icon="info"
               label="Help & FAQ"
               onPress={() => setHelpVisible(true)}
+              styles={styles}
+              T={T}
             />
             <MenuItem
               icon="msg"
               label="Contact us"
               onPress={() => Linking.openURL('mailto:support@playplanner.app')}
+              styles={styles}
+              T={T}
             />
             <MenuItem
               icon="shield"
               label="Privacy policy"
               onPress={() => router.push('/(auth)/privacy')}
               last
+              styles={styles}
+              T={T}
             />
           </MenuGroup>
 
@@ -466,8 +519,8 @@ export default function ProfileScreen() {
               solely by the authenticated user's own profile.is_admin flag. */}
           {profile?.is_admin === true && (
             <>
-              <SectionLabel label="Admin" />
-              <MenuGroup>
+              <SectionLabel label="Admin" styles={styles} />
+              <MenuGroup styles={styles}>
                 <MenuItem
                   icon="shield"
                   label="Admin panel"
@@ -475,6 +528,8 @@ export default function ProfileScreen() {
                   iconBg="rgba(124,79,204,0.16)"
                   iconColor="#B299E0"
                   last
+                  styles={styles}
+                  T={T}
                 />
               </MenuGroup>
             </>
@@ -530,230 +585,232 @@ export default function ProfileScreen() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  // Root
-  root: {
-    flex: 1,
-    // Transparent — V2Background (first child) is the screen's backdrop,
-    // same pattern as Home/Saved/Venue Detail/Map.
-    backgroundColor: 'transparent',
-  },
-  safe: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
+function createStyles(T: ThemeTokens) {
+  return StyleSheet.create({
+    // Root
+    root: {
+      flex: 1,
+      // Transparent — ThemedBackground (first child) is the screen's backdrop,
+      // same pattern as Home/Saved/Venue Detail/Map.
+      backgroundColor: 'transparent',
+    },
+    safe: {
+      flex: 1,
+      backgroundColor: 'transparent',
+    },
+    scrollContent: {
+      paddingBottom: 32,
+    },
 
-  // Skeleton
-  skeletonHero: {
-    margin: 20,
-    height: 150,
-    borderRadius: 24,
-    backgroundColor: T.surface,
-    borderWidth: 1,
-    borderColor: T.separator,
-  },
-  skeletonBlock1: {
-    marginHorizontal: 20,
-    marginTop: 20,
-    height: 200,
-    borderRadius: 20,
-    backgroundColor: T.surface,
-    borderWidth: 1,
-    borderColor: T.separator,
-  },
-  skeletonBlock2: {
-    marginHorizontal: 20,
-    marginTop: 12,
-    height: 100,
-    borderRadius: 20,
-    backgroundColor: T.surface,
-    borderWidth: 1,
-    borderColor: T.separator,
-  },
+    // Skeleton
+    skeletonHero: {
+      margin: 20,
+      height: 150,
+      borderRadius: 24,
+      backgroundColor: T.surface,
+      borderWidth: 1,
+      borderColor: T.separator,
+    },
+    skeletonBlock1: {
+      marginHorizontal: 20,
+      marginTop: 20,
+      height: 200,
+      borderRadius: 20,
+      backgroundColor: T.surface,
+      borderWidth: 1,
+      borderColor: T.separator,
+    },
+    skeletonBlock2: {
+      marginHorizontal: 20,
+      marginTop: 12,
+      height: 100,
+      borderRadius: 20,
+      backgroundColor: T.surface,
+      borderWidth: 1,
+      borderColor: T.separator,
+    },
 
-  // Hero card
-  heroCard: {
-    borderRadius: 24,
-    marginHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 8,
-    padding: 18,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  avatarInitials: {
-    fontFamily: FontFamily.display,
-    fontSize: 22,
-    color: '#FFFFFF',
-  },
-  heroSettingsBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: T.fill,
-    borderWidth: 1,
-    borderColor: T.separator,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroName: {
-    fontFamily: FontFamily.display,
-    fontSize: 20,
-    color: T.label,
-    letterSpacing: -0.3,
-    marginTop: 14,
-  },
-  heroUsername: {
-    fontFamily: FontFamily.body,
-    fontSize: 13,
-    color: T.label3,
-    marginTop: 2,
-  },
-  // SectionLabel
-  sectionLabel: {
-    fontFamily: FontFamily.caption,
-    fontSize: 11,
-    color: T.label3,
-    letterSpacing: 0.6,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 8,
-  },
+    // Hero card
+    heroCard: {
+      borderRadius: 24,
+      marginHorizontal: 20,
+      marginTop: 16,
+      marginBottom: 8,
+      padding: 18,
+    },
+    heroTopRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+    },
+    avatar: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: 'rgba(255,255,255,0.14)',
+    },
+    avatarInitials: {
+      fontFamily: FontFamily.display,
+      fontSize: 22,
+      color: '#FFFFFF',
+    },
+    heroSettingsBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      backgroundColor: T.fill,
+      borderWidth: 1,
+      borderColor: T.separator,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    heroName: {
+      fontFamily: FontFamily.display,
+      fontSize: 20,
+      color: T.label,
+      letterSpacing: -0.3,
+      marginTop: 14,
+    },
+    heroUsername: {
+      fontFamily: FontFamily.body,
+      fontSize: 13,
+      color: T.label3,
+      marginTop: 2,
+    },
+    // SectionLabel
+    sectionLabel: {
+      fontFamily: FontFamily.caption,
+      fontSize: 11,
+      color: T.label3,
+      letterSpacing: 0.6,
+      paddingHorizontal: 20,
+      paddingTop: 20,
+      paddingBottom: 8,
+    },
 
-  // MenuGroup — dark glass card (GlassSurface owns the tint + hairline
-  // border + overflow:hidden clip; this only supplies layout/shape).
-  menuGroup: {
-    marginHorizontal: 20,
-    borderRadius: 20,
-  },
+    // MenuGroup — dark glass card (GlassSurface owns the tint + hairline
+    // border + overflow:hidden clip; this only supplies layout/shape).
+    menuGroup: {
+      marginHorizontal: 20,
+      borderRadius: 20,
+    },
 
-  // MenuItem
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  menuItemBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: T.separator,
-  },
-  menuItemLast: {
-    borderBottomWidth: 0,
-  },
-  menuIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menuLabel: {
-    flex: 1,
-    fontFamily: FontFamily.heading,
-    fontSize: 15,
-    color: T.label,
-  },
-  menuDetail: {
-    fontFamily: FontFamily.body,
-    fontSize: 12,
-    color: T.label3,
-    marginRight: 4,
-  },
-  menuBadge: {
-    backgroundColor: ACCENT.accent,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginRight: 4,
-  },
-  menuBadgeText: {
-    fontFamily: FontFamily.caption,
-    fontSize: 11,
-    color: '#FFFFFF',
-  },
+    // MenuItem
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      gap: 12,
+    },
+    menuItemBorder: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: T.separator,
+    },
+    menuItemLast: {
+      borderBottomWidth: 0,
+    },
+    menuIconBox: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    menuLabel: {
+      flex: 1,
+      fontFamily: FontFamily.heading,
+      fontSize: 15,
+      color: T.label,
+    },
+    menuDetail: {
+      fontFamily: FontFamily.body,
+      fontSize: 12,
+      color: T.label3,
+      marginRight: 4,
+    },
+    menuBadge: {
+      backgroundColor: ACCENT.accent,
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      marginRight: 4,
+    },
+    menuBadgeText: {
+      fontFamily: FontFamily.caption,
+      fontSize: 11,
+      color: '#FFFFFF',
+    },
 
-  // Upgrade card styles removed — subscription upsell removed at launch.
-  // Restore when PlayPlanner Pass relaunches.
+    // Upgrade card styles removed — subscription upsell removed at launch.
+    // Restore when PlayPlanner Pass relaunches.
 
-  // Claim card styles removed — claim flow removed at launch for security.
+    // Claim card styles removed — claim flow removed at launch for security.
 
-  // Footer
-  footer: {
-    alignItems: 'center',
-    paddingTop: 28,
-    paddingBottom: 12,
-  },
-  footerText: {
-    fontFamily: FontFamily.body,
-    fontSize: 12,
-    color: T.label4,
-  },
+    // Footer
+    footer: {
+      alignItems: 'center',
+      paddingTop: 28,
+      paddingBottom: 12,
+    },
+    footerText: {
+      fontFamily: FontFamily.body,
+      fontSize: 12,
+      color: T.label4,
+    },
 
-  // Sign out
-  signOutSurface: {
-    marginHorizontal: 20,
-    borderRadius: 16,
-  },
-  signOutBtn: {
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  signOutText: {
-    fontFamily: FontFamily.heading,
-    fontSize: 15,
-    color: DESTRUCTIVE,
-  },
+    // Sign out
+    signOutSurface: {
+      marginHorizontal: 20,
+      borderRadius: 16,
+    },
+    signOutBtn: {
+      paddingVertical: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 8,
+    },
+    signOutText: {
+      fontFamily: FontFamily.heading,
+      fontSize: 15,
+      color: DESTRUCTIVE,
+    },
 
-  // Delete account
-  deleteWrapper: {
-    marginHorizontal: 20,
-    marginTop: 12,
-    marginBottom: 48,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: DESTRUCTIVE,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  deleteBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-  },
-  deleteBtnText: {
-    fontFamily: FontFamily.heading,
-    fontSize: 15,
-    color: DESTRUCTIVE,
-  },
-  deleteWarning: {
-    fontFamily: FontFamily.body,
-    fontSize: 12,
-    color: T.label3,
-    textAlign: 'center',
-    marginTop: 8,
-    paddingHorizontal: 16,
-  },
-});
+    // Delete account
+    deleteWrapper: {
+      marginHorizontal: 20,
+      marginTop: 12,
+      marginBottom: 48,
+      borderRadius: 16,
+      borderWidth: 1.5,
+      borderColor: DESTRUCTIVE,
+      paddingVertical: 15,
+      alignItems: 'center',
+    },
+    deleteBtn: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 8,
+      paddingVertical: 14,
+      paddingHorizontal: 24,
+    },
+    deleteBtnText: {
+      fontFamily: FontFamily.heading,
+      fontSize: 15,
+      color: DESTRUCTIVE,
+    },
+    deleteWarning: {
+      fontFamily: FontFamily.body,
+      fontSize: 12,
+      color: T.label3,
+      textAlign: 'center',
+      marginTop: 8,
+      paddingHorizontal: 16,
+    },
+  });
+}

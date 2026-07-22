@@ -16,12 +16,13 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Review } from '@/types';
 import { formatMonthYear, getInitials, AVATAR_COLOURS } from '@/lib/utils';
-import { Themes, FontFamily, BorderRadius } from '@/constants/theme';
+import { FontFamily, BorderRadius } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
-// v2 dark tokens (2026-07-09) — ReviewCard renders only on the (dark) v2
-// venue detail screen (verified: no other importer). Cards sit on the dark
-// sheet (surface), so the card body uses the page bg tone with a hairline.
-const T = Themes.dark;
+// v2 tokens — ReviewCard renders only on the v2 venue detail screen
+// (verified: no other importer), resolved per-render via useAppTheme() so it
+// follows the app's current mode. Cards sit on the sheet (surface), so the
+// card body uses the page bg tone with a hairline.
 // Initials always render dark-on-pastel: AVATAR_COLOURS are light pastels.
 const AVATAR_INK = '#16151A';
 
@@ -62,15 +63,17 @@ function getDisplayName(review: Review): string {
 
 /** Renders filled/empty star characters for a 1–5 rating. Clamped to prevent RangeError. */
 const StarDisplay = React.memo(function StarDisplay({ rating }: { rating: number }) {
+  const { tokens: T } = useAppTheme();
   const clamped = Math.min(5, Math.max(0, rating));
   return (
-    <Text style={styles.stars}>
+    <Text style={[styles.stars, { color: T.star }]}>
       {'★'.repeat(clamped)}{'☆'.repeat(5 - clamped)}
     </Text>
   );
 });
 
 export const ReviewCard = React.memo(function ReviewCard({ review, onPressReviewer }: ReviewCardProps) {
+  const { tokens: T } = useAppTheme();
   const displayName = getDisplayName(review);
   const initials    = getInitials(displayName);
   const monthYear   = formatMonthYear(review.created_at);
@@ -91,16 +94,16 @@ export const ReviewCard = React.memo(function ReviewCard({ review, onPressReview
       </View>
 
       <View style={styles.nameBlock}>
-        <Text style={styles.displayName} numberOfLines={1}>{displayName}</Text>
+        <Text style={[styles.displayName, { color: T.label }]} numberOfLines={1}>{displayName}</Text>
         {monthYear ? (
-          <Text style={styles.dateMeta}>{monthYear}</Text>
+          <Text style={[styles.dateMeta, { color: T.label3 }]}>{monthYear}</Text>
         ) : null}
       </View>
     </>
   );
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { backgroundColor: T.bg, borderColor: T.separator }]}>
       {/* Top row: avatar placeholder + name + date */}
       {onPressReviewer && !isAnonymousDisplay ? (
         <TouchableOpacity
@@ -122,22 +125,22 @@ export const ReviewCard = React.memo(function ReviewCard({ review, onPressReview
 
       {/* Optional title */}
       {review.title ? (
-        <Text style={styles.reviewTitle}>{review.title}</Text>
+        <Text style={[styles.reviewTitle, { color: T.label }]}>{review.title}</Text>
       ) : null}
 
       {/* Review body */}
-      <Text style={styles.reviewBody}>{review.body}</Text>
+      <Text style={[styles.reviewBody, { color: T.label2 }]}>{review.body}</Text>
 
       {/* Bottom row: moderation badge and helpfulness count */}
       <View style={styles.bottomRow}>
         {review.moderation_status === 'pending' && (
-          <View style={styles.pendingBadge}>
-            <Text style={styles.pendingBadgeText}>Awaiting moderation</Text>
+          <View style={[styles.pendingBadge, { backgroundColor: T.surface2, borderColor: T.separator }]}>
+            <Text style={[styles.pendingBadgeText, { color: T.label3 }]}>Awaiting moderation</Text>
           </View>
         )}
 
         {review.helpful_count > 0 && (
-          <Text style={styles.helpfulText}>
+          <Text style={[styles.helpfulText, { color: T.label3 }]}>
             {review.helpful_count} {review.helpful_count === 1 ? 'person' : 'people'} found this helpful
           </Text>
         )}
@@ -148,12 +151,11 @@ export const ReviewCard = React.memo(function ReviewCard({ review, onPressReview
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: T.bg,
     borderRadius: BorderRadius.card,
     borderWidth: 1,
-    borderColor: T.separator,
     padding: 16,
     marginBottom: 12,
+    // backgroundColor / borderColor: mode-aware, applied inline.
   },
   topRow: {
     flexDirection: 'row',
@@ -181,30 +183,25 @@ const styles = StyleSheet.create({
   displayName: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 14,
-    color: T.label,
   },
   dateMeta: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: T.label3,
     marginTop: 1,
   },
   stars: {
     fontSize: 16,
-    color: T.star,
     letterSpacing: 1,
     marginBottom: 6,
   },
   reviewTitle: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 15,
-    color: T.label,
     marginBottom: 4,
   },
   reviewBody: {
     fontFamily: FontFamily.body,
     fontSize: 14,
-    color: T.label2,
     lineHeight: 20,
   },
   bottomRow: {
@@ -215,9 +212,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pendingBadge: {
-    backgroundColor: T.surface2,   // low-contrast, unobtrusive
+    // backgroundColor / borderColor: mode-aware, applied inline.
     borderWidth: 1,
-    borderColor: T.separator,
     borderRadius: BorderRadius.pill,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -225,11 +221,9 @@ const styles = StyleSheet.create({
   pendingBadgeText: {
     fontFamily: FontFamily.body,
     fontSize: 11,
-    color: T.label3,
   },
   helpfulText: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: T.label3,
   },
 });

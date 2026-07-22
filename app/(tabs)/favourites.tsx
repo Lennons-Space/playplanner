@@ -43,10 +43,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
 import { Icon, CategoryPlaceholder } from '@/components/ui';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { SavedEmptyState } from '@/components/favourites/SavedEmptyState';
 import { getCategoryMeta } from '@/constants/categories';
-import { Themes, ocean, FontFamily } from '@/constants/theme';
+import { ocean, FontFamily } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type FavVenue = {
@@ -62,8 +63,10 @@ type FavVenue = {
   } | null;
 };
 
-// ─── Design tokens (v2 dark) ──────────────────────────────────────────────────
-const T = Themes.dark;
+// ─── Design tokens ────────────────────────────────────────────────────────────
+// Theme tokens are resolved per-render via useAppTheme() (see FavCard and
+// FavouritesScreen below) — the module scope only keeps the mode-independent
+// accent palette.
 const ACCENT = ocean;
 // Prototype literals for the on-photo overlays (not theme tokens by design —
 // they sit on photographs, not on the theme surface).
@@ -95,6 +98,7 @@ function FavCard({
   onPress: () => void;
   onUnsave: () => void;
 }) {
+  const { tokens: T } = useAppTheme();
   const venue = item.venue;
   // Empty slot to preserve grid column layout when venue data is null.
   if (!venue) return <View style={{ width: size, height: size }} />;
@@ -109,7 +113,13 @@ function FavCard({
     // touchable components (see nativewind-function-style-bug): even if the
     // inner touchable's style were mangled on device, the card physically
     // cannot exceed this wrapper (fixed width/height + overflow hidden).
-    <View style={[styles.card, { width: size, height: size }]} testID={`saved-card-${venue.id}`}>
+    <View
+      style={[
+        styles.card,
+        { width: size, height: size, borderColor: T.separator, backgroundColor: T.surface },
+      ]}
+      testID={`saved-card-${venue.id}`}
+    >
       <TouchableOpacity
         style={styles.cardTouch}
         onPress={onPress}
@@ -182,6 +192,8 @@ function FavCard({
 
 // ─── FavouritesScreen ─────────────────────────────────────────────────────────
 export default function FavouritesScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
   const user         = useUser();
   const queryClient  = useQueryClient();
   const insets       = useSafeAreaInsets();
@@ -277,10 +289,10 @@ export default function FavouritesScreen() {
   const listHeader = (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        <Text style={styles.eyebrow}>Saved places</Text>
-        <Text style={styles.title} maxFontSizeMultiplier={1.2}>Your favourites</Text>
+        <Text style={[styles.eyebrow, { color: ACCENT.accent }]}>Saved places</Text>
+        <Text style={[styles.title, { color: T.label }]} maxFontSizeMultiplier={1.2}>Your favourites</Text>
       </View>
-      <Text style={styles.savedCount}>{savedCount} saved</Text>
+      <Text style={[styles.savedCount, { color: T.label3 }]}>{savedCount} saved</Text>
     </View>
   );
 
@@ -288,15 +300,15 @@ export default function FavouritesScreen() {
   if (!user) {
     return (
       <View style={styles.root}>
-        <V2Background />
-        <StatusBar style="light" />
+        <ThemedBackground />
+        <StatusBar style={statusBarStyle} />
         <SafeAreaView style={styles.safe} edges={['top']}>
           <View style={styles.centred}>
-            <View style={styles.iconTile}>
+            <View style={[styles.iconTile, { backgroundColor: T.surface, borderColor: T.separator }]}>
               <Icon name="heartFill" size={34} color={HEART_RED} />
             </View>
-            <Text style={styles.stateTitle}>Save your favourite places</Text>
-            <Text style={styles.stateSub}>
+            <Text style={[styles.stateTitle, { color: T.label }]}>Save your favourite places</Text>
+            <Text style={[styles.stateSub, { color: T.label3 }]}>
               Sign in to keep a personal list of venues your family loves.
             </Text>
             <Pressable
@@ -326,8 +338,8 @@ export default function FavouritesScreen() {
   if (isLoading) {
     return (
       <View style={styles.root}>
-        <V2Background />
-        <StatusBar style="light" />
+        <ThemedBackground />
+        <StatusBar style={statusBarStyle} />
         <SafeAreaView style={styles.safe} edges={['top']}>
           <View style={styles.centred}>
             <ActivityIndicator color={ACCENT.accent} size="large" />
@@ -341,13 +353,13 @@ export default function FavouritesScreen() {
   if (isError) {
     return (
       <View style={styles.root}>
-        <V2Background />
-        <StatusBar style="light" />
+        <ThemedBackground />
+        <StatusBar style={statusBarStyle} />
         <SafeAreaView style={styles.safe} edges={['top']}>
           <View style={styles.centred}>
             <Text style={styles.errorEmoji}>⚠️</Text>
-            <Text style={styles.stateTitle}>Could not load favourites</Text>
-            <Text style={styles.stateSub}>Check your connection and try again.</Text>
+            <Text style={[styles.stateTitle, { color: T.label }]}>Could not load favourites</Text>
+            <Text style={[styles.stateSub, { color: T.label3 }]}>Check your connection and try again.</Text>
           </View>
         </SafeAreaView>
       </View>
@@ -361,10 +373,11 @@ export default function FavouritesScreen() {
           shared weather cache key + pure resolveAtmosphere() keep it
           identical across screens. Covers the tabs layout's legacy ambient
           layer exactly like Home does. */}
-      <V2Background />
-      {/* Local override of the tabs layout's shared "dark" status bar —
-          same stacking pattern as Home; reverts on the legacy light tabs. */}
-      <StatusBar style="light" />
+      <ThemedBackground />
+      {/* Local override of the tabs layout's shared status bar — same
+          stacking pattern as Home; mode-aware so it reads correctly on both
+          the v2 dark and v2 light atmospheres. */}
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={styles.safe} edges={['top']}>
         {showEmpty ? (
           <ScrollView
@@ -437,7 +450,7 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: ACCENT.accent,
+    // color: mode-aware, applied inline (ACCENT.accent is not theme-flipped).
   },
   title: {
     marginTop: 2,
@@ -445,13 +458,13 @@ const styles = StyleSheet.create({
     fontSize: 28,
     lineHeight: 32, // 1.15
     letterSpacing: -0.5,
-    color: T.label,
+    // color: mode-aware, applied inline (T.label).
   },
   savedCount: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: T.label3,
     marginBottom: 4, // optically aligns with the title baseline (flex-end row)
+    // color: mode-aware, applied inline (T.label3).
   },
 
   // ── List layout ───────────────────────────────────────────────────
@@ -476,9 +489,9 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: T.separator,
     overflow: 'hidden',
-    backgroundColor: T.surface, // brief flash colour while a photo decodes
+    // borderColor / backgroundColor: mode-aware, applied inline (T.separator
+    // / T.surface — the latter is the brief flash colour while a photo decodes).
   },
   // Fills the sized card wrapper — deliberately the ONLY dimension style on
   // the touchable (the plain-View wrapper owns width/height).
@@ -548,28 +561,27 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 26,
-    backgroundColor: T.surface,
     borderWidth: 1,
-    borderColor: T.separator,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
+    // backgroundColor / borderColor: mode-aware, applied inline.
   },
   stateTitle: {
     fontFamily: FontFamily.display,
     fontSize: 22,
     letterSpacing: -0.5,
-    color: T.label,
     textAlign: 'center',
+    // color: mode-aware, applied inline (T.label).
   },
   stateSub: {
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label3,
     textAlign: 'center',
     marginTop: 10,
     lineHeight: 24,
     maxWidth: 280,
+    // color: mode-aware, applied inline (T.label3).
   },
   errorEmoji: {
     fontSize: 44,

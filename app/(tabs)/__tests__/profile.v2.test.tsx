@@ -25,6 +25,7 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert, Linking, StyleSheet } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { useThemeStore } from '@/store/themeStore';
 import ProfileScreen from '../profile';
 
 // ── expo / RN shims ─────────────────────────────────────────────────────────
@@ -128,6 +129,10 @@ beforeEach(() => {
   mockUser = { id: 'user-test-id' };
   mockUseWeather.mockReturnValue(null);
   mockUseProfile.mockReturnValue(baseProfile);
+  // Step 10A Part 2 (dual-theme foundation): reset to the default so the
+  // tests above (written before theming existed) stay dark, unaffected by
+  // the light/dark-specific block added below.
+  useThemeStore.setState({ preference: 'system' });
 });
 
 // ── Signed-out guard ─────────────────────────────────────────────────────────
@@ -191,6 +196,13 @@ describe('Profile v2 — menu rows navigate to real routes', () => {
     const { getByLabelText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
     fireEvent.press(getByLabelText('Notifications'));
     expect(router.push).toHaveBeenCalledWith('/profile/notifications');
+  });
+
+  it('Appearance -> /profile/appearance (Step 10A Part 2 proof set)', () => {
+    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
+    const { getByLabelText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    fireEvent.press(getByLabelText('Appearance'));
+    expect(router.push).toHaveBeenCalledWith('/profile/appearance');
   });
 
   it('Privacy & data -> /profile/privacy-settings', () => {
@@ -430,5 +442,46 @@ describe('Profile v2 — tab-safe bottom padding', () => {
     // Math.max(tabBarHeight (mocked 64), 52 + insets.bottom (mocked 34) = 86) -> tabSafeZone === 86.
     const tree = render(<ProfileScreen />, { wrapper: makeWrapper() }).toJSON();
     expect(findFirstPositiveMarginBottom(tree)).toBe(86);
+  });
+});
+
+// ── Step 10A Part 2 (dual-theme foundation) — proof-set both-theme render ──
+describe('Profile v2 — renders in both light and dark (Step 10A Part 2 proof set)', () => {
+  it('renders without crashing in dark mode, with real content intact', () => {
+    useThemeStore.setState({ preference: 'dark' });
+    const { getByText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    expect(getByText('Jamie Rivers')).toBeTruthy();
+    expect(getByText('Sign out')).toBeTruthy();
+  });
+
+  it('renders without crashing in light mode, with real content intact', () => {
+    useThemeStore.setState({ preference: 'light' });
+    const { getByText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    expect(getByText('Jamie Rivers')).toBeTruthy();
+    expect(getByText('Sign out')).toBeTruthy();
+  });
+
+  it('the skeleton (profile still loading) also renders without crashing in light mode', () => {
+    useThemeStore.setState({ preference: 'light' });
+    mockUseProfile.mockReturnValue(null);
+    expect(() => render(<ProfileScreen />, { wrapper: makeWrapper() })).not.toThrow();
+  });
+
+  it('a theme change never alters auth/admin visibility — admin row stays gated on is_admin in BOTH modes', () => {
+    mockUseProfile.mockReturnValue({ ...baseProfile, is_admin: true });
+
+    useThemeStore.setState({ preference: 'dark' });
+    const dark = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    expect(dark.getByLabelText('Admin panel')).toBeTruthy();
+    dark.unmount();
+
+    useThemeStore.setState({ preference: 'light' });
+    const light = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    expect(light.getByLabelText('Admin panel')).toBeTruthy();
+
+    // And still hidden for a non-admin profile regardless of mode.
+    mockUseProfile.mockReturnValue({ ...baseProfile, is_admin: false });
+    const lightNonAdmin = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    expect(lightNonAdmin.queryByLabelText('Admin panel')).toBeNull();
   });
 });

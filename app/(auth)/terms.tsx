@@ -15,19 +15,19 @@
 import { ScrollView, Text, View, StyleSheet } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
-import { Themes, FontFamily } from '@/constants/theme';
-
-const T = Themes.dark;
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { FontFamily } from '@/constants/theme';
 
 export default function TermsScreen() {
+  const { tokens: T, mode } = useAppTheme();
   const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={styles.safe} edges={['top']}>
         <V2Header title="Terms of Service" />
 
@@ -35,7 +35,7 @@ export default function TermsScreen() {
           contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.lastUpdated}>Last updated: April 2026</Text>
+          <Text style={[styles.lastUpdated, { color: T.label3 }]}>Last updated: April 2026</Text>
 
           <Section title="1. About PlayPlanner">
             PlayPlanner ("we", "us", "our") is a family venue discovery app published by Liam Evanson
@@ -209,17 +209,19 @@ export default function TermsScreen() {
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const { tokens: T } = useAppTheme();
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <Text style={styles.sectionBody}>{children}</Text>
+      <Text style={[styles.sectionTitle, { color: T.label }]}>{title}</Text>
+      <Text style={[styles.sectionBody, { color: T.label2 }]}>{children}</Text>
     </View>
   );
 }
 
 function Bold({ children }: { children: string }) {
+  const { tokens: T } = useAppTheme();
   return (
-    <Text style={styles.bold}>{children}</Text>
+    <Text style={[styles.bold, { color: T.label }]}>{children}</Text>
   );
 }
 
@@ -233,7 +235,6 @@ const styles = StyleSheet.create({
   lastUpdated: {
     fontFamily: FontFamily.body,
     fontSize: 12,
-    color: T.label3,
     marginBottom: 24,
   },
   section: {
@@ -242,18 +243,15 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: FontFamily.heading,
     fontSize: 16,
-    color: T.label,
     marginBottom: 8,
   },
   sectionBody: {
     fontFamily: FontFamily.body,
     fontSize: 14,
-    color: T.label2,
     lineHeight: 22,
   },
   bold: {
     fontFamily: FontFamily.bodyStrong,
-    color: T.label,
   },
   bottomSpacer: {
     height: 32,

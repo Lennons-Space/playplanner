@@ -27,6 +27,7 @@
 
 import React from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 export interface GlassSurfaceProps {
   children?: React.ReactNode;
@@ -35,20 +36,40 @@ export interface GlassSurfaceProps {
   intensity?: number;
   /** No longer used (BlurView removed) — kept so existing call sites still compile. */
   tint?: 'dark' | 'light' | 'default';
-  /** Semi-opaque colour used to hit the exact design rgba. */
+  /** Semi-opaque colour used to hit the exact design rgba. Overrides the mode-resolved default when passed. */
   tintColor?: string;
   pointerEvents?: 'auto' | 'none' | 'box-none' | 'box-only';
 }
 
+// Mode-aware fill + hairline border. Dark values are UNCHANGED from before
+// this Phase A pass (byte-identical literals) — only the light branch is new.
+const FILL: Record<'dark' | 'light', string> = {
+  dark: 'rgba(14,14,20,0.82)',
+  light: 'rgba(255,255,255,0.72)',
+};
+const HAIRLINE: Record<'dark' | 'light', string> = {
+  dark: 'rgba(255,255,255,0.08)',
+  light: 'rgba(20,18,28,0.08)',
+};
+
 export function GlassSurface({
   children,
   style,
-  tintColor = 'rgba(14,14,20,0.82)',
+  tintColor,
   pointerEvents,
 }: GlassSurfaceProps) {
+  const { mode } = useAppTheme();
+  const resolvedTint = tintColor ?? FILL[mode];
+  const hairlineColor = HAIRLINE[mode];
   return (
     <View style={[styles.clip, style]} pointerEvents={pointerEvents}>
-      <View style={[StyleSheet.absoluteFill, styles.hairline, { backgroundColor: tintColor }]} />
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.hairline,
+          { backgroundColor: resolvedTint, borderColor: hairlineColor },
+        ]}
+      />
       {children}
     </View>
   );
@@ -60,6 +81,5 @@ const styles = StyleSheet.create({
   },
   hairline: {
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
 });

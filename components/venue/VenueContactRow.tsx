@@ -14,10 +14,8 @@
  */
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, Linking, Alert } from 'react-native';
-import { Themes, ocean, FontFamily } from '@/constants/theme';
-
-// v2 dark tokens — this row renders only on the (dark) v2 venue detail screen.
-const T = Themes.dark;
+import { ocean, FontFamily } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -81,6 +79,7 @@ export function sanitizePhoneForTel(phone: string): string {
  * (Icon.tsx), so a bold "Call" text label is used instead.
  */
 export function VenueContactRow({ phone, venueName }: VenueContactRowProps) {
+  const { tokens: T } = useAppTheme();
   // Guard: absent or whitespace-only.
   if (!phone || !phone.trim()) return null;
 
@@ -107,7 +106,7 @@ export function VenueContactRow({ phone, venueName }: VenueContactRowProps) {
       accessibilityHint="Opens your phone app to dial"
     >
       <Text style={styles.callLabel}>Call</Text>
-      <Text style={styles.phoneText}>{phone}</Text>
+      <Text style={[styles.phoneText, { color: T.label2 }]}>{phone}</Text>
     </TouchableOpacity>
   );
 }
@@ -132,7 +131,7 @@ const styles = StyleSheet.create({
   phoneText: {
     fontFamily: FontFamily.body,
     fontSize: 13,
-    color: T.label2,
     lineHeight: 19,
+    // color: mode-aware, applied inline (T.label2).
   },
 });

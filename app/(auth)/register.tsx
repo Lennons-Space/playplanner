@@ -34,7 +34,7 @@
  * glass card, and a password-visibility toggle added (purely presentational).
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -56,34 +56,38 @@ import { supabase } from '@/lib/supabase';
 import { writeAuditLog } from '@/services/audit/gdprAuditLog';
 import { migratePendingLocationConsent } from '@/services/consent/locationConsent';
 import { Icon } from '@/components/ui/Icon';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
-const inputStyle: TextStyle = {
-  height: 54,
-  backgroundColor: T.bg,
-  borderRadius: 16,
-  borderWidth: 1,
-  borderColor: T.separator,
-  paddingHorizontal: 16,
-  fontFamily: FontFamily.body,
-  fontSize: 15,
-  color: T.label,
-};
+function createInputStyle(T: ThemeTokens): TextStyle {
+  return {
+    height: 54,
+    backgroundColor: T.bg,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: T.separator,
+    paddingHorizontal: 16,
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label,
+  };
+}
 
-const labelStyle: TextStyle = {
-  fontFamily: FontFamily.bodyStrong,
-  fontSize: 13.5,
-  color: T.label2,
-  marginBottom: 7,
-};
+function createLabelStyle(T: ThemeTokens): TextStyle {
+  return {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 13.5,
+    color: T.label2,
+    marginBottom: 7,
+  };
+}
 
-// Checkbox box style — checked uses the Ocean accent (no teal).
-function checkboxBox(checked: boolean): ViewStyle {
+// Checkbox box style — checked uses the Ocean accent (no teal) in BOTH modes.
+function checkboxBox(checked: boolean, T: ThemeTokens): ViewStyle {
   return {
     width: 24,
     height: 24,
@@ -143,6 +147,12 @@ function getPasswordStrength(pwd: string): { label: string; color: string } {
 }
 
 export default function RegisterScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(T), [T]);
+  const inputStyle = useMemo(() => createInputStyle(T), [T]);
+  const labelStyle = useMemo(() => createLabelStyle(T), [T]);
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
+  const cardTint = mode === 'dark' ? 'rgba(14,14,20,0.5)' : 'rgba(255,255,255,0.5)';
   const [fullName, setFullName]           = useState('');
   const [email, setEmail]                 = useState('');
   const [password, setPassword]           = useState('');
@@ -261,8 +271,8 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
           style={styles.flex}
@@ -366,7 +376,7 @@ export default function RegisterScreen() {
               {/* ── Consent section ──────────────────────────────────────── */}
               {/* Dark glass card so checkboxes visually stand apart from the
                   form fields — harder for parents to accidentally skip them. */}
-              <GlassSurface style={styles.consentCard} tintColor="rgba(14,14,20,0.5)">
+              <GlassSurface style={styles.consentCard} tintColor={cardTint}>
                 {/* Marketing consent — GDPR opt-in, not pre-checked */}
                 <TouchableOpacity
                   style={styles.checkRow}
@@ -375,7 +385,7 @@ export default function RegisterScreen() {
                   accessibilityState={{ checked: marketing }}
                   accessibilityLabel="Optional: receive tips and venue recommendations by email"
                 >
-                  <View style={checkboxBox(marketing)}>
+                  <View style={checkboxBox(marketing, T)}>
                     {marketing && (
                       <Text style={styles.checkMark}>✓</Text>
                     )}
@@ -400,7 +410,7 @@ export default function RegisterScreen() {
                       : 'Tap to confirm you are 18 or over, or a parent or guardian'
                   }
                 >
-                  <View style={[checkboxBox(ageAffirmed), styles.checkBoxTopAlign]}>
+                  <View style={[checkboxBox(ageAffirmed, T), styles.checkBoxTopAlign]}>
                     {ageAffirmed && (
                       <Text style={styles.checkMark}>✓</Text>
                     )}
@@ -424,7 +434,7 @@ export default function RegisterScreen() {
                       : 'Tap to accept the Terms of Service and Privacy Policy'
                   }
                 >
-                  <View style={[checkboxBox(termsAccepted), styles.checkBoxTopAlign]}>
+                  <View style={[checkboxBox(termsAccepted, T), styles.checkBoxTopAlign]}>
                     {termsAccepted && (
                       <Text style={styles.checkMark}>✓</Text>
                     )}
@@ -487,7 +497,7 @@ export default function RegisterScreen() {
             </TouchableOpacity>
 
             {/* ── Data minimisation notice (GDPR Art.5(1)(c) + ICO Standard 4) ── */}
-            <GlassSurface style={styles.noticeCard} tintColor="rgba(14,14,20,0.5)">
+            <GlassSurface style={styles.noticeCard} tintColor={cardTint}>
               <Text style={styles.noticeEmoji} accessible={false} importantForAccessibility="no-hide-descendants">
                 🔒
               </Text>
@@ -503,7 +513,11 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+// createStyles(T) — called via useMemo inside RegisterScreen so every colour
+// resolves per the current app theme mode (same pattern as
+// app/(tabs)/profile.tsx).
+function createStyles(T: ThemeTokens) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
   safe: { flex: 1, backgroundColor: 'transparent' },
   flex: { flex: 1 },
@@ -664,4 +678,5 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.bodyStrong,
     color: T.label,
   },
-});
+  });
+}

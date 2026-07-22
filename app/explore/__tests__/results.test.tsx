@@ -245,9 +245,13 @@ describe('ResultsScreen — legacy background fully removed (source guard)', () 
     expect(src).not.toMatch(/WeatherBackground/);
   });
 
-  it('imports and mounts <V2Background/>', () => {
+  // Light-theme correction (feat/exact-v2-design, v2 Light pass): this
+  // screen now mounts <ThemedBackground/> instead of a direct <V2Background/>
+  // (dark path stays byte-identical — see components/ui/ThemedBackground.tsx)
+  // so its chrome resolves via useAppTheme().
+  it('imports and mounts <ThemedBackground/>', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../results.tsx'), 'utf8');
-    expect(src).toMatch(/import\s*{\s*V2Background\s*}\s*from\s*'@\/components\/ui\/V2Background'/);
-    expect(src).toMatch(/<V2Background\s*\/>/);
+    expect(src).toMatch(/import\s*{\s*ThemedBackground\s*}\s*from\s*'@\/components\/ui\/ThemedBackground'/);
+    expect(src).toMatch(/<ThemedBackground\s*\/>/);
   });
 });

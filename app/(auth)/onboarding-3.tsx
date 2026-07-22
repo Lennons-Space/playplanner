@@ -18,11 +18,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 import { Icon, IconName } from '@/components/ui';
-import { V2Background } from '@/components/ui/V2Background';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { FontFamily, ocean } from '@/constants/theme';
 import { ONBOARDING_KEY } from '.';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
 async function markOnboardingSeen() {
@@ -30,6 +30,7 @@ async function markOnboardingSeen() {
 }
 
 function Dots({ active }: { active: 0 | 1 | 2 }) {
+  const { tokens: T } = useAppTheme();
   return (
     <View
       style={styles.dotsRow}
@@ -38,7 +39,10 @@ function Dots({ active }: { active: 0 | 1 | 2 }) {
       accessibilityLabel={`Step ${active + 1} of 3`}
     >
       {([0, 1, 2] as const).map((i) => (
-        <View key={i} style={[styles.dotBase, i === active && styles.dotActive]} />
+        <View
+          key={i}
+          style={[styles.dotBase, { backgroundColor: T.fill }, i === active && styles.dotActive]}
+        />
       ))}
     </View>
   );
@@ -53,10 +57,11 @@ const PRIVACY_POINTS: { icon: IconName; text: string }[] = [
 ];
 
 export default function Onboarding3() {
+  const { tokens: T, mode } = useAppTheme();
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={styles.safe}>
 
         {/* Top row: back only — no skip on the last screen */}
@@ -73,15 +78,15 @@ export default function Onboarding3() {
 
         {/* Hero illustration */}
         <View style={styles.heroArea} accessible={false} importantForAccessibility="no-hide-descendants">
-          <View style={styles.heroCard}>
+          <View style={[styles.heroCard, { backgroundColor: T.surface, borderColor: T.separator }]}>
             <Icon name="shield" size={48} color={ACCENT.accent} />
           </View>
         </View>
 
         {/* Copy + privacy bullet list */}
         <View style={styles.copyArea}>
-          <Text style={styles.headline}>{"Your privacy\nmatters"}</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.headline, { color: T.label }]}>{"Your privacy\nmatters"}</Text>
+          <Text style={[styles.subtitle, { color: T.label2 }]}>
             PlayPlanner is built privacy-first. Here is what that means for you:
           </Text>
 
@@ -91,7 +96,7 @@ export default function Onboarding3() {
                 <View style={styles.bulletIconWrap}>
                   <Icon name={point.icon} size={20} color={ACCENT.accent} />
                 </View>
-                <Text style={styles.bulletText}>{point.text}</Text>
+                <Text style={[styles.bulletText, { color: T.label }]}>{point.text}</Text>
               </View>
             ))}
           </View>
@@ -102,13 +107,13 @@ export default function Onboarding3() {
         {/* Back + Get Started */}
         <View style={styles.buttonRow}>
           <TouchableOpacity
-            style={styles.backBtn}
+            style={[styles.backBtn, { borderColor: T.separator }]}
             onPress={() => router.back()}
             activeOpacity={0.75}
             accessibilityRole="button"
             accessibilityLabel="Back"
           >
-            <Text style={styles.backBtnText}>Back</Text>
+            <Text style={[styles.backBtnText, { color: T.label }]}>Back</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -151,12 +156,11 @@ const styles = StyleSheet.create({
   heroCard: {
     width: 200,
     height: 200,
-    backgroundColor: T.surface,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: T.separator,
     alignItems: 'center',
     justifyContent: 'center',
+    // backgroundColor / borderColor: mode-aware, applied inline.
   },
 
   // Copy
@@ -166,7 +170,6 @@ const styles = StyleSheet.create({
   headline: {
     fontFamily: FontFamily.display,
     fontSize: 30,
-    color: T.label,
     lineHeight: 38,
     letterSpacing: -0.6,
     marginBottom: 10,
@@ -174,7 +177,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label2,
     lineHeight: 22,
     marginBottom: 20,
   },
@@ -196,7 +198,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label,
     lineHeight: 22,
   },
 
@@ -211,7 +212,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: T.fill,
+    // backgroundColor: mode-aware, applied inline (T.fill).
   },
   dotActive: {
     backgroundColor: ACCENT.accent,
@@ -230,13 +231,13 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: T.separator,
     backgroundColor: 'transparent',
+    // borderColor: mode-aware, applied inline.
   },
   backBtnText: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 16,
-    color: T.label,
+    // color: mode-aware, applied inline (T.label).
   },
   getStartedBtn: {
     flex: 2,

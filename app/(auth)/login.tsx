@@ -22,7 +22,7 @@
  * validation or submission logic).
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -42,32 +42,37 @@ import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
 import { Icon } from '@/components/ui/Icon';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
-// Shared rounded input (dark translucent surface + hairline border).
-const inputStyle: TextStyle = {
-  height: 54,
-  backgroundColor: T.bg,
-  borderRadius: 16,
-  borderWidth: 1,
-  borderColor: T.separator,
-  paddingHorizontal: 16,
-  fontFamily: FontFamily.body,
-  fontSize: 15,
-  color: T.label,
-};
+// Shared rounded input (translucent surface + hairline border) — resolved
+// per-render via useMemo inside LoginScreen so it follows the app theme mode.
+function createInputStyle(T: ThemeTokens): TextStyle {
+  return {
+    height: 54,
+    backgroundColor: T.bg,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: T.separator,
+    paddingHorizontal: 16,
+    fontFamily: FontFamily.body,
+    fontSize: 15,
+    color: T.label,
+  };
+}
 
-const labelStyle: TextStyle = {
-  fontFamily: FontFamily.bodyStrong,
-  fontSize: 13.5,
-  color: T.label2,
-  marginBottom: 7,
-};
+function createLabelStyle(T: ThemeTokens): TextStyle {
+  return {
+    fontFamily: FontFamily.bodyStrong,
+    fontSize: 13.5,
+    color: T.label2,
+    marginBottom: 7,
+  };
+}
 
 // Client-side sanity check only — real validation happens on the server.
 // Catches obvious typos before hitting the network.
@@ -99,6 +104,12 @@ function getFriendlyAuthError(message: string): string {
 }
 
 export default function LoginScreen() {
+  const { tokens: T, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(T), [T]);
+  const inputStyle = useMemo(() => createInputStyle(T), [T]);
+  const labelStyle = useMemo(() => createLabelStyle(T), [T]);
+  const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
+  const privacyStripTint = mode === 'dark' ? 'rgba(14,14,20,0.5)' : 'rgba(255,255,255,0.5)';
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading]   = useState(false);
@@ -153,8 +164,8 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={statusBarStyle} />
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
           style={styles.flex}
@@ -276,7 +287,7 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             {/* ── Privacy reminder strip (ICO Standard 4 — transparency) ── */}
-            <GlassSurface style={styles.privacyStrip} tintColor="rgba(14,14,20,0.5)">
+            <GlassSurface style={styles.privacyStrip} tintColor={privacyStripTint}>
               <Text style={styles.privacyEmoji} accessible={false} importantForAccessibility="no-hide-descendants">
                 🔒
               </Text>
@@ -313,7 +324,11 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+// createStyles(T) — called via useMemo inside LoginScreen so every colour
+// resolves per the current app theme mode (same pattern as
+// app/(tabs)/profile.tsx).
+function createStyles(T: ThemeTokens) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
   safe: { flex: 1, backgroundColor: 'transparent' },
   flex: { flex: 1 },
@@ -452,4 +467,5 @@ const styles = StyleSheet.create({
     color: T.label2,
     textDecorationLine: 'underline',
   },
-});
+  });
+}

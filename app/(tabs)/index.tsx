@@ -41,9 +41,13 @@
  *                              venue or location data.
  * No default-city venues are ever shown pre-consent.
  *
- * Weather: SAME coarse, cached, non-personal fetch the global
- * WeatherBackground makes (FALLBACK_LOCATION — a GB centroid, never the
- * user's position). Identical React Query cache key → no extra request.
+ * Weather (2026-07-19 root-cause fix): reads the single shared
+ * useResolvedWeather() hook (hooks/useResolvedWeather.ts) — the SAME hook
+ * every <V2Background/> reads, so this pill and every atmosphere agree.
+ * FALLBACK_LOCATION (a GB centroid) pre-consent/declined, unchanged; the
+ * user's ALREADY-CONSENTED coarse location once granted. Mounting this
+ * screen can never itself trigger the OS location prompt — see that hook's
+ * header for why.
  */
 
 import { useMemo, useState } from 'react';
@@ -56,7 +60,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { useProfile } from '@/hooks/useAuth';
 import { useAreaLabel, useLocation } from '@/hooks/location';
-import { useWeather } from '@/hooks/useWeather';
+import { useResolvedWeather } from '@/hooks/useResolvedWeather';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { useSavedVenueIds, useToggleFavourite } from '@/hooks/useFavourites';
@@ -66,10 +70,14 @@ import { FALLBACK_LOCATION } from '@/constants/location';
 import { DEFAULT_FILTERS } from '@/types';
 import type { Venue, Category } from '@/types';
 import { Icon, PPBrandMark, VenueRowSkeleton } from '@/components/ui';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { EditorialCollectionHero } from '@/components/home/EditorialCollectionHero';
 import { VenueCard2 } from '@/components/home/VenueCard2';
 import { IntentChips } from '@/components/home/IntentChips';
+// __DEV__-ONLY — never imported/rendered in a production build. See the
+// `__DEV__` branch around the weather pill below and the mount point at the
+// end of this component.
+import { DevWeatherTester } from '@/components/dev/DevWeatherTester';
 import {
   filterHomeVenues,
   getContextTag,
@@ -332,13 +340,45 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const tabSafeZone = Math.max(tabBarHeight, 52 + insets.bottom);
 
-  // SAME coarse, cached, non-personal fetch the global WeatherBackground
-  // already makes (FALLBACK_LOCATION, a GB centroid — never the user's real
-  // position). Identical React Query cache key → reuses that fetch.
-  const weather = useWeather(FALLBACK_LOCATION.latitude, FALLBACK_LOCATION.longitude);
-  const condition = weather?.condition ?? null;
+  // THE single shared resolved-weather source (hooks/useResolvedWeather.ts)
+  // — SAME hook <V2Background/> reads, so the badge below and every
+  // atmosphere on this screen can never disagree. Consent-gated internally:
+  // FALLBACK_LOCATION pre-consent/declined (unchanged), the user's already-
+  // consented coarse location once granted — this call itself never
+  // triggers the OS location prompt (see that hook's header for why).
+  const { weather, condition, usingConsentedLocation } = useResolvedWeather();
   const isRain =
     condition === 'rain' || condition === 'drizzle' || condition === 'showers' || condition === 'thunderstorm';
+
+  // Shared between the production <View> and the __DEV__-only <Pressable>
+  // wrapper below so the two branches render byte-identical content —
+  // deliberately kept in ONE place rather than duplicated inline.
+  const weatherPillStyle = {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 5,
+    backgroundColor: isRain ? 'rgba(91,155,213,0.16)' : 'rgba(255,178,62,0.16)',
+    borderWidth: 1,
+    borderColor: isRain ? 'rgba(91,155,213,0.3)' : 'rgba(255,178,62,0.3)',
+    borderRadius: BorderRadius.pill,
+    paddingVertical: 3,
+    paddingLeft: 8,
+    paddingRight: 11,
+  };
+  const weatherPillChildren = weather != null ? (
+    <>
+      <Text style={{ fontSize: 12 }}>{weather.emoji}</Text>
+      <Text
+        style={{
+          fontFamily: FontFamily.bodyStrong,
+          fontSize: 12,
+          color: isRain ? '#8FBEE8' : '#FFC976',
+        }}
+      >
+        {weather.label}
+      </Text>
+    </>
+  ) : null;
 
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? null;
 
@@ -354,6 +394,12 @@ export default function HomeScreen() {
   // Home's local filter state (independent of the global FilterSheet store).
   const [activeIntent, setActiveIntent] = useState<IntentKey | null>(null);
   const [refreshSeed, setRefreshSeed] = useState(0);
+  // __DEV__-ONLY dev-weather-tester modal visibility. Always declared
+  // (cheap, rules-of-hooks safe) — but the ONLY way to ever set it true is
+  // the long-press handler below, which itself only exists inside an
+  // `if (__DEV__)` branch, so this state can never become true in a
+  // production build.
+  const [devTesterVisible, setDevTesterVisible] = useState(false);
 
   const now = new Date();
   const greeting = getGreeting(now.getHours());
@@ -374,8 +420,11 @@ export default function HomeScreen() {
     <View style={{ flex: 1 }}>
       {/* Atmosphere layer: dark base gradient + weather glow + Ocean vignette
           (static approximation of the prototype's animated background —
-          animation is P2). */}
-      <V2Background />
+          animation is P2). ThemedBackground selects this same V2Background
+          unchanged in dark mode, and a placeholder light surface in light
+          mode (Step 10A Part 2, dual-theme foundation) — see
+          components/ui/ThemedBackground.tsx. */}
+      <ThemedBackground />
       {/* Home renders dark by design (v2). The shared <StatusBar style="dark">
           in app/(tabs)/_layout stays "dark" for the 3 legacy light screens —
           expo-status-bar stacks mounted instances, so this local override wins
@@ -452,33 +501,29 @@ export default function HomeScreen() {
                 </Text>
 
                 {weather != null && (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 5,
-                      backgroundColor: isRain ? 'rgba(91,155,213,0.16)' : 'rgba(255,178,62,0.16)',
-                      borderWidth: 1,
-                      borderColor: isRain ? 'rgba(91,155,213,0.3)' : 'rgba(255,178,62,0.3)',
-                      borderRadius: BorderRadius.pill,
-                      paddingVertical: 3,
-                      paddingLeft: 8,
-                      paddingRight: 11,
-                    }}
-                    accessibilityRole="text"
-                    accessibilityLabel={`Weather: ${weather.label}`}
-                  >
-                    <Text style={{ fontSize: 12 }}>{weather.emoji}</Text>
-                    <Text
-                      style={{
-                        fontFamily: FontFamily.bodyStrong,
-                        fontSize: 12,
-                        color: isRain ? '#8FBEE8' : '#FFC976',
-                      }}
+                  __DEV__ ? (
+                    // __DEV__-ONLY: identical pill, wrapped in a Pressable so a
+                    // 500ms+ long-press opens the dev weather tester. Never
+                    // rendered in a production build — the plain, non-pressable
+                    // <View> below is what ships (see the `else` branch).
+                    <Pressable
+                      style={weatherPillStyle}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Weather: ${weather.label}. Long-press for the dev weather tester.`}
+                      onLongPress={() => setDevTesterVisible(true)}
+                      delayLongPress={500}
                     >
-                      {weather.label}
-                    </Text>
-                  </View>
+                      {weatherPillChildren}
+                    </Pressable>
+                  ) : (
+                    <View
+                      style={weatherPillStyle}
+                      accessibilityRole="text"
+                      accessibilityLabel={`Weather: ${weather.label}`}
+                    >
+                      {weatherPillChildren}
+                    </View>
+                  )
                 )}
               </View>
 
@@ -678,6 +723,19 @@ export default function HomeScreen() {
           )}
         </ScrollView>
       </SafeAreaView>
+
+      {/* __DEV__-ONLY — this component (and its import above) never renders
+          in a production build. devTesterVisible can only ever become true
+          via the __DEV__-gated long-press handler on the weather pill above. */}
+      {__DEV__ && (
+        <DevWeatherTester
+          visible={devTesterVisible}
+          onClose={() => setDevTesterVisible(false)}
+          resolvedCondition={condition}
+          weather={weather}
+          usingConsentedLocation={usingConsentedLocation}
+        />
+      )}
     </View>
   );
 }

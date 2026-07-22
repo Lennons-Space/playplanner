@@ -25,7 +25,7 @@
  * elsewhere); FlowFooter stays absolute and safe-area-aware.
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -42,34 +42,41 @@ import { router } from 'expo-router';
 import { useSubmitReview } from '@/hooks/useReviews';
 import { Icon } from '@/components/ui/Icon';
 import { Stars } from '@/components/ui';
-import { V2Background } from '@/components/ui/V2Background';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 // ---------------------------------------------------------------------------
-// Design tokens — v2 dark palette (inline StyleSheet, no NativeWind)
+// Design tokens — v2 palette (inline StyleSheet, no NativeWind), resolved
+// per-render via useAppTheme() inside ReviewForm below (createPP(T) mirrors
+// the pattern used by app/venue/plan-visit.tsx's createPP).
 // ---------------------------------------------------------------------------
 
-const T = Themes.dark;
 const ACCENT = ocean;
-// Single destructive/error red used across the v2 dark screens (matches the
+// Single destructive/error red used across the v2 screens (matches the
 // "Weak" password-strength colour already shipped on app/(auth)/register.tsx).
 const ERROR_RED = '#FF3B30';
 
-const PP = {
-  ink:      T.label,
-  inkSoft:  T.label2,
-  mute:     T.label3,
-  line:     T.separator,
-  lineSoft: T.fill,
-  paper:    T.surface,
-  sky:      ACCENT.accent,
-  skyWash:  ACCENT.light,
-  skyText:  ACCENT.tagText,
-  // Amber rating stars — same value used on ReviewCard / venue detail.
-  star:     '#F5A524',
-  error:    ERROR_RED,
-};
+function createPP(T: ThemeTokens) {
+  return {
+    ink:      T.label,
+    inkSoft:  T.label2,
+    mute:     T.label3,
+    line:     T.separator,
+    lineSoft: T.fill,
+    paper:    T.surface,
+    bg:       T.bg,
+    sky:      ACCENT.accent,
+    skyWash:  ACCENT.light,
+    skyText:  ACCENT.tagText,
+    // Amber rating stars — same value used on ReviewCard / venue detail.
+    star:     '#F5A524',
+    error:    ERROR_RED,
+  };
+}
+type PPType = ReturnType<typeof createPP>;
+type Styles = ReturnType<typeof createStyles>;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -130,12 +137,16 @@ function FlowHeader({
   title,
   onBack,
   onClose,
+  styles,
+  PP,
 }: {
   step: number;
   total: number;
   title: string;
   onBack: () => void;
   onClose: () => void;
+  styles: Styles;
+  PP: PPType;
 }) {
   return (
     <View style={styles.headerWrap}>
@@ -192,19 +203,23 @@ function FlowFooter({
   secondary,
   onSecondary,
   disabled,
+  styles,
+  tintColor,
 }: {
   primary: string;
   onPrimary: () => void;
   secondary?: string;
   onSecondary?: () => void;
   disabled?: boolean;
+  styles: Styles;
+  tintColor: string;
 }) {
   const insets = useSafeAreaInsets();
 
   return (
     <GlassSurface
       style={[styles.footer, { paddingBottom: Math.max(28, insets.bottom + 12) }]}
-      tintColor="rgba(12,12,17,0.9)"
+      tintColor={tintColor}
     >
       {secondary && (
         <TouchableOpacity
@@ -245,6 +260,10 @@ export function ReviewForm({
   venueSubmittedBy,
   onSuccess,
 }: ReviewFormProps) {
+  const { tokens: T, mode } = useAppTheme();
+  const PP = useMemo(() => createPP(T), [T]);
+  const styles = useMemo(() => createStyles(PP), [PP]);
+  const footerTint = mode === 'dark' ? 'rgba(12,12,17,0.9)' : 'rgba(255,255,255,0.9)';
   const [step, setStep]             = useState<1 | 2 | 3>(1);
   const [rating, setRating]         = useState(0);
   const [tags, setTags]             = useState<Record<string, boolean>>({});
@@ -354,7 +373,7 @@ export function ReviewForm({
 
   return (
     <View style={styles.outer}>
-      <V2Background />
+      <ThemedBackground />
       <SafeAreaView style={styles.root}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -366,6 +385,8 @@ export function ReviewForm({
             title={stepTitles[step - 1]}
             onBack={handleBack}
             onClose={handleClose}
+            styles={styles}
+            PP={PP}
           />
 
           <ScrollView
@@ -619,6 +640,8 @@ export function ReviewForm({
               primary="Next"
               onPrimary={handleNextStep1}
               disabled={rating === 0}
+              styles={styles}
+              tintColor={footerTint}
             />
           )}
           {step === 2 && (
@@ -632,10 +655,12 @@ export function ReviewForm({
                 body.trim().length < BODY_MIN ||
                 body.trim().length > BODY_MAX
               }
+              styles={styles}
+              tintColor={footerTint}
             />
           )}
           {step === 3 && (
-            <FlowFooter primary="Back to venue" onPrimary={onSuccess} />
+            <FlowFooter primary="Back to venue" onPrimary={onSuccess} styles={styles} tintColor={footerTint} />
           )}
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -647,11 +672,15 @@ export function ReviewForm({
 // Styles
 // ---------------------------------------------------------------------------
 
-const styles = StyleSheet.create({
+// createStyles(PP) — called via useMemo inside ReviewForm so every colour
+// resolves per the current app theme mode (same pattern as
+// app/venue/plan-visit.tsx's createStyles(pp)).
+function createStyles(PP: PPType) {
+  return StyleSheet.create({
   // Layout
   outer: {
     flex: 1,
-    // Transparent so the shared <V2Background/> atmosphere shows through —
+    // Transparent so the shared <ThemedBackground/> atmosphere shows through —
     // matches Home / Venue Detail / Plan Visit. Cards/inputs stay opaque.
     backgroundColor: 'transparent',
   },
@@ -896,7 +925,7 @@ const styles = StyleSheet.create({
 
   // Step 2 — body
   bodyContainer: {
-    backgroundColor: T.bg,
+    backgroundColor: PP.bg,
     borderWidth: 1.5,
     borderColor: PP.line,
     borderRadius: 12,
@@ -1077,4 +1106,5 @@ const styles = StyleSheet.create({
     color: PP.error,
     marginTop: 6,
   },
-});
+  });
+}

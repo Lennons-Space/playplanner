@@ -18,11 +18,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 import { Icon } from '@/components/ui';
-import { V2Background } from '@/components/ui/V2Background';
-import { Themes, FontFamily, ocean } from '@/constants/theme';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { FontFamily, ocean } from '@/constants/theme';
 import { ONBOARDING_KEY } from '.';
 
-const T = Themes.dark;
 const ACCENT = ocean;
 
 async function markOnboardingSeen() {
@@ -30,6 +30,7 @@ async function markOnboardingSeen() {
 }
 
 function Dots({ active }: { active: 0 | 1 | 2 }) {
+  const { tokens: T } = useAppTheme();
   return (
     <View
       style={styles.dotsRow}
@@ -38,17 +39,21 @@ function Dots({ active }: { active: 0 | 1 | 2 }) {
       accessibilityLabel={`Step ${active + 1} of 3`}
     >
       {([0, 1, 2] as const).map((i) => (
-        <View key={i} style={[styles.dotBase, i === active && styles.dotActive]} />
+        <View
+          key={i}
+          style={[styles.dotBase, { backgroundColor: T.fill }, i === active && styles.dotActive]}
+        />
       ))}
     </View>
   );
 }
 
 export default function Onboarding1() {
+  const { tokens: T, mode } = useAppTheme();
   return (
     <View style={styles.root}>
-      <V2Background />
-      <StatusBar style="light" />
+      <ThemedBackground />
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={styles.safe}>
 
         {/* Skip — top right */}
@@ -59,13 +64,13 @@ export default function Onboarding1() {
             accessibilityRole="button"
             accessibilityLabel="Skip onboarding"
           >
-            <Text style={styles.skipText}>Skip</Text>
+            <Text style={[styles.skipText, { color: T.label3 }]}>Skip</Text>
           </TouchableOpacity>
         </View>
 
         {/* Hero illustration */}
         <View style={styles.heroArea} accessible={false} importantForAccessibility="no-hide-descendants">
-          <View style={styles.heroCard}>
+          <View style={[styles.heroCard, { backgroundColor: T.surface, borderColor: T.separator }]}>
             {/* Pin icon centred in a soft circle */}
             <View style={styles.pinCircle}>
               <Icon name="pin" size={32} color={ACCENT.accent} />
@@ -79,8 +84,8 @@ export default function Onboarding1() {
 
         {/* Copy */}
         <View style={styles.copyArea}>
-          <Text style={styles.headline}>{"Find family-friendly\nplaces near you"}</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.headline, { color: T.label }]}>{"Find family-friendly\nplaces near you"}</Text>
+          <Text style={[styles.subtitle, { color: T.label2 }]}>
             Discover soft plays, parks, cafes, museums and more — all hand-picked
             for families with young children.
           </Text>
@@ -119,7 +124,6 @@ const styles = StyleSheet.create({
   skipText: {
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label3,
   },
 
   // Hero card
@@ -133,12 +137,11 @@ const styles = StyleSheet.create({
   heroCard: {
     width: 200,
     height: 200,
-    backgroundColor: T.surface,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: T.separator,
     alignItems: 'center',
     justifyContent: 'center',
+    // backgroundColor / borderColor: mode-aware, applied inline.
   },
   pinCircle: {
     width: 56,
@@ -163,7 +166,6 @@ const styles = StyleSheet.create({
   headline: {
     fontFamily: FontFamily.display,
     fontSize: 30,
-    color: T.label,
     lineHeight: 38,
     letterSpacing: -0.6,
     marginBottom: 10,
@@ -171,7 +173,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontFamily: FontFamily.body,
     fontSize: 15,
-    color: T.label2,
     lineHeight: 22,
   },
 
@@ -186,7 +187,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: T.fill,
+    // backgroundColor: mode-aware, applied inline (T.fill).
   },
   dotActive: {
     backgroundColor: ACCENT.accent,

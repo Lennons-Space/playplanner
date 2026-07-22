@@ -23,7 +23,7 @@ import { render, fireEvent, within } from '@testing-library/react-native';
 
 import { router } from 'expo-router';
 import HomeScreen from '../index';
-import { pickHeroCollection } from '@/lib/homeIntents';
+import { pickHeroCollection, getWeatherCta, getHomeContextLine } from '@/lib/homeIntents';
 import type { Venue } from '@/types';
 
 // ── Mocks (hoisted) ─────────────────────────────────────────────────
@@ -60,9 +60,26 @@ interface MockWeather {
   label: string;
   emoji: string;
 }
+// Home (and, transitively, every <V2Background/> it mounts via
+// ThemedBackground) reads the SINGLE shared hooks/useResolvedWeather.ts —
+// mock THAT module boundary rather than the inner hooks/useWeather.ts it
+// wraps, so both consumers stay in lockstep exactly as they do in the real
+// app. Kept as `mockUseWeather` (unchanged name) so every existing
+// `mockUseWeather.mockReturnValue({...})` call site in this file continues
+// to work unmodified — it just now feeds the `weather` field of the fuller
+// ResolvedWeather shape.
 const mockUseWeather = jest.fn<MockWeather | null, unknown[]>(() => null);
-jest.mock('@/hooks/useWeather', () => ({
-  useWeather: (...args: unknown[]) => mockUseWeather(...(args as [])),
+jest.mock('@/hooks/useResolvedWeather', () => ({
+  useResolvedWeather: (...args: unknown[]) => {
+    const weather = mockUseWeather(...(args as []));
+    return {
+      weather,
+      condition: weather?.condition ?? null,
+      night: false,
+      atmosphere: 'sunny',
+      usingConsentedLocation: false,
+    };
+  },
 }));
 
 interface MockNearbyVenuesResult {
@@ -83,6 +100,22 @@ jest.mock('@/hooks/useVenues', () => ({
 jest.mock('@/hooks/useFavourites', () => ({
   useSavedVenueIds: jest.fn(() => ({ savedIds: new Set(), isLoading: false })),
   useToggleFavourite: jest.fn(() => ({ mutate: jest.fn() })),
+}));
+
+// DevWeatherTester (__DEV__-only manual weather QA harness, see
+// components/dev/DevWeatherTester.tsx) reads a REAL react-query
+// QueryClient via useQueryClient() — same pattern as the
+// jest.setup.js-level WeatherBackground stub above: this suite tests
+// Home's own chrome, not the dev harness (which has its own dedicated
+// suite at components/dev/__tests__/DevWeatherTester.test.tsx), so it is
+// stubbed here rather than wrapping every render() in this large file with
+// a QueryClientProvider it otherwise has no reason to need.
+const mockDevWeatherTester = jest.fn();
+jest.mock('@/components/dev/DevWeatherTester', () => ({
+  DevWeatherTester: (props: unknown) => {
+    mockDevWeatherTester(props);
+    return null;
+  },
 }));
 
 jest.mock('expo-router', () => ({
@@ -332,6 +365,41 @@ describe('Browse (Home) — "Good for today" editorial collection hero', () => {
   });
 });
 
+describe('Browse (Home) — __DEV__-only weather pill long-press → dev weather tester', () => {
+  const originalDev = (global as { __DEV__?: boolean }).__DEV__;
+
+  afterEach(() => {
+    (global as { __DEV__?: boolean }).__DEV__ = originalDev;
+  });
+
+  it('__DEV__ true: wraps the weather pill in a long-press Pressable and mounts the (mocked) tester', () => {
+    (global as { __DEV__?: boolean }).__DEV__ = true;
+    mockUseWeather.mockReturnValue({ condition: 'clear', label: 'Sunny', emoji: '☀️' });
+    const { getByLabelText } = render(<HomeScreen />);
+    // Accessible label documents the long-press affordance — production
+    // copy (__DEV__ false) never mentions "dev weather tester".
+    const pill = getByLabelText(/Weather: Sunny\. Long-press for the dev weather tester\./);
+    expect(pill.props.accessibilityRole).toBe('button');
+    // The (mocked) DevWeatherTester component is mounted (though its Modal
+    // stays closed until the long-press fires) — never absent in __DEV__.
+    expect(mockDevWeatherTester).toHaveBeenCalled();
+  });
+
+  it('__DEV__ false: renders a plain non-pressable weather pill and never mounts the tester (production safety)', () => {
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+    mockUseWeather.mockReturnValue({ condition: 'clear', label: 'Sunny', emoji: '☀️' });
+    const { getByLabelText, queryByLabelText } = render(<HomeScreen />);
+    // Production pill: plain text-role view, no long-press affordance in the
+    // accessible label.
+    const pill = getByLabelText('Weather: Sunny');
+    expect(pill.props.accessibilityRole).toBe('text');
+    expect(queryByLabelText(/Long-press for the dev weather tester/)).toBeNull();
+    // The dev-only component must never mount at all in a production build —
+    // this is the behavioural proof, not just hidden UI.
+    expect(mockDevWeatherTester).not.toHaveBeenCalled();
+  });
+});
+
 describe('pickHeroCollection — real-collection mapping (pure)', () => {
   // Args: (condition, intent, month, hour). Midday July unless stated.
   it('maps rain-family weather to the rainy-day collection', () => {
@@ -361,6 +429,24 @@ describe('pickHeroCollection — real-collection mapping (pure)', () => {
     expect(pickHeroCollection('clear', null, 7, 12).title).toBe('Summer Adventures');
     expect(pickHeroCollection('clear', null, 0, 12).title).toBe('Winter Days Out');
     expect(pickHeroCollection('clear', null, 3, 12).title).toBe('Burn Energy');
+  });
+
+  // 2026-07-19: mainly_clear (WMO 1) maps through toProtoKey's 'sunny' arm,
+  // identically to 'clear' — additive, no new hero-collection behaviour.
+  it('treats mainly_clear identically to clear for hero-collection purposes', () => {
+    expect(pickHeroCollection('mainly_clear', null, 7, 12).title).toBe('Summer Adventures');
+    expect(pickHeroCollection('mainly_clear', null, 6, 22).title).toBe('Plan for Tomorrow');
+  });
+});
+
+describe('getWeatherCta / getHomeContextLine — mainly_clear sweep (pure)', () => {
+  it('getWeatherCta gives mainly_clear the SAME sunny CTA as clear', () => {
+    expect(getWeatherCta('mainly_clear')).toEqual(getWeatherCta('clear'));
+  });
+
+  it('getHomeContextLine gives mainly_clear the SAME sunny copy as clear', () => {
+    const noon = new Date(2026, 6, 15, 12, 0);
+    expect(getHomeContextLine('mainly_clear', noon)).toBe(getHomeContextLine('clear', noon));
   });
 });
 
