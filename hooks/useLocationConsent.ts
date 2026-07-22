@@ -17,11 +17,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { recordLocationConsentGranted } from '@/services/consent/locationConsent';
+import { LOCATION_CONSENT_STORAGE_KEY, LOCATION_CONSENT_GRANTED_VALUE } from '@/constants/location';
 
 // These MUST match the values the map screen has always used, so existing
 // users who already granted consent are not re-prompted after this refactor.
-const CONSENT_KEY = 'location_consent_granted';
-const CONSENT_VALUE = '1';
+// (Moved to constants/location.ts so hooks/useResolvedWeather.ts can read
+// the SAME persisted flag without pulling in this file's Supabase-coupled
+// audit-log import — see that constant's own doc comment for why.)
+const CONSENT_KEY = LOCATION_CONSENT_STORAGE_KEY;
+const CONSENT_VALUE = LOCATION_CONSENT_GRANTED_VALUE;
 
 export type LocationConsentStatus =
   | 'checking'   // still reading SecureStore — render a neutral placeholder

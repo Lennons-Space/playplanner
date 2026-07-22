@@ -239,8 +239,11 @@ function toProtoKey(condition: WeatherCondition | null): ProtoWeatherKey {
       return 'cloudy';
     case 'fog':
       return 'fog';
+    case 'clear':
+    case 'mainly_clear':
+      return 'sunny';
     default:
-      return 'sunny'; // clear / unknown
+      return 'sunny'; // unknown/null
   }
 }
 

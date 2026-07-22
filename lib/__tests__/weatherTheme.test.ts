@@ -17,6 +17,15 @@ describe('resolveAtmosphere', () => {
     expect(resolveAtmosphere('clear', true)).toBe('night');
   });
 
+  // 2026-07-19: freeze lifted for exactly this addition — mainly_clear (WMO
+  // 1) resolves to the SAME atmosphere as clear (no new palette). The
+  // "restrained cloud" distinction lives one layer up, in
+  // V2WeatherMotion's condition-aware sunny branch, never here.
+  it('maps mainly_clear → sunny during the day and night when dark, same as clear', () => {
+    expect(resolveAtmosphere('mainly_clear', false)).toBe('sunny');
+    expect(resolveAtmosphere('mainly_clear', true)).toBe('night');
+  });
+
   it('maps cloud-family conditions → cloudy', () => {
     (['partly_cloudy', 'overcast', 'fog'] as WeatherCondition[]).forEach((c) =>
       expect(resolveAtmosphere(c, false)).toBe('cloudy'),

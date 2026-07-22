@@ -309,6 +309,12 @@ export function resolveAtmosphere(
 ): Atmosphere {
   switch (condition) {
     case 'clear':
+    // mainly_clear (WMO 1, "predominantly sunny") resolves to the SAME
+    // atmosphere/palette as clear — freeze lifted for exactly this one
+    // addition (2026-07-19 product decision). No new atmosphere, no palette
+    // change: the distinct "restrained cloud" treatment lives one layer up,
+    // in V2WeatherMotion's condition-aware sunny branch, never here.
+    case 'mainly_clear':
       return night ? 'night' : 'sunny';
     case 'partly_cloudy':
     case 'overcast':

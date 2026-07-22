@@ -113,7 +113,7 @@ export function resolveAutoMood(
     weather.condition === 'snow';
   if (wet) return 'indoor';
   if (
-    (weather.condition === 'clear' || weather.condition === 'partly_cloudy') &&
+    (weather.condition === 'clear' || weather.condition === 'mainly_clear' || weather.condition === 'partly_cloudy') &&
     weather.temperatureC >= 16
   ) {
     return 'outdoor';

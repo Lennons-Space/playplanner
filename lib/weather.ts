@@ -4,6 +4,7 @@
 
 export type WeatherCondition =
   | 'clear'
+  | 'mainly_clear'
   | 'partly_cloudy'
   | 'overcast'
   | 'fog'
@@ -19,13 +20,32 @@ export interface WeatherState {
   precipProbabilityPct: number;
   emoji:                string;
   label:                string;
+  /**
+   * ADDITIVE (diagnostics only) — the raw WMO weather code Open-Meteo
+   * returned, before classifyCondition() collapses it into a WeatherCondition.
+   * Undefined for any WeatherState that didn't come from a real API response
+   * (e.g. the __DEV__ weather tester's synthetic override — see
+   * hooks/useWeather.ts) — that absence is itself a useful diagnostic signal
+   * ("this reading isn't real"). Never used for any behavioural branching,
+   * only ever displayed (e.g. components/dev/DevWeatherTester.tsx).
+   */
+  weathercode?: number;
 }
 
 // WMO Weather interpretation codes → WeatherCondition.
 // Full table: https://open-meteo.com/en/docs#weathervariables
 export function classifyCondition(code: number): WeatherCondition {
   if (code === 0) return 'clear';
-  if (code === 1 || code === 2) return 'partly_cloudy';
+  // WMO 0/1/2/3 are four DISTINCT conditions ("clear sky" / "mainly clear" /
+  // "partly cloudy" / "overcast") — previously 1 and 2 were both collapsed
+  // into 'partly_cloudy', which under-represented how much sun a "mainly
+  // clear" (WMO 1) day actually has. Product decision (2026-07-19): keep
+  // them distinct so the UI can show a predominantly-sunny treatment for 1
+  // and a genuinely mixed treatment for 2. See CONDITION_META, weatherTheme's
+  // resolveAtmosphere (mainly_clear → sunny, same as clear) and
+  // V2WeatherMotion (restrained cloud accents on mainly_clear only).
+  if (code === 1) return 'mainly_clear';
+  if (code === 2) return 'partly_cloudy';
   if (code === 3) return 'overcast';
   if (code <= 48) return 'fog';       // 45, 48
   if (code <= 57) return 'drizzle';   // 51, 53, 55, 56, 57
@@ -36,8 +56,12 @@ export function classifyCondition(code: number): WeatherCondition {
   return 'thunderstorm';              // 95, 96, 99
 }
 
-const CONDITION_META: Record<WeatherCondition, { emoji: string; label: string }> = {
+// Exported (additive) so hooks/useWeather.ts can build an honest synthetic
+// WeatherState for the __DEV__ weather tester's override — the SAME
+// emoji/label production code uses, never invented copy.
+export const CONDITION_META: Record<WeatherCondition, { emoji: string; label: string }> = {
   clear:         { emoji: '☀️', label: 'Sunny' },
+  mainly_clear:  { emoji: '🌤', label: 'Mainly clear' },
   partly_cloudy: { emoji: '⛅', label: 'Partly cloudy' },
   overcast:      { emoji: '☁️', label: 'Overcast' },
   fog:           { emoji: '🌫', label: 'Foggy' },
@@ -47,6 +71,32 @@ const CONDITION_META: Record<WeatherCondition, { emoji: string; label: string }>
   showers:       { emoji: '🌦', label: 'Showery' },
   thunderstorm:  { emoji: '⛈', label: 'Thunderstorm' },
 };
+
+/**
+ * Night-aware label/emoji for a condition (2026-07-20, Defect 4 fix).
+ *
+ * CONDITION_META.clear is time-blind — {emoji:'☀️', label:'Sunny'} — so a
+ * genuinely clear sky at 2am rendered "☀️ Sunny", which reads as dishonest
+ * next to a correctly-dark night atmosphere. Only 'clear'/'mainly_clear'
+ * need a night-specific copy: every other condition (rain, overcast, snow,
+ * fog, ...) already reads honestly regardless of time of day, so this is a
+ * narrow, additive correction — not a full label rewrite.
+ *
+ * Pure function: the caller (hooks/useResolvedWeather.ts) supplies the
+ * already-resolved `night` flag, so there remains exactly ONE source of
+ * "is it night" in the app (lib/weatherTheme.ts isNightNow / the __DEV__
+ * force-night override) — this helper never reads the clock itself.
+ */
+export function conditionLabel(
+  condition: WeatherCondition,
+  night: boolean,
+): { emoji: string; label: string } {
+  if (night) {
+    if (condition === 'clear') return { emoji: '🌙', label: 'Clear night' };
+    if (condition === 'mainly_clear') return { emoji: '🌙', label: 'Mainly clear night' };
+  }
+  return CONDITION_META[condition];
+}
 
 interface OpenMeteoResponse {
   current_weather?: {
@@ -83,6 +133,7 @@ export function parseWeatherResponse(data: OpenMeteoResponse): WeatherState | nu
     precipProbabilityPct,
     emoji: meta.emoji,
     label: meta.label,
+    weathercode,
   };
 }
 
@@ -131,7 +182,10 @@ export function getWeatherBadge(
     if (isIndoor)  return '❄️ Cosy pick';
     if (isOutdoor) return '❄️ Check conditions';
   }
-  if (condition === 'clear' && isOutdoor) {
+  // mainly_clear (WMO 1) is treated the same as clear here — it is
+  // "predominantly sunny", not the mixed sun/cloud read of partly_cloudy
+  // (WMO 2), which keeps its own distinct badge below.
+  if ((condition === 'clear' || condition === 'mainly_clear') && isOutdoor) {
     return '☀️ Ideal today';
   }
   if (condition === 'partly_cloudy' && isOutdoor) {
@@ -180,7 +234,7 @@ export function getWeatherBanner(
   if (temperatureC <= 3) {
     return { text: `🧊  Very cold (${temperatureC}°C) — wrap up warm`, tint: '#EDF2F8' };
   }
-  if (condition === 'clear' && temperatureC >= 20) {
+  if ((condition === 'clear' || condition === 'mainly_clear') && temperatureC >= 20) {
     return {
       text: sorted ? `☀️  Sunny & warm (${temperatureC}°C) — outdoor venues first` : `☀️  Sunny & warm (${temperatureC}°C) — outdoor venues highlighted`,
       tint: '#FDF8E8',
@@ -221,7 +275,7 @@ export function scoreVenueForWeather(
     return 0;
   }
 
-  if (condition === 'clear' || condition === 'partly_cloudy') {
+  if (condition === 'clear' || condition === 'mainly_clear' || condition === 'partly_cloudy') {
     if (isOutdoor) return 1;
     // Indoor venues are neutral on nice days — parents may deliberately choose
     // indoor activities regardless of weather, so we boost outdoors without

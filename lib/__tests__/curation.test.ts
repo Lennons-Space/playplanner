@@ -67,6 +67,16 @@ describe('resolveAutoMood', () => {
   it('falls back to surprise with no weather', () => {
     expect(resolveAutoMood('auto', null)).toBe('surprise');
   });
+
+  // 2026-07-19: mainly_clear (WMO 1) is treated the same as clear/
+  // partly_cloudy for the auto-mood outdoor lean — additive, no new
+  // venue-ranking behaviour invented.
+  it('leans outdoor on a warm mainly_clear day, same as clear', () => {
+    const MAINLY_CLEAR: WeatherState = {
+      condition: 'mainly_clear', temperatureC: 19, precipProbabilityPct: 5, emoji: '🌤', label: 'Mainly clear',
+    };
+    expect(resolveAutoMood('auto', MAINLY_CLEAR)).toBe('outdoor');
+  });
 });
 
 describe('curateVenues — hard constraints', () => {
