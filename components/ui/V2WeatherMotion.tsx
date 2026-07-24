@@ -102,6 +102,61 @@
 // stop is always exactly 0, so there is still no hard edge anywhere, now at
 // the level of each individual puff/lobe rather than one whole ellipse.
 //
+// UPDATE (2026-07-23, SIXTH pass — device verdict: partly_cloudy still
+// "almost invisible", overcast "reads as a broad grey glow, not clouds"
+// (an explicit DO-NOT-RAISE-OPACITY instruction for overcast), fog "mostly
+// correct, wants a further ~20% raise"). Uses ONLY the levers proven
+// independent of the no-edge invariant (peak opacity, nominal size, layer
+// count, coreHold/coreOpacityFactor) — GRADIENT_ZERO_TARGET, CLOUD_CANVAS_PAD,
+// puffGradientRadiusFraction, every `feather`, and the Rect-not-Ellipse shape
+// are BYTE-IDENTICAL to the THIRD pass for all three conditions.
+//   • fog: DARK ONLY, opacityBase/opacityVar +20% (0.268→0.3216,
+//     0.110→0.132). Light is deliberately left untouched, extending the
+//     FIFTH pass's explicit "no change to the sandy Light background" ruling
+//     — the brief for this pass, like the FIFTH pass's, reads as a dark-
+//     device observation, and Light has repeatedly been the one area Liam
+//     has asked to stay untouched unless a change is explicitly requested.
+//     Every other fog field (size/feather/coreHold/coreOpacityFactor/
+//     yBase/yRange/duration/driftFactor) is unchanged.
+//   • overcast: Liam's verdict was explicit that this is a STRUCTURE problem,
+//     not an opacity problem — "do not raise its opacity... if anything,
+//     lower it". Fix uses the OTHER safe levers: cluster count 6→7 (within
+//     the "5–7" target, more individually-readable masses); sizeHBase/
+//     sizeHVar cut ~24% (255/120→195/95) so each cluster's own vertical
+//     footprint is smaller and stops swallowing its neighbours into one
+//     sheet (this was the actual mechanism behind "grey glow" — tall,
+//     heavily-overlapping masses, not raw ink); coreOpacityFactor lowered
+//     0.94→0.85 so each puff's gradient falls off more before the core,
+//     giving more internal contrast/definition instead of a flat wash;
+//     opacityBase/opacityVar LOWERED (dark 0.27→0.25/0.12→0.11, light
+//     0.17→0.15/0.075→0.065), exactly as instructed. sizeWBase/sizeWVar,
+//     feather, coreHold, and the yBase/yRange/overcastClusterLayout scheme
+//     are unchanged. Net effect: overcast is no longer "heaviest" by raw
+//     peak opacity (fog's dark value is now higher) but remains heaviest by
+//     combined coverage/density (layer count × size × opacity — see
+//     softCloudDensityFor/approxCoverage in the tests) precisely because
+//     Liam asked for MORE, SMALLER, LESS-OPAQUE, BETTER-DEFINED clusters
+//     rather than fewer, bigger, more-opaque ones.
+//   • partly_cloudy: still "genuinely too faint" on device despite the
+//     FOURTH pass's boost. sizeWBase/sizeWVar/sizeHBase/sizeHVar raised a
+//     further ~13% (240/120/150/75 → 270/135/170/85 — deliberately modest,
+//     not another ×1.5, because a much bigger cluster starts eating the
+//     "substantial clear sky between clusters" Liam's spec asks for on a
+//     real (much narrower than the 750px jest mock) phone screen);
+//     opacityBase/opacityVar raised (dark 0.21→0.23/0.09→0.10, light
+//     0.14→0.145/0.05→0.055, dark staying inside the existing 0.16–0.25
+//     target band); coreOpacityFactor raised 0.92→0.95 (denser-reading core,
+//     helps the 5-puff silhouette read as a solid lumpy cloud rather than a
+//     faint smudge). feather, coreHold, cluster count (4), and yBase/yRange
+//     are unchanged.
+// Because this pass makes fog's raw peak opacity exceed overcast's in BOTH
+// modes, several older pure-parameter tests that compared "overcast.opacityBase
+// > fog.opacityBase" directly are now stale by design (Liam's instruction
+// itself inverts that relationship) — they are updated to assert the
+// combined-density/coverage relationship instead (which still holds, with
+// margin, in both modes) rather than deleted, and the change is called out
+// inline at each edited assertion.
+//
 // UPDATE (2026-07-22, THIRD pass — hard-edge/"rectangular panel" defect,
 // device evidence: partly_cloudy showing large rectangular blocks/vertical
 // seams/hard-edged panels; fog/overcast confirmed structurally fine but
@@ -208,19 +263,27 @@
 // mainly_clear's MistBand accent are untouched — this pass edits nothing
 // outside SOFT_CLOUD_FOG/OVERCAST/PARTLY_CLOUDY below.
 //
-// LIGHT — REJECTED-AND-FIXED (device proof + reference screenshots, see
-// project memory): light used to branch by atmosphere the same way as dark
-// (mist bands for cloudy, rain streaks for rain, etc), which painted the
-// light screen cold blue-grey whenever real weather resolved to
-// cloudy/rain. Liam's ruling: light must stay warm sandy cream in EVERY
-// weather — the atmosphere must never repaint light's mood. Light therefore
-// renders the SAME warm ambient set for every `atmosphere`: SunPulseLight
-// (breathe + gentle drift) + BokehOrb (existing, light-toned) + drifting
-// warm haze bands + faint golden dust motes floating upward, now with
-// condition-specific timing/opacity on the haze bands and (rain-family
-// only) an additive warm-toned streak layer (WarmStreak — its own colour,
-// never RainStreak's). MistBand / RainStreak / Snowflake / Star NEVER
-// render in light — those four stay dark-only, full stop.
+// LIGHT — UPDATED 2026-07-24 (Liam parity ruling — SUPERSEDES the earlier
+// "light renders one warm ambient set for every weather" rule). History: an
+// even earlier version branched by atmosphere like dark and painted the light
+// screen cold blue-grey on cloudy/rain (rejected on device); the fix went too
+// far the other way, collapsing every non-sunny weather into the same warm
+// sandy render (so rain/fog/overcast/snow were indistinguishable). The current
+// ruling keeps the warm sandy BASE permanent but makes each weather visibly
+// distinct through cool-but-restrained MOTION (see the LIGHT WEATHER PARITY
+// section lower in this file for the full spec):
+//   • warm base in EVERY light atmosphere: SunPulseLight + BokehOrb;
+//   • sunny/clear/mainly_clear → warm haze bands + golden dust (unchanged);
+//   • fog/overcast/partly_cloudy → neutral pearl/stone-grey cloud FORMS
+//     (CloudOrFogNode, light tints/opacity — SOFT_CLOUD_RGB.light);
+//   • rain/drizzle/showers → muted blue-grey LightRainStreaks (density by
+//     condition) + a subtle CoolVeilBand; thunderstorm adds LightningGlow;
+//   • snow → off-white LightSnowflakes with grey-blue edging.
+// The dark-only primitives MistBand / RainStreak / Snowflake / Star still
+// never render in light — the light weather is carried by the NEW light-only
+// components above, never by repurposing the dark ones. The sandy base is
+// never repainted cold: the only genuinely cool element is the thin, MOVING
+// rain streak; cloud/veil/snow tints stay near-neutral.
 //
 // Every layer is inside the SAME `if (!animate) return null` guard, so
 // reduced motion / backgrounded fully stops both paths identically. All
@@ -575,44 +638,11 @@ function DustMote({
   );
 }
 
-// Warm sand streak colour — R > G > B by construction, so the blue channel
-// can never dominate (the hard "no cold hex in light" rule). Faint alpha
-// only (0.05–0.10), same convention as HazeBand/DustMote.
-const WARM_STREAK_RGB = '224,196,140';
-
-/**
- * LIGHT (rain/drizzle/showers/thunderstorm ONLY — gated at the call site by
- * a `condition` check, see V2WeatherMotion below): a warm-toned falling
- * streak, the light equivalent of dark's RainStreak but never that cold
- * component/colour. Kept honestly rain-shaped (a falling streak) while
- * staying unmistakably warm sandy cream — this is the "visible warm-toned
- * moving streaks" Defect 3 calls for, built from the HazeBand/DustMote warm
- * family rather than reusing RainStreak's RAIN_STREAK_RGB.
- */
-function WarmStreak({ node, animate, screenH }: { node: SeededNode; animate: boolean; screenH: number }) {
-  const t = useLoop(animate, 900 + node.r * 700, node.delay % 1200, false);
-  const h = 50 + node.r * 50;
-  const style = useAnimatedStyle(() => ({
-    transform: [{ translateY: interpolate(t.value, [0, 1], [-h - 30, screenH + 30]) }],
-  }));
-  return (
-    <Animated.View
-      testID="v2-warm-streak"
-      style={[
-        {
-          position: 'absolute',
-          left: `${node.x * 100}%`,
-          top: 0,
-          width: 1 + node.r * 0.6,
-          height: h,
-          borderRadius: 1,
-          backgroundColor: `rgba(${WARM_STREAK_RGB},${0.05 + node.r * 0.05})`,
-        },
-        style,
-      ]}
-    />
-  );
-}
+// (2026-07-24 Light parity) The former warm-gold `WarmStreak` used for light
+// rain was replaced by the muted blue-grey `LightRainStreak` (Liam's new
+// ruling: rain must actually READ as rain in Light, not vanish as faint gold
+// on cream). See the LIGHT WEATHER PARITY section further below, near
+// V2WeatherMotionProps.
 
 /**
  * Rain motion-only parameters (Defect 1+3, dark rain split). All rain
@@ -901,9 +931,16 @@ interface SoftCloudShape {
 // wash" to V2Background's olive glow (root cause #1, fixed in that file),
 // not to these already-blue-neutral tints.
 const SOFT_CLOUD_RGB: Record<SoftCloudCondition, Record<'dark' | 'light', string>> = {
-  partly_cloudy: { dark: MIST_BAND_RGB.dark, light: '208,198,180' },
-  overcast: { dark: '82,90,102', light: '196,190,180' },
-  fog: { dark: '110,120,138', light: '202,194,184' },
+  // Light tints (2026-07-24 Light-parity ruling — supersedes the "warm cream
+  // in every weather" light rule): NEUTRAL, not warm — partly_cloudy a
+  // warm-neutral stone, overcast a flatter neutral grey, fog a pearl grey —
+  // each raised (see the SOFT_CLOUD_*.light opacities below) so it actually
+  // reads against the sandy #F6F1E6 base. Still restrained: blue never
+  // STRONGLY dominates R/G (near-neutral), so the base never turns cold/blue.
+  // Dark tints are byte-identical/frozen.
+  partly_cloudy: { dark: MIST_BAND_RGB.dark, light: '196,192,188' },
+  overcast: { dark: '82,90,102', light: '172,174,178' },
+  fog: { dark: '110,120,138', light: '210,212,216' },
 };
 
 // Fog: 5 wide, low, EXTREMELY slow FogBanks (see `FogBank` below) — the most
@@ -929,6 +966,13 @@ const SOFT_CLOUD_RGB: Record<SoftCloudCondition, Record<'dark' | 'light', string
 // 0.057→0.07125) — every other field below (size, feather, coreHold,
 // coreOpacityFactor, yBase/yRange, durationBaseMs, driftFactor) is BYTE-
 // IDENTICAL to the THIRD pass.
+// 2026-07-22 FIFTH pass — dark +11.5% again (0.24→0.268, 0.09875→0.110);
+// light untouched (Liam: no change to sandy Light background).
+// 2026-07-23 SIXTH pass — fog was again "mostly correct", DARK ONLY raised a
+// further ~20% (0.268→0.3216, 0.110→0.132); LIGHT untouched again, same
+// rationale as the FIFTH pass. Every other field (size, feather, coreHold,
+// coreOpacityFactor, yBase/yRange, durationBaseMs, driftFactor) stays BYTE-
+// IDENTICAL all the way back to the THIRD pass.
 const SOFT_CLOUD_FOG: SoftCloudShape = {
   durationBaseMs: 42000, durationVarMs: 20000,
   sizeWBase: 340, sizeWVar: 120,
@@ -938,8 +982,8 @@ const SOFT_CLOUD_FOG: SoftCloudShape = {
   coreHold: 0.38,
   coreOpacityFactor: 0.78,
   yBase: 32, yRange: 56,
-  opacityBase: { dark: 0.268, light: 0.155 }, // dark +11.5% over FOURTH-pass 0.24 (peak 0.339→0.378); light UNCHANGED (Liam: no change to sandy Light background)
-  opacityVar: { dark: 0.110, light: 0.07125 }, // dark +11.5% over FOURTH-pass 0.09875 (peak 0.339→0.378); light UNCHANGED
+  opacityBase: { dark: 0.3216, light: 0.24 }, // dark frozen (SIXTH pass); light RAISED 0.155→0.24 (2026-07-24 Light parity — pearl-grey fog must read on cream)
+  opacityVar: { dark: 0.132, light: 0.09 }, // dark frozen; light raised 0.07125→0.09 (2026-07-24 Light parity)
 };
 
 // Overcast: 6 SoftCloudClusters (see `SoftCloudCluster` below) — fewer than
@@ -968,17 +1012,37 @@ const SOFT_CLOUD_FOG: SoftCloudShape = {
 // yBase/yRange (4/62, "upper-half + middle" per spec) are unchanged —
 // depth-tier layering (clusterDepthFactorFor/overcastClusterLayout) is
 // untouched, already satisfying "≥2 distinct opacity levels".
+// 2026-07-23 SIXTH pass — device verdict: "looks like a broad grey glow
+// rather than clouds... DO NOT raise opacity, this is a structure problem".
+// This pass DELIBERATELY LOWERS opacityBase/opacityVar (dark 0.27→0.25,
+// light 0.17→0.15; opacityVar 0.12→0.11, 0.075→0.065) and coreOpacityFactor
+// (0.94→0.85, so each puff's gradient carries more internal contrast/falloff
+// instead of reading as one flat wash), and instead spends the FOURTH pass's
+// "more ink" budget on STRUCTURE: cluster count 6→7 (SOFT_CLOUD_OVERCAST_NODES
+// below, within the "5–7 clusters" target) and sizeHBase/sizeHVar cut ~24%
+// (255/120→195/95) so each cluster's own vertical footprint is smaller and
+// stops merging into its neighbours — the actual mechanism behind the
+// "grey sheet" complaint, per Liam's own diagnosis, was tall/heavily-
+// overlapping masses, not insufficient ink. sizeWBase/sizeWVar (still below
+// fog's width — the existing "fog stays widest" invariant, untouched),
+// feather, coreHold, and yBase/yRange/overcastClusterLayout's staggered
+// placement scheme are unchanged. Net effect: overcast's raw peak opacity is
+// now LOWER than fog's dark value (an intentional inversion of the FOURTH
+// pass's ordering, per Liam's explicit instruction) — overcast's "heaviest of
+// the three" quality is expressed through combined coverage/density (layer
+// count × size × opacity) instead, which still holds with margin in both
+// modes (see softCloudDensityFor/approxCoverage in the tests).
 const SOFT_CLOUD_OVERCAST: SoftCloudShape = {
   durationBaseMs: 27000, durationVarMs: 14000,
   sizeWBase: 330, sizeWVar: 143,
-  sizeHBase: 255, sizeHVar: 120,
+  sizeHBase: 195, sizeHVar: 95,
   driftFactor: 0.07,
   feather: 0.78,
   coreHold: 0.47,
-  coreOpacityFactor: 0.94,
+  coreOpacityFactor: 0.85,
   yBase: 4, yRange: 62,
-  opacityBase: { dark: 0.27, light: 0.17 },
-  opacityVar: { dark: 0.12, light: 0.075 },
+  opacityBase: { dark: 0.25, light: 0.23 }, // dark frozen (SIXTH pass); light RAISED 0.15→0.23 (2026-07-24 Light parity — neutral-grey overcast shadow)
+  opacityVar: { dark: 0.11, light: 0.09 }, // dark frozen; light raised 0.065→0.09 (2026-07-24 Light parity)
 };
 
 // Partly cloudy: 4 SoftCloudClusters, FEWEST and SMALLEST of the three,
@@ -998,17 +1062,30 @@ const SOFT_CLOUD_OVERCAST: SoftCloudShape = {
 // and coreOpacityFactor 0.85→0.92 make the core hold denser for longer
 // before the fade begins. Cluster count (4) and yBase/yRange (4/42, "upper-
 // to-middle") are unchanged — already inside spec's "3–4 clusters" target.
+// 2026-07-23 SIXTH pass — device verdict: still "almost invisible" despite
+// the FOURTH pass's boost. sizeWBase/sizeWVar/sizeHBase/sizeHVar raised a
+// further ~13% (240/120/150/75 → 270/135/170/85) — deliberately more modest
+// than another ×1.5: a much bigger cluster starts eating the "substantial
+// clear sky between clusters" Liam's spec explicitly calls for on a real
+// (much narrower than the 750px jest mock) phone screen, and stays below
+// both overcast's sizeWBase(330)/sizeHBase(195) and fog's sizeWBase(340) —
+// existing invariants, untouched. opacityBase/opacityVar raised further
+// (dark 0.21→0.23/0.09→0.10, light 0.14→0.145/0.05→0.055) — dark still
+// stays inside the existing 0.16–0.25 target band. coreOpacityFactor raised
+// 0.92→0.95 (denser-reading core, helps the 5-puff silhouette read as a
+// solid lumpy cloud rather than a faint smudge). feather (0.90), coreHold
+// (0.54), cluster count (4), and yBase/yRange (4/42) are unchanged.
 const SOFT_CLOUD_PARTLY_CLOUDY: SoftCloudShape = {
   durationBaseMs: 13000, durationVarMs: 8000,
-  sizeWBase: 240, sizeWVar: 120,
-  sizeHBase: 150, sizeHVar: 75,
+  sizeWBase: 270, sizeWVar: 135,
+  sizeHBase: 170, sizeHVar: 85,
   driftFactor: 0.20,
   feather: 0.90,
   coreHold: 0.54,
-  coreOpacityFactor: 0.92,
+  coreOpacityFactor: 0.95,
   yBase: 4, yRange: 42,
-  opacityBase: { dark: 0.21, light: 0.14 },
-  opacityVar: { dark: 0.09, light: 0.05 },
+  opacityBase: { dark: 0.23, light: 0.19 }, // dark frozen (SIXTH pass); light RAISED 0.145→0.19 (2026-07-24 Light parity — subtle neutral cloud shadow)
+  opacityVar: { dark: 0.10, light: 0.07 }, // dark frozen; light raised 0.055→0.07 (2026-07-24 Light parity)
 };
 
 /**
@@ -1586,12 +1663,14 @@ const PARTLY_CLOUDY_STARS = seededNodes(2, 20260722, 3000);
 // brand-new seeds, shared between dark and light (same positions/sizes in
 // both modes; only SOFT_CLOUD_RGB and opacity differ per condition+mode).
 // Never mutates or reuses MIST/HAZE_SUNNY/STARS/any other set above. Counts:
-// fog (5, within the "4–6 wide fog banks" target), overcast (6, within
-// "5–7 larger overlapping cloud groups" — still the highest per-condition
-// density via softCloudDensityFor), partly_cloudy (4, within "3–4 distinct
-// cloud groups", fewest, never full-width).
+// fog (5, within the "4–6 wide fog banks" target), overcast (7, updated
+// 2026-07-23 SIXTH pass from 6→7 — still within "5–7 larger overlapping
+// cloud groups", now the mechanism for staying the densest-by-coverage
+// condition since that pass also LOWERS overcast's per-cluster opacity —
+// see softCloudDensityFor/approxCoverage in the tests), partly_cloudy (4,
+// within "3–4 distinct cloud groups", fewest, never full-width).
 const SOFT_CLOUD_FOG_NODES = seededNodes(5, 202607201, 12000);
-const SOFT_CLOUD_OVERCAST_NODES = seededNodes(6, 202607202, 14000);
+const SOFT_CLOUD_OVERCAST_NODES = seededNodes(7, 202607202, 14000);
 const SOFT_CLOUD_PARTLY_CLOUDY_NODES = seededNodes(4, 202607203, 8000);
 
 /** Resolves the seeded node set for one of the 3 cloud-cluster/fog-bank conditions. */
@@ -1608,22 +1687,20 @@ export function softCloudNodesFor(condition: 'fog' | 'overcast' | 'partly_cloudy
 
 // LIGHT-ONLY node sets — brand new seeds, never overlapping or mutating any
 // of the sets above (BOKEH/STREAKS/MIST/STARS/FLAKES keep driving the dark
-// path exactly as before). HAZE_SUNNY/DUST_LIGHT/BOKEH drive EVERY light
-// atmosphere unconditionally (unchanged); WARM_STREAKS/DUST_LIGHT_REDUCED
-// are ADDITIVE, only rendered for rain-family conditions (see below) — they
-// never replace or mutate the always-on baseline the existing tests pin.
+// path exactly as before). SunPulseLight + BOKEH drive EVERY light atmosphere
+// (the permanent warm base); HAZE_SUNNY drives the non-weather (sunny/clear/
+// mainly_clear) path; DUST_LIGHT/DUST_LIGHT_REDUCED the dust motes. The
+// per-condition weather sets (LIGHT_*_STREAKS/LIGHT_COOL_VEIL/LIGHT_SNOW) live
+// in the LIGHT WEATHER PARITY section near V2WeatherMotionProps.
 const HAZE_SUNNY = seededNodes(3, 305, 12000); // 2–3 warm haze bands, every light atmosphere
 // 6 (not the full 6–10 range) keeps light's total animated-node count
 // (1 sun + 6 bokeh + 3 haze + 6 dust = 16) close to the file's existing
 // ≤14-per-condition Android safety budget while still reading as "richer".
 const DUST_LIGHT = seededNodes(6, 9111, 14000); // faint floating dust motes
-// Defect 3 (light rain/drizzle motion) — a small warm-toned streak set,
-// rendered ALONGSIDE (not instead of) the baseline warm ambient set.
-const WARM_STREAKS = seededNodes(5, 20260720, 1200);
-// Paired with WARM_STREAKS so a rain-family light render stays close to the
-// ~16-node Android budget: swaps in for the full 6-node DUST_LIGHT only when
-// warm streaks are also rendering (1 sun + 6 bokeh + 3 haze + 5 streak + 3
-// dust = 18) — independent seed, never mutates DUST_LIGHT.
+// Reduced dust set — swaps in for the full 6-node DUST_LIGHT whenever a
+// weather layer (rain streaks / snow / cloud forms) is also rendering, to keep
+// the light animated-node count within the Android budget. Independent seed,
+// never mutates DUST_LIGHT.
 const DUST_LIGHT_REDUCED = seededNodes(3, 91112, 14000);
 
 /**
@@ -1685,6 +1762,284 @@ export function isRainFamily(condition: WeatherCondition | null | undefined): bo
   return condition === 'drizzle' || condition === 'rain' || condition === 'showers' || condition === 'thunderstorm';
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// LIGHT WEATHER PARITY (2026-07-24, Liam ruling — SUPERSEDES the earlier
+// "Light renders one warm ambient set for every weather" rule that was pinned
+// in the tests as REJECTED-AND-FIXED). The warm sandy BASE is permanent;
+// weather is now communicated in Light through visible per-condition MOTION +
+// layered accents, "cool but restrained":
+//   • rain/drizzle/showers → muted blue-grey falling streaks (density by
+//     condition) + a very subtle cool drifting veil;
+//   • snow → off-white flakes with restrained grey-blue edging (never vanish
+//     on cream);
+//   • thunderstorm → the dense rain treatment + a restrained, infrequent,
+//     broad cool-white illumination (never a full-screen white flash).
+// Cloud/fog forms (fog/overcast/partly_cloudy) keep their FogBank/
+// SoftCloudCluster shapes but with neutral (pearl/stone-grey) light tints at
+// higher opacity — see SOFT_CLOUD_RGB.light + the SOFT_CLOUD_*.light opacities
+// above. Sunny/clear/mainly_clear stay warm (sun glow + golden particles +
+// warm haze). SunPulseLight + BokehOrb (the warm base) render in EVERY light
+// atmosphere. Every layer here is LIGHT-ONLY, uses the SAME wall-clock useLoop
+// + module-level seeded node sets (no reseed on navigation, no route timers),
+// and stops under the shared `if (!animate) return null` guard (reduced-motion
+// / backgrounded). DARK is byte-for-byte untouched.
+// ─────────────────────────────────────────────────────────────────────────
+
+// The ONE deliberately cool element in Light — a thin, MOVING line, never a
+// background wash (the sandy base always shows between/behind them), so the
+// screen never reads as a cold blue-grey slab. Muted, not saturated.
+const LIGHT_RAIN_STREAK_RGB = '92,112,140';
+
+// Very subtle cool drifting veil for rain-family — pearl/cool-grey, faint
+// alpha baked in (HazeBand convention). "only a very subtle cool veil", never
+// an opaque overlay.
+const LIGHT_COOL_VEIL_RGB: readonly [string, string] = ['190,198,210', '176,186,200'];
+
+// Snow: off-white fill + restrained grey-blue EDGING so a flake reads on the
+// cream base instead of disappearing into it.
+const LIGHT_SNOW_FILL = 'rgba(250,251,253,0.95)';
+const LIGHT_SNOW_EDGE = 'rgba(150,170,195,0.55)';
+
+// Thunderstorm: a restrained cool-white illumination colour (opacity-pulsed
+// below, so this literal is only ever seen at low effective alpha).
+const LIGHT_LIGHTNING_RGB = '236,242,252';
+
+// Light rain-streak plans (rain≠drizzle by density + motion). The cool colour
+// is fixed (LIGHT_RAIN_STREAK_RGB); only params/count vary. TUNED 2026-07-24
+// (device pass) — DRIZZLE and RAIN only: drizzle raised from near-invisible but
+// kept clearly lighter than rain; rain shortened (lower heightBase) + more
+// count + wider length/opacity/speed variance so it stops reading as a few
+// long, uniform lines. SHOWERS is intentionally OUT OF SCOPE — restored below
+// to its exact pre-task values.
+const LIGHT_STREAK_PARAMS_DRIZZLE: StreakParams = {
+  durationBaseMs: 1200, durationVarMs: 900, // slow, fine drizzle
+  widthBase: 0.6, widthVar: 0.4, // thin
+  heightBase: 34, heightVar: 30, // short (34–64), always shorter than rain
+  opacityBase: 0.11, opacityVar: 0.10, // 0.11–0.21 — visible, still < rain
+};
+const LIGHT_STREAK_PARAMS_RAIN: StreakParams = {
+  durationBaseMs: 620, durationVarMs: 560, // varied speed (wide spread)
+  widthBase: 1, widthVar: 0.7,
+  heightBase: 34, heightVar: 74, // 34–108 — a MIX of short + medium, not long uniform lines
+  opacityBase: 0.14, opacityVar: 0.14, // 0.14–0.28 — varied
+};
+// Showers: RESTORED to pre-task values (out of scope for the 2026-07-24 tuning).
+const LIGHT_STREAK_PARAMS_SHOWERS: StreakParams = {
+  durationBaseMs: 640, durationVarMs: 520,
+  widthBase: 1, widthVar: 0.9,
+  heightBase: 56, heightVar: 100,
+  opacityBase: 0.17, opacityVar: 0.13,
+};
+
+// Brand-new light-only seeds — never mutate/reuse any set above. Node counts
+// carry the density difference (drizzle 8 < rain 11) so it's real, not just an
+// opacity illusion. TUNED 2026-07-24 (DRIZZLE + RAIN only): counts raised
+// (drizzle 5→8, rain 8→11). SHOWERS restored to its pre-task 10 (out of scope).
+const LIGHT_DRIZZLE_STREAKS = seededNodes(8, 20260724, 1300);
+const LIGHT_RAIN_STREAKS = seededNodes(11, 20260725, 700);
+const LIGHT_SHOWERS_STREAKS = seededNodes(10, 20260726, 640);
+const LIGHT_COOL_VEIL = seededNodes(2, 20260727, 15000);
+const LIGHT_SNOW = seededNodes(9, 20260728, 8000);
+
+// Light fog (2026-07-24 device pass): fog read too close to the sandy base as a
+// feathered FogBank. LIGHT fog now renders as 3 DEDICATED soft horizontal mist
+// banks (LightMistBank) at distinct depths with very slow, INDEPENDENT lateral
+// drift, in cool pearl / blue-grey translucent tones — DARK fog keeps its
+// FogBank cloud form, unchanged. Three alternating tints give per-depth
+// variation; the translucent alpha keeps the sandy base visible.
+const LIGHT_MIST_BANK_RGB: readonly [string, string, string] = ['190,202,218', '176,190,208', '198,208,220'];
+const LIGHT_MIST_BANKS = seededNodes(3, 20260729, 20000);
+
+/**
+ * Resolves the Light rain-streak node set + params for a rain-family
+ * condition. thunderstorm reuses the dense rain plan (its distinct signature
+ * is the lightning, below). Exported (additive) for pure, parameter-level
+ * test coverage of the rain≠drizzle density/intensity requirement.
+ */
+export function lightRainStreakPlanFor(
+  condition: WeatherCondition | null | undefined,
+): { nodes: SeededNode[]; params: StreakParams } {
+  switch (condition) {
+    case 'drizzle':
+      return { nodes: LIGHT_DRIZZLE_STREAKS, params: LIGHT_STREAK_PARAMS_DRIZZLE };
+    case 'showers':
+      return { nodes: LIGHT_SHOWERS_STREAKS, params: LIGHT_STREAK_PARAMS_SHOWERS };
+    case 'rain':
+    case 'thunderstorm':
+    default:
+      return { nodes: LIGHT_RAIN_STREAKS, params: LIGHT_STREAK_PARAMS_RAIN };
+  }
+}
+
+/** LIGHT rain/drizzle/showers/thunderstorm: a muted blue-grey falling streak — the light equivalent of dark RainStreak, its own cool colour, density/motion from lightRainStreakPlanFor. */
+function LightRainStreak({
+  node,
+  animate,
+  screenH,
+  params,
+}: {
+  node: SeededNode;
+  animate: boolean;
+  screenH: number;
+  params: StreakParams;
+}) {
+  const t = useLoop(animate, params.durationBaseMs + node.r * params.durationVarMs, node.delay % 900, false);
+  const h = params.heightBase + node.r * params.heightVar;
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateY: interpolate(t.value, [0, 1], [-h - 40, screenH + 40]) }],
+  }));
+  return (
+    <Animated.View
+      testID="v2-light-rain-streak"
+      style={[
+        {
+          position: 'absolute',
+          left: `${node.x * 100}%`,
+          top: 0,
+          width: params.widthBase + node.r * params.widthVar,
+          height: h,
+          borderRadius: 1,
+          backgroundColor: `rgba(${LIGHT_RAIN_STREAK_RGB},${params.opacityBase + node.r * params.opacityVar})`,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+/** LIGHT rain-family: a very subtle cool-grey band drifting slowly sideways — the "subtle cool veil", faint alpha only, never an opaque overlay. */
+function CoolVeilBand({ node, index, animate, screenW }: { node: SeededNode; index: number; animate: boolean; screenW: number }) {
+  const t = useLoop(animate, 30000 + node.r * 18000, node.delay);
+  const rgb = LIGHT_COOL_VEIL_RGB[index % 2];
+  const opacity = 0.05 + node.r * 0.045;
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: interpolate(t.value, [0, 1], [-0.12 * screenW, 0.12 * screenW]) }],
+  }));
+  return (
+    <Animated.View
+      testID={`v2-cool-veil-${index}`}
+      style={[
+        {
+          position: 'absolute',
+          left: '-20%',
+          width: '140%',
+          top: `${18 + node.y * 54}%`,
+          height: 120 + node.r * 90,
+          borderRadius: 999,
+          backgroundColor: `rgba(${rgb},${opacity})`,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+/** LIGHT snow: an off-white flake with restrained grey-blue edging so it reads on cream. Same fall+sway motion as dark Snowflake, its own visible light colour. */
+function LightSnowflake({ node, animate, screenH }: { node: SeededNode; animate: boolean; screenH: number }) {
+  const t = useLoop(animate, 9000 + node.r * 7000, node.delay, false);
+  const size = 4 + node.r * 4;
+  const sway = 14 + node.r * 18;
+  const style = useAnimatedStyle(() => ({
+    opacity: interpolate(t.value, [0, 0.08, 0.9, 1], [0, 0.9, 0.8, 0]),
+    transform: [
+      { translateY: interpolate(t.value, [0, 1], [-30, screenH + 30]) },
+      { translateX: interpolate(t.value, [0, 0.25, 0.5, 0.75, 1], [0, sway, 0, -sway, 0]) },
+    ],
+  }));
+  return (
+    <Animated.View
+      testID="v2-light-snowflake"
+      style={[
+        {
+          position: 'absolute',
+          left: `${node.x * 98}%`,
+          top: 0,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: LIGHT_SNOW_FILL,
+          borderWidth: 0.5,
+          borderColor: LIGHT_SNOW_EDGE,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+/**
+ * LIGHT thunderstorm: a restrained, infrequent, BROAD cool-white illumination
+ * — a quick rise + gentle fade once per long wall-clock loop, over the upper
+ * region only (never a full-screen white flash). Opacity-only; driven by the
+ * shared useLoop (so it never restarts/reseeds on navigation) and stopped by
+ * the parent's `if (!animate) return null` guard (reduced-motion/backgrounded).
+ */
+function LightningGlow({ animate }: { animate: boolean }) {
+  const t = useLoop(animate, 15000);
+  const style = useAnimatedStyle(() => ({
+    // Dark almost the whole cycle; one brief, soft pulse near the top of each
+    // 15s loop (quick rise 0.03→0.06, gentle fade 0.06→0.2), then nothing.
+    opacity: interpolate(t.value, [0, 0.03, 0.06, 0.12, 0.2, 1], [0, 0.02, 0.15, 0.05, 0, 0]),
+  }));
+  return (
+    <Animated.View
+      testID="v2-lightning-glow"
+      pointerEvents="none"
+      style={[
+        {
+          position: 'absolute',
+          top: '-20%',
+          left: '-15%',
+          right: '-15%',
+          height: '60%',
+          borderRadius: 999,
+          backgroundColor: `rgb(${LIGHT_LIGHTNING_RGB})`,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+/**
+ * LIGHT fog: a soft, clearly-visible horizontal MIST BANK — full-bleed width,
+ * translucent cool pearl/blue-grey, drifting VERY slowly + INDEPENDENTLY
+ * sideways (per-index duration + alternating direction). 3 render at distinct
+ * depths (top / middle / lower) so fog is immediately recognisable while the
+ * sandy base still shows through. Same horizontal-band primitive as
+ * HazeBand/CoolVeilBand (no hard edge, no new visual language), tuned for fog.
+ * LIGHT-only; DARK fog keeps its FogBank cloud form, unchanged.
+ */
+function LightMistBank({ node, index, animate, screenW }: { node: SeededNode; index: number; animate: boolean; screenW: number }) {
+  // Very slow, per-index-distinct drift so the three banks never move in lock-step.
+  const t = useLoop(animate, 34000 + index * 9000 + node.r * 12000, node.delay);
+  const rgb = LIGHT_MIST_BANK_RGB[index % 3];
+  const opacity = 0.16 + node.r * 0.08; // 0.16–0.24 — clearly visible, base still shows through
+  const dir = index % 2 === 0 ? 1 : -1; // alternating drift direction = independent motion
+  const drift = 0.1 * screenW;
+  const topPct = 22 + index * 24 + node.y * 8; // distinct depths ~22% / 46% / 70% + small jitter
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: interpolate(t.value, [0, 1], [-drift * dir, drift * dir]) }],
+  }));
+  return (
+    <Animated.View
+      testID={`v2-light-mist-bank-${index}`}
+      style={[
+        {
+          position: 'absolute',
+          left: '-20%',
+          width: '140%',
+          top: `${topPct}%`,
+          height: 72 + node.r * 44,
+          borderRadius: 999,
+          backgroundColor: `rgba(${rgb},${opacity})`,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
 export interface V2WeatherMotionProps {
   atmosphere: Atmosphere;
   /** Resolved theme mode (see hooks/useAppTheme) — drives colour-only branches below. */
@@ -1717,18 +2072,30 @@ export function V2WeatherMotion({ atmosphere, mode, condition }: V2WeatherMotion
 
   if (!animate) return null;
 
-  // LIGHT: the SAME warm ambient set for EVERY atmosphere (Liam's rejection
-  // — device proof + reference screenshots: light must stay warm sandy
-  // cream regardless of weather), now with condition-specific MOTION layered
-  // on top (Defect 3, 2026-07-20) — never a new palette, never
-  // MistBand/RainStreak/Snowflake/Star (all four stay cold/dark-media-only).
-  // Omitting `condition` (every pre-existing test) reproduces the exact
-  // prior render: HAZE_PARAMS_DEFAULT on HazeBand, no warm streaks, full
-  // 6-node DUST_LIGHT.
+  // LIGHT (2026-07-24 parity ruling — supersedes the old "same warm ambient
+  // set for every atmosphere"): the warm sandy BASE is permanent (SunPulseLight
+  // + BokehOrb render in EVERY light atmosphere), but each weather now gets its
+  // own explicit, visible, cool-but-restrained MOTION layer on top:
+  //   • sunny/clear/mainly_clear (non-weather) → warm HazeBand + full dust;
+  //   • fog/overcast/partly_cloudy → neutral pearl/stone-grey cloud forms
+  //     (CloudOrFogNode — same shapes as dark, light tints via SOFT_CLOUD_RGB);
+  //   • rain/drizzle/showers/thunderstorm → a subtle cool veil + muted
+  //     blue-grey LightRainStreaks (density by condition) + (thunderstorm only)
+  //     a restrained LightningGlow;
+  //   • snow → off-white LightSnowflakes with grey-blue edging.
+  // `atmosphere` seeds the rainy/snowy fallback ONLY when no fine `condition`
+  // is supplied (tests / edge) — in production V2Background always passes the
+  // resolved condition, so the two agree.
   if (mode === 'light') {
+    const rainy = isRainFamily(condition) || (condition == null && atmosphere === 'rain');
+    const snowy = condition === 'snow' || (condition == null && atmosphere === 'snow');
+    const cloudy = isSoftCloudCondition(condition);
+    const weatherActive = rainy || snowy || cloudy;
     const hazeParams = lightHazeParamsFor(condition);
-    const rainy = isRainFamily(condition);
-    const dustNodes = rainy ? DUST_LIGHT_REDUCED : DUST_LIGHT;
+    const streakPlan = lightRainStreakPlanFor(condition);
+    // Reduced dust whenever a weather layer is also drawing, to hold the light
+    // animated-node count within the Android budget.
+    const dustNodes = weatherActive ? DUST_LIGHT_REDUCED : DUST_LIGHT;
     return (
       <View
         style={StyleSheet.absoluteFill}
@@ -1737,40 +2104,63 @@ export function V2WeatherMotion({ atmosphere, mode, condition }: V2WeatherMotion
         importantForAccessibility="no-hide-descendants"
         testID={`v2-weather-motion-${atmosphere}`}
       >
+        {/* Warm base — present in EVERY light atmosphere (the permanent sandy
+            identity). */}
         <SunPulseLight animate={animate} />
         {BOKEH.map((n, i) => (
           <BokehOrb key={`bokeh-${i}`} node={n} animate={animate} screenH={screenH} mode={mode} />
         ))}
-        {/* Fog/overcast/partly_cloudy (2026-07-20 softening, reshaped
-            2026-07-22 second/third passes): swap the solid-fill HazeBand for
-            recognisable cloud FORMS via the shared CloudOrFogNode dispatch
-            (FogBank for fog, SoftCloudCluster for overcast/partly_cloudy,
-            overcast additionally re-laid-out per overcastClusterLayout).
-            Every other condition (undefined/clear/mainly_clear/rain-family/
-            snow) keeps the original HazeBand + lightHazeParamsFor tuning,
-            unchanged. */}
-        {isSoftCloudCondition(condition)
-          ? softCloudNodesFor(condition).map((n, i) => (
-              <CloudOrFogNode
-                key={`cloud-fog-${i}`}
-                condition={condition}
-                node={n}
-                index={i}
-                mode={mode}
-                animate={animate}
-                screenW={screenW}
-              />
-            ))
-          : HAZE_SUNNY.map((n, i) => (
-              <HazeBand key={`haze-${i}`} node={n} index={i} animate={animate} screenW={screenW} params={hazeParams} />
-            ))}
-        {/* Rain/drizzle/showers/thunderstorm ONLY: warm-toned falling
-            streaks (never RainStreak/RAIN_STREAK_RGB) alongside a reduced
-            dust-mote count so this stays close to the ~16-node budget. */}
-        {rainy &&
-          WARM_STREAKS.map((n, i) => (
-            <WarmStreak key={`warm-streak-${i}`} node={n} animate={animate} screenH={screenH} />
+
+        {/* Overcast / partly_cloudy — neutral cloud clusters (ACCEPTED, unchanged). */}
+        {(condition === 'overcast' || condition === 'partly_cloudy') &&
+          softCloudNodesFor(condition).map((n, i) => (
+            <CloudOrFogNode
+              key={`cloud-fog-${i}`}
+              condition={condition}
+              node={n}
+              index={i}
+              mode={mode}
+              animate={animate}
+              screenW={screenW}
+            />
           ))}
+
+        {/* Fog — dedicated horizontal mist banks (2026-07-24 device pass): the
+            feathered FogBank read too close to the sandy base, so LIGHT fog now
+            uses 3 clearly-visible cool mist banks at distinct depths. DARK fog
+            still uses FogBank (unchanged). */}
+        {condition === 'fog' &&
+          LIGHT_MIST_BANKS.map((n, i) => (
+            <LightMistBank key={`mist-bank-${i}`} node={n} index={i} animate={animate} screenW={screenW} />
+          ))}
+
+        {/* Warm haze — ONLY the non-weather (sunny/clear/mainly_clear) path,
+            exactly as before. */}
+        {!weatherActive &&
+          HAZE_SUNNY.map((n, i) => (
+            <HazeBand key={`haze-${i}`} node={n} index={i} animate={animate} screenW={screenW} params={hazeParams} />
+          ))}
+
+        {/* Rain family — subtle cool veil + muted blue-grey streaks
+            (+ restrained lightning for thunderstorm). */}
+        {rainy && (
+          <>
+            {LIGHT_COOL_VEIL.map((n, i) => (
+              <CoolVeilBand key={`cool-veil-${i}`} node={n} index={i} animate={animate} screenW={screenW} />
+            ))}
+            {streakPlan.nodes.map((n, i) => (
+              <LightRainStreak key={`light-rain-${i}`} node={n} animate={animate} screenH={screenH} params={streakPlan.params} />
+            ))}
+            {condition === 'thunderstorm' && <LightningGlow animate={animate} />}
+          </>
+        )}
+
+        {/* Snow — off-white flakes with grey-blue edging (visible on cream). */}
+        {snowy &&
+          LIGHT_SNOW.map((n, i) => (
+            <LightSnowflake key={`light-snow-${i}`} node={n} animate={animate} screenH={screenH} />
+          ))}
+
         {dustNodes.map((n, i) => (
           <DustMote key={`dust-${i}`} node={n} index={i} animate={animate} screenH={screenH} />
         ))}

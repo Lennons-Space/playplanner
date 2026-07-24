@@ -141,11 +141,12 @@ describe('ThemedBackground — light mode also renders the real V2Background', (
 // useThemeStore + the real react-native useColorScheme are all exercised
 // end-to-end, exactly like a real screen. mockUseWeather stays fixed at
 // 'rain' throughout so 'rain' vs the light warm-ambient set is the
-// mode-differentiating signal (rain never renders in light — see
-// V2WeatherMotion.tsx).
+// mode-differentiating signal: dark rain renders the dark RainStreak
+// (150,186,216); light rain renders the muted blue-grey LightRainStreak
+// (92,112,140) — 2026-07-24 Light-parity ruling, see V2WeatherMotion.tsx.
 // ═════════════════════════════════════════════════════════════════════════
 describe('ThemedBackground / useAppTheme — Issue 2 audit (3): "system" preference follows a LIVE OS flip on the SAME tree', () => {
-  it('dark→light (OS flip, same tree): RainStreak colour disappears, warm haze/dust appear, no stale dark values', () => {
+  it('dark→light (OS flip, same tree): dark RainStreak disappears, light rain streak appears, no stale dark values', () => {
     useThemeStore.setState({ preference: 'system' });
     mockUseColorScheme.mockReturnValue('dark');
     const { toJSON, rerender } = render(<ThemedBackground />);
@@ -156,20 +157,20 @@ describe('ThemedBackground / useAppTheme — Issue 2 audit (3): "system" prefere
     rerender(<ThemedBackground />);
     colors = collectBackgroundColors(toJSON());
     expect(colors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(false); // no stale dark RainStreak
-    expect(colors.some((c) => c.startsWith('rgba(246,224,180,') || c.startsWith('rgba(255,238,205,'))).toBe(true); // light haze now present
+    expect(colors.some((c) => c.startsWith('rgba(92,112,140,'))).toBe(true); // muted blue-grey light rain streak now present
   });
 
-  it('light→dark (OS flip, same tree): warm haze/dust disappear, RainStreak appears, no stale light values', () => {
+  it('light→dark (OS flip, same tree): light rain streak disappears, dark RainStreak appears, no stale light values', () => {
     useThemeStore.setState({ preference: 'system' });
     mockUseColorScheme.mockReturnValue('light');
     const { toJSON, rerender } = render(<ThemedBackground />);
     let colors = collectBackgroundColors(toJSON());
-    expect(colors.some((c) => c.startsWith('rgba(246,224,180,') || c.startsWith('rgba(255,238,205,'))).toBe(true);
+    expect(colors.some((c) => c.startsWith('rgba(92,112,140,'))).toBe(true); // light rain streak present
 
     mockUseColorScheme.mockReturnValue('dark');
     rerender(<ThemedBackground />);
     colors = collectBackgroundColors(toJSON());
-    expect(colors.some((c) => c.startsWith('rgba(246,224,180,') || c.startsWith('rgba(255,238,205,'))).toBe(false); // no stale light haze
+    expect(colors.some((c) => c.startsWith('rgba(92,112,140,'))).toBe(false); // no stale light rain streak
     expect(colors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(true); // dark RainStreak now present
   });
 

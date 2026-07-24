@@ -28,6 +28,7 @@ import {
   puffGradientRadiusFraction,
   puffRectPercent,
   overcastClusterLayout,
+  lightRainStreakPlanFor,
 } from '@/components/ui/V2WeatherMotion';
 import type { Atmosphere } from '@/lib/weatherTheme';
 
@@ -227,46 +228,48 @@ describe('V2WeatherMotion — LIGHT particle colour pin', () => {
   });
 });
 
-// ── REJECTED-AND-FIXED: light used to branch by atmosphere the same way as
-// dark (MistBand for cloudy, RainStreak for rain, Snowflake for snow, plus
-// Star already dark-only) — WEATHER_BACKGROUNDS.md's per-weather light
-// colours. Liam rejected this on device (+ reference screenshots): real
-// weather resolving to cloudy/rain painted the light screen cold blue-grey.
-// Ruling: light renders exactly ONE warm ambient set — SunPulseLight +
-// BokehOrb + HazeBand + DustMote — for EVERY atmosphere, and NEVER
-// MistBand/RainStreak/Snowflake/Star. These pins assert the fix on the
-// RUNTIME renderer (not just the colour constants) across all 5 atmospheres.
-describe('V2WeatherMotion — LIGHT renders the SAME warm ambient set for every atmosphere', () => {
-  it.each(ATMOSPHERES)('light+%s renders SunPulseLight, haze bands, and dust motes', (atmosphere) => {
+// ── LIGHT WEATHER PARITY (2026-07-24 ruling — SUPERSEDES the earlier "light
+// renders one warm ambient set for every atmosphere" rule). Two prior states
+// were both rejected on device: (1) branching by atmosphere like dark painted
+// the light screen cold blue-grey; (2) the over-correction collapsed every
+// non-sunny weather into the same warm sandy render (rain/fog/overcast/snow
+// indistinguishable). The current ruling keeps the warm sandy BASE permanent
+// (SunPulseLight + BokehOrb in EVERY light atmosphere) but gives each weather
+// its own explicit, VISIBLE, cool-but-restrained layer. These pins assert the
+// warm base + the "no dark-particle colour leaks into light" guarantee across
+// all 5 atmospheres; per-condition layers are asserted in their own blocks
+// lower down.
+describe('V2WeatherMotion — LIGHT keeps the permanent warm base for every atmosphere', () => {
+  it.each(ATMOSPHERES)('light+%s renders the warm base (SunPulseLight + warm bokeh) and at least some dust', (atmosphere) => {
     const tree = render(<V2WeatherMotion atmosphere={atmosphere} mode="light" />).toJSON() as JsonNode;
     const testIDs = collectTestIDs(tree);
     expect(testIDs).toContain('v2-sun-pulse-light');
-    expect(testIDs.filter((id) => id.startsWith('v2-haze-band-')).length).toBeGreaterThanOrEqual(2);
-    expect(testIDs.filter((id) => id.startsWith('v2-dust-mote-')).length).toBeGreaterThanOrEqual(6);
+    expect(collectBackgroundColors(tree)).toContain('rgba(255,195,107,0.12)'); // BokehOrb, warm, unchanged
+    expect(testIDs.filter((id) => id.startsWith('v2-dust-mote-')).length).toBeGreaterThanOrEqual(2);
   });
 
   it.each(ATMOSPHERES)(
-    'light+%s NEVER renders MistBand/RainStreak/Snowflake/Star testIDs or colours (no cold weather-conditional particles)',
+    'light+%s NEVER renders a DARK-only particle colour (dark RainStreak/MistBand/Snowflake/Star must never leak into light)',
     (atmosphere) => {
       const tree = render(<V2WeatherMotion atmosphere={atmosphere} mode="light" />).toJSON() as JsonNode;
-      // None of the dark-only particle components have their own testIDs, so
-      // the authoritative check is their colour literals — none of these
-      // must ever appear in a light render, for any atmosphere.
       const colors = collectBackgroundColors(tree);
-      expect(colors.some((c) => c.startsWith('rgba(62,88,114,'))).toBe(false); // old light RainStreak
-      expect(colors.some((c) => c.startsWith('rgba(82,96,116,'))).toBe(false); // old light MistBand
-      expect(colors).not.toContain('rgba(255,255,255,0.9)'); // old light Snowflake
+      expect(colors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(false); // dark RainStreak
+      expect(colors.some((c) => c.startsWith('rgba(96,104,124,'))).toBe(false); // dark MistBand / dark partly_cloudy tint
+      expect(colors).not.toContain('rgba(235,242,252,0.9)'); // dark Snowflake
       expect(colors).not.toContain('#E8ECF8'); // Star (dark-only, always)
     },
   );
 
-  it.each(ATMOSPHERES)('light+%s haze bands and dust motes are faint and warm-toned (never cold/blue)', (atmosphere) => {
-    const tree = render(<V2WeatherMotion atmosphere={atmosphere} mode="light" />).toJSON() as JsonNode;
-    const colors = collectBackgroundColors(tree);
-    // Haze bands: warm sandy/cream family, baked-in low opacity.
-    expect(colors.some((c) => c.startsWith('rgba(246,224,180,') || c.startsWith('rgba(255,238,205,'))).toBe(true);
-    // Dust motes: opaque warm gold — faintness comes from animated opacity, not colour alpha.
-    expect(colors).toContain('#FFD696');
+  it('sunny/clear (non-weather) keeps the warm haze + golden dust; a weather condition swaps that warm layer out for its own', () => {
+    const sunny = render(<V2WeatherMotion atmosphere="sunny" mode="light" condition="clear" />).toJSON() as JsonNode;
+    expect(collectTestIDs(sunny).filter((id) => id.startsWith('v2-haze-band-')).length).toBeGreaterThanOrEqual(2);
+    expect(collectBackgroundColors(sunny)).toContain('#FFD696'); // warm gold dust
+    // Rain (a weather condition) replaces the warm haze with its own cool layer — no warm haze bands.
+    const rain = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="rain" />).toJSON() as JsonNode;
+    expect(collectTestIDs(rain).filter((id) => id.startsWith('v2-haze-band-')).length).toBe(0);
+    // Snow likewise — its own flake layer, no warm haze.
+    const snow = render(<V2WeatherMotion atmosphere="snow" mode="light" condition="snow" />).toJSON() as JsonNode;
+    expect(collectTestIDs(snow).filter((id) => id.startsWith('v2-haze-band-')).length).toBe(0);
   });
 
   it.each(ATMOSPHERES)('light+%s is decorative and non-interactive', (atmosphere) => {
@@ -689,7 +692,7 @@ describe('V2WeatherMotion — DARK cloudy split is wired into the actual render 
     const countCluster = (n: JsonNode) => collectTestIDs(n).filter((id) => id === 'v2-cloud-cluster').length;
 
     expect(countFog(fogTree)).toBe(5); // 4–6 wide fog banks, per spec
-    expect(countCluster(overcastTree)).toBe(6); // 5–7 larger overlapping cloud groups, per spec
+    expect(countCluster(overcastTree)).toBe(7); // 5–7 larger overlapping cloud groups, per spec (SIXTH pass: 6→7)
     expect(countCluster(partlyCloudyTree)).toBe(4); // 3–4 distinct cloud groups, per spec — fewest
     expect(countCluster(overcastTree)).toBeGreaterThan(countCluster(partlyCloudyTree));
 
@@ -700,7 +703,14 @@ describe('V2WeatherMotion — DARK cloudy split is wired into the actual render 
     const overcastParams = softCloudParamsFor('overcast', 'dark');
     const partlyCloudyParams = softCloudParamsFor('partly_cloudy', 'dark');
     expect(overcastParams.opacityBase).toBeGreaterThan(partlyCloudyParams.opacityBase);
-    expect(overcastParams.opacityBase).toBeGreaterThan(fogParams.opacityBase);
+    // SIXTH pass: Liam's device verdict for overcast was explicitly
+    // "do not raise opacity, this is a structure problem" — this pass
+    // LOWERS overcast's raw peak opacity while raising fog's, so overcast is
+    // no longer heavier than fog by raw opacityBase alone. It remains the
+    // heaviest of the three by COMBINED coverage/density (layer count × size
+    // × opacity — see softCloudDensityFor/approxCoverage below), which is
+    // asserted instead.
+    expect(softCloudDensityFor('overcast', 'dark')).toBeGreaterThan(softCloudDensityFor('fog', 'dark'));
     expect(fogParams.durationBaseMs).toBeGreaterThan(overcastParams.durationBaseMs);
     expect(fogParams.durationBaseMs).toBeGreaterThan(partlyCloudyParams.durationBaseMs);
     // Partly cloudy's dark opacity sits inside Liam's explicit 0.16–0.25 target band.
@@ -1004,7 +1014,7 @@ describe('V2WeatherMotion — overcast layering redesign (Liam device verdict: "
       }
       for (const child of node.children ?? []) walk(child);
     })(tree);
-    expect(lefts.length).toBe(6);
+    expect(lefts.length).toBe(7); // SIXTH pass: overcast cluster count 6→7
     const sortedLefts = [...lefts].sort((a, b) => a - b);
     for (let i = 1; i < sortedLefts.length; i += 1) {
       expect(sortedLefts[i] - sortedLefts[i - 1]).toBeGreaterThan(5);
@@ -1064,19 +1074,39 @@ describe('V2WeatherMotion — FOURTH pass: partly cloudy is 3-4 isolated, visibl
     expect(count).toBeLessThanOrEqual(4);
   });
 
-  it('visibility recovered: size ×1.5, opacityBase ×~1.3 (both modes), coreHold and coreOpacityFactor both raised', () => {
+  it('visibility recovered (HISTORICAL PIN, THIRD→FOURTH-pass delta only — superseded by the SIXTH-pass pin below, since a further size/opacity change happened after this ratio was captured): size ×1.5, opacityBase ×~1.3 (both modes), coreHold and coreOpacityFactor both raised', () => {
     const before = { sizeWBase: 160, sizeHBase: 100, opacityBaseDark: 0.16, opacityBaseLight: 0.11, coreHold: 0.45, coreOpacityFactor: 0.85 };
+    // Frozen FOURTH-pass reference values (not re-read from source) — this
+    // is what "after" looked like at the end of the FOURTH pass, before the
+    // SIXTH pass changed size/opacity/coreOpacityFactor again.
+    const fourthPassAfter = { sizeWBase: 240, sizeHBase: 150, opacityBaseDark: 0.21, opacityBaseLight: 0.14, coreHold: 0.54, coreOpacityFactor: 0.92 };
+    expect(fourthPassAfter.sizeWBase / before.sizeWBase).toBeCloseTo(1.5, 5);
+    expect(fourthPassAfter.sizeHBase / before.sizeHBase).toBeCloseTo(1.5, 5);
+    expect(fourthPassAfter.opacityBaseDark / before.opacityBaseDark).toBeGreaterThan(1.25);
+    expect(fourthPassAfter.opacityBaseLight / before.opacityBaseLight).toBeGreaterThan(1.2);
+    expect(fourthPassAfter.coreHold).toBeGreaterThan(before.coreHold);
+    expect(fourthPassAfter.coreOpacityFactor).toBeGreaterThan(before.coreOpacityFactor);
+  });
+
+  it('SIXTH pass (2026-07-23): size raised a further ~13% (not another ×1.5 — a much bigger cluster would eat the "clear sky between clusters" spec on a real, narrow phone screen), opacityBase raised further (dark stays inside the 0.16-0.25 band), coreOpacityFactor raised again; feather/coreHold/cluster-count unchanged', () => {
+    const fourthPassAfter = { sizeWBase: 240, sizeHBase: 150, opacityBaseDark: 0.21, opacityBaseLight: 0.14, coreOpacityFactor: 0.92 };
     const after = softCloudParamsFor('partly_cloudy', 'dark');
     const afterLight = softCloudParamsFor('partly_cloudy', 'light');
-    expect(after.sizeWBase / before.sizeWBase).toBeCloseTo(1.5, 5);
-    expect(after.sizeHBase / before.sizeHBase).toBeCloseTo(1.5, 5);
-    expect(after.opacityBase / before.opacityBaseDark).toBeGreaterThan(1.25);
-    expect(afterLight.opacityBase / before.opacityBaseLight).toBeGreaterThan(1.2);
-    expect(after.coreHold).toBeGreaterThan(before.coreHold);
-    expect(after.coreOpacityFactor).toBeGreaterThan(before.coreOpacityFactor);
+    expect(after.sizeWBase / fourthPassAfter.sizeWBase).toBeCloseTo(270 / 240, 5);
+    expect(after.sizeHBase / fourthPassAfter.sizeHBase).toBeCloseTo(170 / 150, 5);
+    expect(after.opacityBase).toBeGreaterThan(fourthPassAfter.opacityBaseDark);
+    expect(afterLight.opacityBase).toBeGreaterThan(fourthPassAfter.opacityBaseLight);
+    expect(after.coreOpacityFactor).toBeGreaterThan(fourthPassAfter.coreOpacityFactor);
+    expect(after.feather).toBe(0.90);
+    expect(after.coreHold).toBe(0.54);
     // Dark opacity stays inside the existing 0.16-0.25 target band.
     expect(after.opacityBase).toBeGreaterThanOrEqual(0.16);
     expect(after.opacityBase).toBeLessThanOrEqual(0.25);
+    // Still stays below both overcast and fog's width — existing invariant.
+    const overcast = softCloudParamsFor('overcast', 'dark');
+    const fog = softCloudParamsFor('fog', 'dark');
+    expect(after.sizeWBase).toBeLessThan(overcast.sizeWBase);
+    expect(after.sizeWBase).toBeLessThan(fog.sizeWBase);
   });
 });
 
@@ -1089,7 +1119,7 @@ describe('V2WeatherMotion — FOURTH pass: overcast has more clusters AND greate
     return count * meanArea * p.opacityBase;
   }
 
-  it('overcast (6) has more clusters than partly_cloudy (4)', () => {
+  it('overcast (7, SIXTH pass: was 6) has more clusters than partly_cloudy (4)', () => {
     expect(softCloudNodesFor('overcast').length).toBeGreaterThan(softCloudNodesFor('partly_cloudy').length);
   });
 
@@ -1099,17 +1129,38 @@ describe('V2WeatherMotion — FOURTH pass: overcast has more clusters AND greate
     expect(approxCoverage('overcast')).toBeGreaterThan(approxCoverage('partly_cloudy'));
   });
 
-  it('overcast visibility recovered: width ×1.1 (kept below fog\'s width so fog stays widest), height ×1.5, opacityBase up, coreOpacityFactor up', () => {
+  it('overcast visibility recovered (HISTORICAL PIN, THIRD→FOURTH-pass delta only — superseded by the SIXTH-pass test below, which INTENTIONALLY REVERSES the height/coreOpacityFactor direction on Liam\'s explicit "structure not opacity" instruction): width ×1.1 (kept below fog\'s width so fog stays widest), height ×1.5, opacityBase up, coreOpacityFactor up', () => {
     const before = { sizeWBase: 300, sizeHBase: 170, opacityBaseDark: 0.22, opacityBaseLight: 0.13, coreOpacityFactor: 0.88 };
+    // Frozen FOURTH-pass reference values (not re-read from source).
+    const fourthPassAfter = { sizeWBase: 330, sizeHBase: 255, opacityBaseDark: 0.27, opacityBaseLight: 0.17, coreOpacityFactor: 0.94 };
+    expect(fourthPassAfter.sizeWBase / before.sizeWBase).toBeCloseTo(1.1, 5);
+    expect(fourthPassAfter.sizeHBase / before.sizeHBase).toBeCloseTo(1.5, 5);
+    expect(fourthPassAfter.opacityBaseDark).toBeGreaterThan(before.opacityBaseDark);
+    expect(fourthPassAfter.opacityBaseLight).toBeGreaterThan(before.opacityBaseLight);
+    expect(fourthPassAfter.coreOpacityFactor).toBeGreaterThan(before.coreOpacityFactor);
+  });
+
+  it('SIXTH pass (2026-07-23) — device verdict "do not raise opacity, this is a structure problem": sizeHBase cut ~24% (stops clusters merging vertically), opacityBase/opacityVar and coreOpacityFactor DELIBERATELY LOWERED from the FOURTH-pass values, cluster count 6→7 and width unchanged', () => {
+    const fourthPassAfter = { sizeWBase: 330, sizeHBase: 255, opacityBaseDark: 0.27, opacityBaseLight: 0.17, coreOpacityFactor: 0.94 };
     const after = softCloudParamsFor('overcast', 'dark');
     const afterLight = softCloudParamsFor('overcast', 'light');
     const fog = softCloudParamsFor('fog', 'dark');
-    expect(after.sizeWBase / before.sizeWBase).toBeCloseTo(1.1, 5);
-    expect(after.sizeHBase / before.sizeHBase).toBeCloseTo(1.5, 5);
-    expect(after.sizeWBase).toBeLessThan(fog.sizeWBase); // fog stays the widest of the three
-    expect(after.opacityBase).toBeGreaterThan(before.opacityBaseDark);
-    expect(afterLight.opacityBase).toBeGreaterThan(before.opacityBaseLight);
-    expect(after.coreOpacityFactor).toBeGreaterThan(before.coreOpacityFactor);
+    // Width is UNCHANGED this pass — still below fog's width.
+    expect(after.sizeWBase).toBe(fourthPassAfter.sizeWBase);
+    expect(after.sizeWBase).toBeLessThan(fog.sizeWBase);
+    // Height is CUT, not grown — the actual fix for the "grey sheet" defect.
+    expect(after.sizeHBase).toBeLessThan(fourthPassAfter.sizeHBase);
+    expect(after.sizeHBase / fourthPassAfter.sizeHBase).toBeCloseTo(195 / 255, 5);
+    // Opacity and coreOpacityFactor both LOWERED, per Liam's explicit instruction.
+    expect(after.opacityBase).toBeLessThan(fourthPassAfter.opacityBaseDark);
+    // The SIXTH pass lowered overcast's DARK opacity; its LIGHT opacity was
+    // later RAISED by the 2026-07-24 Light-parity ruling (neutral-grey overcast
+    // must read on cream), so light is no longer below the FOURTH-pass figure —
+    // asserted against the live parity value instead.
+    expect(afterLight.opacityBase).toBeCloseTo(0.23, 10);
+    expect(after.coreOpacityFactor).toBeLessThan(fourthPassAfter.coreOpacityFactor);
+    // Cluster count raised instead (5-7 target range).
+    expect(softCloudNodesFor('overcast').length).toBe(7);
   });
 
   it('overcast still keeps ≥2 distinct depth-tier opacity levels post-boost (clusterDepthFactorFor untouched)', () => {
@@ -1127,14 +1178,13 @@ describe('V2WeatherMotion — FOURTH pass: foggy renders fog banks, never cloud 
     expect(testIDs).not.toContain('v2-cloud-puff');
   });
 
-  it('fog opacityBase/opacityVar were raised by exactly 25% (both modes) over the THIRD-pass values, AS OF the FOURTH pass — historical pin, superseded for dark by the FIFTH pass (see that describe block below)', () => {
-    // Dark has since moved again (FIFTH pass, +11.5%) and is no longer
-    // asserted here. Light was never touched by the FIFTH pass, so it's
-    // still exactly the FOURTH-pass figure — asserted against the live
-    // value below.
+  it("fog's LIGHT opacity was raised by the 2026-07-24 Light-parity ruling (was the FOURTH/FIFTH-pass 0.155/0.07125) — asserted against the live parity value", () => {
+    // Dark has moved across the FOURTH/FIFTH/SIXTH passes; light was untouched
+    // until the 2026-07-24 Light-parity ruling raised it so the pearl-grey fog
+    // reads on the cream base. Live value asserted below.
     const fogLight = softCloudParamsFor('fog', 'light');
-    expect(fogLight.opacityBase).toBeCloseTo(0.124 * 1.25, 10);
-    expect(fogLight.opacityVar).toBeCloseTo(0.057 * 1.25, 10);
+    expect(fogLight.opacityBase).toBeCloseTo(0.24, 10);
+    expect(fogLight.opacityVar).toBeCloseTo(0.09, 10);
   });
 });
 
@@ -1231,28 +1281,21 @@ describe('V2WeatherMotion — FOURTH pass: fade ramp stays a genuine soft edge, 
   });
 });
 
-describe('V2WeatherMotion — FIFTH pass: fog dark-mode visibility bump (+10-15%), light untouched, everything else pinned', () => {
-  it("fog's dark peak opacity (opacityBase+opacityVar) rose by 10-15% over the FOURTH-pass value — the ONLY thing this pass changes", () => {
-    const fog = softCloudParamsFor('fog', 'dark');
-    const priorPeak = 0.24 + 0.09875; // FOURTH-pass dark opacityBase + opacityVar (frozen reference, not re-read from source)
-    const newPeak = fog.opacityBase + fog.opacityVar;
-    expect(newPeak / priorPeak).toBeGreaterThanOrEqual(1.10);
-    expect(newPeak / priorPeak).toBeLessThanOrEqual(1.15);
+describe('V2WeatherMotion — FIFTH pass: fog dark-mode visibility bump (+10-15%), light untouched, everything else pinned (HISTORICAL — see the SIXTH-pass describe block below for the live fog-dark/overcast/partly_cloudy numbers; fog dark has since moved again, and overcast/partly_cloudy are no longer untouched)', () => {
+  it("HISTORICAL PIN: fog's dark peak opacity (opacityBase+opacityVar) rose by 10-15% over the FOURTH-pass value at the END of the FIFTH pass (frozen reference values, not re-read from source — the live value has since moved again in the SIXTH pass, see below)", () => {
+    const fourthPassPeak = 0.24 + 0.09875;
+    const fifthPassPeak = 0.268 + 0.110;
+    expect(fifthPassPeak / fourthPassPeak).toBeGreaterThanOrEqual(1.10);
+    expect(fifthPassPeak / fourthPassPeak).toBeLessThanOrEqual(1.15);
   });
 
-  it("fog's dark opacityBase/opacityVar are exactly the new FIFTH-pass literals (pins the two numbers this pass touches)", () => {
-    const fog = softCloudParamsFor('fog', 'dark');
-    expect(fog.opacityBase).toBeCloseTo(0.268, 10);
-    expect(fog.opacityVar).toBeCloseTo(0.110, 10);
-  });
-
-  it("fog's LIGHT opacityBase/opacityVar are UNCHANGED from the FOURTH pass (Liam's brief: no change to the sandy Light background)", () => {
+  it("fog's LIGHT opacityBase/opacityVar were raised by the 2026-07-24 Light-parity ruling (was 0.155/0.07125 through the SIXTH pass) — live parity value", () => {
     const fogLight = softCloudParamsFor('fog', 'light');
-    expect(fogLight.opacityBase).toBeCloseTo(0.155, 10);
-    expect(fogLight.opacityVar).toBeCloseTo(0.07125, 10);
+    expect(fogLight.opacityBase).toBeCloseTo(0.24, 10);
+    expect(fogLight.opacityVar).toBeCloseTo(0.09, 10);
   });
 
-  it("fog's size/feather/coreHold/coreOpacityFactor/yBase/yRange/duration/driftFactor are pinned — only opacity moved", () => {
+  it("fog's size/feather/coreHold/coreOpacityFactor/yBase/yRange/duration/driftFactor are pinned — only opacity has ever moved, across the FOURTH/FIFTH/SIXTH passes", () => {
     const fog = softCloudParamsFor('fog', 'dark');
     expect(fog.sizeWBase).toBe(340);
     expect(fog.sizeWVar).toBe(120);
@@ -1268,40 +1311,22 @@ describe('V2WeatherMotion — FIFTH pass: fog dark-mode visibility bump (+10-15%
     expect(fog.driftFactor).toBe(0.09);
   });
 
-  it('fog dark/light RGB tint is unchanged (110,120,138 / 202,194,184) — this pass is opacity-only, no colour change', () => {
+  it('fog dark RGB tint is frozen (110,120,138); light tint became a neutral pearl-grey (210,212,216) in the 2026-07-24 Light-parity ruling', () => {
     const fogDark = softCloudParamsFor('fog', 'dark');
     const fogLight = softCloudParamsFor('fog', 'light');
     expect(fogDark.rgb).toBe('110,120,138');
-    expect(fogLight.rgb).toBe('202,194,184');
+    expect(fogLight.rgb).toBe('210,212,216');
   });
 
-  it('overcast params (dark+light, opacityBase/opacityVar/size/feather/coreHold/coreOpacityFactor) are completely untouched by the fog-only fix', () => {
-    const overcastDark = softCloudParamsFor('overcast', 'dark');
-    const overcastLight = softCloudParamsFor('overcast', 'light');
-    expect(overcastDark.opacityBase).toBeCloseTo(0.27, 10);
-    expect(overcastDark.opacityVar).toBeCloseTo(0.12, 10);
-    expect(overcastLight.opacityBase).toBeCloseTo(0.17, 10);
-    expect(overcastLight.opacityVar).toBeCloseTo(0.075, 10);
-    expect(overcastDark.sizeWBase).toBe(330);
-    expect(overcastDark.sizeHBase).toBe(255);
-    expect(overcastDark.feather).toBe(0.78);
-    expect(overcastDark.coreHold).toBe(0.47);
-    expect(overcastDark.coreOpacityFactor).toBe(0.94);
-  });
-
-  it('partly_cloudy params (dark+light, opacityBase/opacityVar/size/feather/coreHold/coreOpacityFactor) are completely untouched by the fog-only fix', () => {
-    const partlyDark = softCloudParamsFor('partly_cloudy', 'dark');
-    const partlyLight = softCloudParamsFor('partly_cloudy', 'light');
-    expect(partlyDark.opacityBase).toBeCloseTo(0.21, 10);
-    expect(partlyDark.opacityVar).toBeCloseTo(0.09, 10);
-    expect(partlyLight.opacityBase).toBeCloseTo(0.14, 10);
-    expect(partlyLight.opacityVar).toBeCloseTo(0.05, 10);
-    expect(partlyDark.sizeWBase).toBe(240);
-    expect(partlyDark.sizeHBase).toBe(150);
-    expect(partlyDark.feather).toBe(0.90);
-    expect(partlyDark.coreHold).toBe(0.54);
-    expect(partlyDark.coreOpacityFactor).toBe(0.92);
-  });
+  // The two tests that used to live here ("overcast/partly_cloudy params are
+  // completely untouched by the fog-only fix") are REMOVED, not just edited:
+  // their entire premise — that this was a fog-only pass — is no longer
+  // true. The SIXTH pass (2026-07-23, see the dedicated "FOURTH pass: ..."
+  // describe blocks above, which now each carry a SIXTH-pass follow-up test)
+  // deliberately changes BOTH overcast and partly_cloudy's size/opacity/
+  // coreOpacityFactor, per Liam's device verdict. Coverage of their current
+  // values lives in those SIXTH-pass assertions instead of being duplicated
+  // here.
 
   it('round-3 no-edge invariant still holds for fog after the opacity bump: zero-alpha bbox-distance ≈0.4, strictly < 0.5', () => {
     const feather = softCloudParamsFor('fog', 'dark').feather;
@@ -1345,64 +1370,244 @@ describe('V2WeatherMotion — FIFTH pass: fog dark-mode visibility bump (+10-15%
   });
 });
 
-describe('V2WeatherMotion — LIGHT stays warm and uses the active animated driver for rain-family motion', () => {
-  it('rain-family conditions render an additive warm-toned streak layer (v2-warm-streak), never RainStreak/MistBand/Star colours', () => {
-    for (const condition of ['drizzle', 'rain', 'showers', 'thunderstorm'] as const) {
-      const tree = render(<V2WeatherMotion atmosphere="rain" mode="light" condition={condition} />).toJSON() as JsonNode;
-      const testIDs = collectTestIDs(tree);
-      expect(testIDs.filter((id) => id === 'v2-warm-streak').length).toBeGreaterThan(0);
-      const colors = collectBackgroundColors(tree);
-      expect(colors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(false); // dark RainStreak colour
-      expect(colors.some((c) => c.startsWith('rgba(96,104,124,'))).toBe(false); // dark MistBand colour
-      expect(colors).not.toContain('#E8ECF8'); // Star
-    }
+// ═════════════════════════════════════════════════════════════════════════
+// SIXTH PASS (2026-07-23) — device verdict: partly_cloudy still "almost
+// invisible"; overcast "reads as a broad grey glow, not clouds" with an
+// explicit "do not raise opacity" instruction; fog "mostly correct, raise a
+// further ~20%". See V2WeatherMotion.tsx's SIXTH-pass file-header note for
+// the full per-condition reasoning. Uses ONLY the levers proven independent
+// of the no-edge invariant (peak opacity, nominal size, layer count,
+// coreHold/coreOpacityFactor) — GRADIENT_ZERO_TARGET, CLOUD_CANVAS_PAD,
+// puffGradientRadiusFraction, every condition's `feather`, and the
+// Rect-not-Ellipse shape are BYTE-IDENTICAL to the THIRD pass.
+// ═════════════════════════════════════════════════════════════════════════
+describe('V2WeatherMotion — SIXTH pass: live literal pins for fog(dark)/overcast/partly_cloudy', () => {
+  it('fog: dark opacityBase/opacityVar are the SIXTH-pass literals (dark frozen); light is the NEW 2026-07-24 parity value (raised so pearl-grey fog reads on cream)', () => {
+    const fog = softCloudParamsFor('fog', 'dark');
+    const fogLight = softCloudParamsFor('fog', 'light');
+    expect(fog.opacityBase).toBeCloseTo(0.3216, 10);
+    expect(fog.opacityVar).toBeCloseTo(0.132, 10);
+    expect(fog.opacityBase / 0.268).toBeCloseTo(1.2, 5);
+    expect(fogLight.opacityBase).toBeCloseTo(0.24, 10); // 2026-07-24 Light parity (was 0.155)
+    expect(fogLight.opacityVar).toBeCloseTo(0.09, 10); // 2026-07-24 Light parity (was 0.07125)
   });
 
-  it('non-rain conditions (fog/overcast/partly_cloudy) never render the warm-streak layer', () => {
+  it('overcast: cluster count is 7, sizeHBase/sizeHVar and opacityBase/opacityVar/coreOpacityFactor are all the new (LOWERED, except count/size which the brief asks to change the other way) SIXTH-pass literals; sizeWBase/feather/coreHold are pinned unchanged', () => {
+    expect(softCloudNodesFor('overcast').length).toBe(7);
+    const overcastDark = softCloudParamsFor('overcast', 'dark');
+    const overcastLight = softCloudParamsFor('overcast', 'light');
+    expect(overcastDark.sizeHBase).toBe(195);
+    expect(overcastDark.sizeHVar).toBe(95);
+    expect(overcastDark.opacityBase).toBeCloseTo(0.25, 10);
+    expect(overcastDark.opacityVar).toBeCloseTo(0.11, 10);
+    expect(overcastLight.opacityBase).toBeCloseTo(0.23, 10); // 2026-07-24 Light parity (was 0.15)
+    expect(overcastLight.opacityVar).toBeCloseTo(0.09, 10); // 2026-07-24 Light parity (was 0.065)
+    expect(overcastDark.coreOpacityFactor).toBeCloseTo(0.85, 10);
+    // Pinned, unchanged this pass.
+    expect(overcastDark.sizeWBase).toBe(330);
+    expect(overcastDark.sizeWVar).toBe(143);
+    expect(overcastDark.feather).toBe(0.78);
+    expect(overcastDark.coreHold).toBe(0.47);
+  });
+
+  it('partly_cloudy: size/opacity/coreOpacityFactor are all the new SIXTH-pass literals; feather/coreHold/cluster-count are pinned unchanged', () => {
+    const partlyDark = softCloudParamsFor('partly_cloudy', 'dark');
+    const partlyLight = softCloudParamsFor('partly_cloudy', 'light');
+    expect(partlyDark.sizeWBase).toBe(270);
+    expect(partlyDark.sizeWVar).toBe(135);
+    expect(partlyDark.sizeHBase).toBe(170);
+    expect(partlyDark.sizeHVar).toBe(85);
+    expect(partlyDark.opacityBase).toBeCloseTo(0.23, 10);
+    expect(partlyDark.opacityVar).toBeCloseTo(0.10, 10);
+    expect(partlyLight.opacityBase).toBeCloseTo(0.19, 10); // 2026-07-24 Light parity (was 0.145)
+    expect(partlyLight.opacityVar).toBeCloseTo(0.07, 10); // 2026-07-24 Light parity (was 0.055)
+    expect(partlyDark.coreOpacityFactor).toBeCloseTo(0.95, 10);
+    // Pinned, unchanged this pass.
+    expect(partlyDark.feather).toBe(0.90);
+    expect(partlyDark.coreHold).toBe(0.54);
+    expect(softCloudNodesFor('partly_cloudy').length).toBe(4);
+  });
+
+  it('overcast remains the heaviest of the three by COMBINED density/coverage in both modes, even though its raw peak opacity is now below fog\'s (dark) — this is the intended, documented inversion from Liam\'s "structure not opacity" instruction', () => {
+    expect(softCloudDensityFor('overcast', 'dark')).toBeGreaterThan(softCloudDensityFor('fog', 'dark'));
+    expect(softCloudDensityFor('overcast', 'dark')).toBeGreaterThan(softCloudDensityFor('partly_cloudy', 'dark'));
+    expect(softCloudDensityFor('overcast', 'light')).toBeGreaterThan(softCloudDensityFor('fog', 'light'));
+    expect(softCloudDensityFor('overcast', 'light')).toBeGreaterThan(softCloudDensityFor('partly_cloudy', 'light'));
+    // The intentional inversion, stated explicitly and positively (not just
+    // as an absence of the old assertion): fog's dark opacityBase is now
+    // numerically higher than overcast's.
+    const fogDark = softCloudParamsFor('fog', 'dark');
+    const overcastDark = softCloudParamsFor('overcast', 'dark');
+    expect(fogDark.opacityBase).toBeGreaterThan(overcastDark.opacityBase);
+  });
+
+  it('the no-edge invariant (GRADIENT_ZERO_TARGET/CLOUD_CANVAS_PAD/puffGradientRadiusFraction) and the fade-ramp guard both still hold for all three conditions after the SIXTH pass — none of the four frozen levers (feather values, the Rect shape, the two constants) were touched', () => {
     for (const condition of ['fog', 'overcast', 'partly_cloudy'] as const) {
-      const tree = render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition={condition} />).toJSON() as JsonNode;
-      expect(collectTestIDs(tree)).not.toContain('v2-warm-streak');
-    }
-  });
+      const p = softCloudParamsFor(condition, 'dark');
+      const r = puffGradientRadiusFraction(p.feather);
+      expect(r * p.feather).toBeCloseTo(0.4, 10);
+      expect(r * p.feather).toBeLessThan(0.5);
+      const ramp = (p.feather - p.coreHold) * r;
+      expect(ramp).toBeGreaterThanOrEqual(0.145);
 
-  it('every light condition (baseline + every fine condition) stays warm — no colour channel has blue dominant over red/green', () => {
-    const conditions: (import('@/lib/weather').WeatherCondition | undefined)[] = [
-      undefined, 'clear', 'mainly_clear', 'partly_cloudy', 'overcast', 'fog', 'drizzle', 'rain', 'showers', 'thunderstorm', 'snow',
-    ];
-    for (const condition of conditions) {
-      const tree = render(<V2WeatherMotion atmosphere="sunny" mode="light" condition={condition} />).toJSON() as JsonNode;
-      const colors = collectBackgroundColors(tree);
-      for (const c of colors) {
-        const m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        if (!m) continue; // hex literals (e.g. #FFD696) are checked separately below
-        const [, r, g, b] = m.map(Number) as unknown as [number, number, number, number];
-        expect(b).toBeLessThanOrEqual(r);
-        expect(b).toBeLessThanOrEqual(g + 20); // small tolerance for near-neutral tones
+      const tree = render(<V2WeatherMotion atmosphere="cloudy" mode="dark" condition={condition} />).toJSON() as JsonNode;
+      const gradients = collectRadialGradients(tree);
+      expect(gradients.length).toBeGreaterThan(0);
+      for (const g of gradients) {
+        const lastAlpha = (g.gradient[g.gradient.length - 1] >>> 24) & 0xff;
+        expect(lastAlpha).toBe(0);
+        const rxFraction = pctToFraction(g.rx);
+        const lastOffset = g.gradient[g.gradient.length - 2];
+        expect(rxFraction * lastOffset).toBeLessThan(0.5);
+        expect(rxFraction * lastOffset).toBeCloseTo(0.4, 5);
+      }
+      const rects = collectRects(tree);
+      expect(rects.length).toBeGreaterThan(0);
+      for (const rect of rects) {
+        const x = pctToFraction(rect.x) * 100;
+        const y = pctToFraction(rect.y) * 100;
+        const w = pctToFraction(rect.width) * 100;
+        const h = pctToFraction(rect.height) * 100;
+        expect(x).toBeGreaterThan(0);
+        expect(y).toBeGreaterThan(0);
+        expect(x + w).toBeLessThan(100);
+        expect(y + h).toBeLessThan(100);
       }
     }
   });
 
-  // UPDATED 2026-07-20 (Foggy/Overcast/Partly-cloudy softening), reshaped
-  // 2026-07-22 second pass: fog/overcast/partly_cloudy now swap HazeBand for
-  // FogBank/SoftCloudCluster in light too (see isSoftCloudCondition's call
-  // site in the light branch) — SunPulseLight and DustMote are untouched for
-  // every condition, and drizzle/rain (not swapped) keep rendering HazeBand
-  // exactly as before.
-  it('still renders the baseline warm ambient set (SunPulseLight + dust always; haze OR cloud-form) for every fine condition, not just when condition is omitted', () => {
-    for (const condition of ['fog', 'overcast', 'partly_cloudy', 'drizzle', 'rain'] as const) {
+  it('no cluster/bank wrapper is a full-screen overlay and none exposes a flat backgroundColor, post-SIXTH-pass (screenW mocked to 750 in jest)', () => {
+    for (const condition of ['fog', 'overcast', 'partly_cloudy'] as const) {
+      const tree = render(<V2WeatherMotion atmosphere="cloudy" mode="dark" condition={condition} />).toJSON() as JsonNode;
+      let checked = 0;
+      (function walk(node: JsonNode) {
+        if (!node) return;
+        if (node.props?.testID === 'v2-cloud-cluster' || node.props?.testID === 'v2-fog-bank') {
+          const style = flattenStyle(node);
+          expect(style.backgroundColor).toBeUndefined();
+          expect(typeof style.width).toBe('number');
+          expect(style.width as number).toBeLessThan(750);
+          checked += 1;
+        }
+        for (const child of node.children ?? []) walk(child);
+      })(tree);
+      expect(checked).toBeGreaterThan(0);
+    }
+  });
+
+  it('Rainy/Drizzly are unaffected by the SIXTH pass (dark RainStreak colour + params; light muted-blue-grey LightRainStreak) — no cloud-form testID leaks in', () => {
+    for (const condition of ['drizzle', 'rain', 'showers', 'thunderstorm'] as const) {
+      const darkTree = render(<V2WeatherMotion atmosphere="rain" mode="dark" condition={condition} />).toJSON() as JsonNode;
+      const darkColors = collectBackgroundColors(darkTree);
+      expect(darkColors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(true);
+      expect(collectTestIDs(darkTree)).not.toContain('v2-cloud-cluster');
+      expect(collectTestIDs(darkTree)).not.toContain('v2-fog-bank');
+
+      const lightTree = render(<V2WeatherMotion atmosphere="rain" mode="light" condition={condition} />).toJSON() as JsonNode;
+      expect(collectTestIDs(lightTree).filter((id) => id === 'v2-light-rain-streak').length).toBeGreaterThan(0);
+      expect(collectTestIDs(lightTree)).not.toContain('v2-cloud-cluster');
+      expect(collectTestIDs(lightTree)).not.toContain('v2-fog-bank');
+    }
+  });
+});
+
+describe('V2WeatherMotion — LIGHT rain family: muted blue-grey streaks + subtle cool veil (cool-but-restrained)', () => {
+  it('rain-family conditions render the muted-blue-grey LightRainStreak layer + a subtle cool veil, over the warm base, never the dark RainStreak/MistBand/Star colours', () => {
+    for (const condition of ['drizzle', 'rain', 'showers', 'thunderstorm'] as const) {
       const tree = render(<V2WeatherMotion atmosphere="rain" mode="light" condition={condition} />).toJSON() as JsonNode;
+      const testIDs = collectTestIDs(tree);
+      expect(testIDs.filter((id) => id === 'v2-light-rain-streak').length).toBeGreaterThan(0);
+      expect(testIDs.some((id) => id.startsWith('v2-cool-veil-'))).toBe(true);
+      const colors = collectBackgroundColors(tree);
+      // The ONE cool element — a MUTED blue-grey streak (92,112,140), never the
+      // dark RainStreak family, never a background wash.
+      expect(colors.some((c) => c.startsWith('rgba(92,112,140,'))).toBe(true);
+      expect(colors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(false); // dark RainStreak colour
+      expect(colors.some((c) => c.startsWith('rgba(96,104,124,'))).toBe(false); // dark MistBand colour
+      expect(colors).not.toContain('#E8ECF8'); // Star
+      // Warm base persists under the cool layer (permanent sandy identity).
+      expect(testIDs).toContain('v2-sun-pulse-light');
+      expect(colors).toContain('rgba(255,195,107,0.12)'); // BokehOrb, warm
+    }
+  });
+
+  it('rain vs drizzle: rain is denser (more streaks) + more intense (higher opacity, thicker, faster) than drizzle', () => {
+    const countStreaks = (n: JsonNode) => collectTestIDs(n).filter((id) => id === 'v2-light-rain-streak').length;
+    const drizzle = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="drizzle" />).toJSON() as JsonNode;
+    const rain = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="rain" />).toJSON() as JsonNode;
+    expect(countStreaks(drizzle)).toBeGreaterThan(0);
+    expect(countStreaks(drizzle)).toBeLessThan(countStreaks(rain));
+    // Pure param check: drizzle is lighter/thinner/slower than rain.
+    // (Showers is intentionally NOT compared here — it's out of scope for the
+    // tuning pass and restored to its pre-task config; see the "density" test below.)
+    const d = lightRainStreakPlanFor('drizzle').params;
+    const r = lightRainStreakPlanFor('rain').params;
+    expect(d.opacityBase).toBeLessThan(r.opacityBase);
+    expect(d.widthBase).toBeLessThan(r.widthBase);
+    expect(d.durationBaseMs).toBeGreaterThan(r.durationBaseMs); // slower fall
+  });
+
+  it('thunderstorm reuses the dense rain streak plan (its distinct signature is the lightning glow, asserted separately)', () => {
+    expect(lightRainStreakPlanFor('thunderstorm')).toEqual(lightRainStreakPlanFor('rain'));
+  });
+
+  it('non-rain conditions (fog/overcast/partly_cloudy/snow/clear) never render the rain-streak or cool-veil layer', () => {
+    for (const condition of ['fog', 'overcast', 'partly_cloudy'] as const) {
+      const tree = render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition={condition} />).toJSON() as JsonNode;
+      expect(collectTestIDs(tree)).not.toContain('v2-light-rain-streak');
+      expect(collectTestIDs(tree).some((id) => id.startsWith('v2-cool-veil-'))).toBe(false);
+    }
+    const snow = render(<V2WeatherMotion atmosphere="snow" mode="light" condition="snow" />).toJSON() as JsonNode;
+    expect(collectTestIDs(snow)).not.toContain('v2-light-rain-streak');
+    const clear = render(<V2WeatherMotion atmosphere="sunny" mode="light" condition="clear" />).toJSON() as JsonNode;
+    expect(collectTestIDs(clear)).not.toContain('v2-light-rain-streak');
+  });
+
+  it('LIGHT stays RESTRAINED: the warm base marker (#FFD696) is always present, and NO rendered colour is a saturated cold blue (blue never leads R/G by a strong margin) — for every condition', () => {
+    const conditions: (import('@/lib/weather').WeatherCondition | undefined)[] = [
+      undefined, 'clear', 'mainly_clear', 'partly_cloudy', 'overcast', 'fog', 'drizzle', 'rain', 'showers', 'thunderstorm', 'snow',
+    ];
+    for (const condition of conditions) {
+      const atmosphere =
+        condition === 'snow'
+          ? 'snow'
+          : condition === 'drizzle' || condition === 'rain' || condition === 'showers' || condition === 'thunderstorm'
+            ? 'rain'
+            : 'sunny';
+      const tree = render(<V2WeatherMotion atmosphere={atmosphere} mode="light" condition={condition} />).toJSON() as JsonNode;
+      const colors = collectBackgroundColors(tree);
+      for (const c of colors) {
+        const m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (!m) continue; // hex literals (#FFD696) checked separately below
+        const [, r, g, b] = m.map(Number) as unknown as [number, number, number, number];
+        // Blue may lead a NEUTRAL tone slightly, but never by a strong margin —
+        // this rules out the cold slate-blue that was rejected on device.
+        expect(b - Math.max(r, g)).toBeLessThanOrEqual(40);
+      }
+      expect(colors).toContain('#FFD696'); // warm base marker (dust), always
+    }
+  });
+
+  it('renders the warm base (SunPulseLight + dust) + exactly the right weather layer for every fine condition (cloud-form / rain-streak / snowflake — never warm haze once a weather condition is active)', () => {
+    for (const condition of ['fog', 'overcast', 'partly_cloudy', 'drizzle', 'rain', 'snow'] as const) {
+      const atmosphere = condition === 'snow' ? 'snow' : condition === 'drizzle' || condition === 'rain' ? 'rain' : 'cloudy';
+      const tree = render(<V2WeatherMotion atmosphere={atmosphere} mode="light" condition={condition} />).toJSON() as JsonNode;
       const testIDs = collectTestIDs(tree);
       expect(testIDs).toContain('v2-sun-pulse-light');
       expect(testIDs.filter((id) => id.startsWith('v2-dust-mote-')).length).toBeGreaterThanOrEqual(2);
-      if (isSoftCloudCondition(condition)) {
-        const cloudFormCount =
-          testIDs.filter((id) => id === 'v2-fog-bank').length + testIDs.filter((id) => id === 'v2-cloud-cluster').length;
-        expect(cloudFormCount).toBeGreaterThan(0);
-        expect(testIDs.filter((id) => id.startsWith('v2-haze-band-')).length).toBe(0);
-      } else {
-        expect(testIDs.filter((id) => id.startsWith('v2-haze-band-')).length).toBeGreaterThanOrEqual(2);
+      // No warm haze once any weather condition is active.
+      expect(testIDs.filter((id) => id.startsWith('v2-haze-band-')).length).toBe(0);
+      if (condition === 'fog') {
+        // LIGHT fog = dedicated mist banks (2026-07-24), not the cloud form.
+        expect(testIDs.filter((id) => id.startsWith('v2-light-mist-bank-')).length).toBeGreaterThan(0);
         expect(testIDs).not.toContain('v2-fog-bank');
-        expect(testIDs).not.toContain('v2-cloud-cluster');
+      } else if (isSoftCloudCondition(condition)) {
+        // overcast / partly_cloudy — cloud clusters
+        expect(testIDs.filter((id) => id === 'v2-cloud-cluster').length).toBeGreaterThan(0);
+      } else if (condition === 'snow') {
+        expect(testIDs.filter((id) => id === 'v2-light-snowflake').length).toBeGreaterThan(0);
+      } else {
+        expect(testIDs.filter((id) => id === 'v2-light-rain-streak').length).toBeGreaterThan(0);
       }
     }
   });
@@ -1441,10 +1646,13 @@ describe('softCloudParamsFor / softCloudNodesFor / clusterDepthFactorFor — pur
     expect(fog.sizeWBase).toBeGreaterThan(partlyCloudy.sizeWBase);
     expect(fog.sizeHBase).toBeLessThan(overcast.sizeHBase); // but the LOWEST/flattest of the three
 
-    // Overcast: fewer than fog but the TALLEST/HEAVIEST cluster masses —
-    // highest opacity, biggest vertical extent.
-    expect(softCloudNodesFor('overcast').length).toBe(6);
-    expect(overcast.opacityBase).toBeGreaterThan(fog.opacityBase);
+    // Overcast: MORE clusters than partly_cloudy (SIXTH pass: 6→7), the
+    // TALLEST cluster masses of the three, and — as of the SIXTH pass —
+    // deliberately LOWER raw peak opacity than fog (Liam's device verdict:
+    // overcast's heaviness must come from structure/coverage, not opacity;
+    // see the softCloudDensityFor comparison a few tests below, which is
+    // where "overcast is heaviest" is now actually asserted).
+    expect(softCloudNodesFor('overcast').length).toBe(7);
     expect(overcast.opacityBase).toBeGreaterThan(partlyCloudy.opacityBase);
     expect(overcast.sizeHBase).toBeGreaterThan(partlyCloudy.sizeHBase);
     expect(overcast.sizeWBase).toBeGreaterThan(partlyCloudy.sizeWBase);
@@ -1459,16 +1667,20 @@ describe('softCloudParamsFor / softCloudNodesFor / clusterDepthFactorFor — pur
     expect(softCloudNodesFor('overcast').length).toBeGreaterThan(softCloudNodesFor('partly_cloudy').length);
   });
 
-  it('the same distinctness holds in light mode (opacity is dimmer overall, but the overcast > fog > partly_cloudy opacity ordering is mode-independent)', () => {
+  it('the same distinctness holds in light mode (opacity is dimmer overall; overcast > partly_cloudy by raw opacity in both modes, and overcast > fog by COMBINED density — see softCloudDensityFor below — even though the SIXTH pass makes fog\'s dark opacityBase the numerically higher of the two)', () => {
     const fog = softCloudParamsFor('fog', 'light');
     const overcast = softCloudParamsFor('overcast', 'light');
     const partlyCloudy = softCloudParamsFor('partly_cloudy', 'light');
     expect(overcast.opacityBase).toBeGreaterThan(partlyCloudy.opacityBase);
-    expect(overcast.opacityBase).toBeGreaterThan(fog.opacityBase);
+    expect(softCloudDensityFor('overcast', 'light')).toBeGreaterThan(softCloudDensityFor('fog', 'light'));
     expect(overcast.sizeWBase).toBeGreaterThan(partlyCloudy.sizeWBase);
+    // Partly cloudy stays the lightest/narrowest of the three by raw
+    // opacity/size, in light too — unaffected by the fog/overcast inversion above.
+    expect(partlyCloudy.opacityBase).toBeLessThan(fog.opacityBase);
+    expect(partlyCloudy.sizeWBase).toBeLessThan(fog.sizeWBase);
   });
 
-  it('dark uses PER-CONDITION tints (partly_cloudy keeps the frozen MIST_BAND_RGB family; fog/overcast get their own); light always uses a warm (R≥G≥B) colour — never a cold hex in the light path', () => {
+  it('dark uses PER-CONDITION tints (partly_cloudy keeps the frozen MIST_BAND_RGB family; fog/overcast get their own); light uses a NEUTRAL (near-grey, never cold-blue) colour, distinct from the dark family', () => {
     const expectedDark: Record<'fog' | 'overcast' | 'partly_cloudy', string> = {
       fog: '110,120,138',
       overcast: '82,90,102',
@@ -1479,8 +1691,10 @@ describe('softCloudParamsFor / softCloudNodesFor / clusterDepthFactorFor — pur
       const light = softCloudParamsFor(condition, 'light');
       expect(dark.rgb).toBe(expectedDark[condition]);
       const [r, g, b] = light.rgb.split(',').map(Number);
-      expect(r).toBeGreaterThanOrEqual(g);
-      expect(g).toBeGreaterThanOrEqual(b);
+      // 2026-07-24 parity: light tints are NEUTRAL (pearl/stone-grey), not warm —
+      // blue may lead a near-neutral tone slightly but never by a strong margin
+      // (never a cold slate-blue).
+      expect(b - Math.max(r, g)).toBeLessThanOrEqual(12);
       expect(light.rgb).not.toBe(dark.rgb);
     }
     // partly_cloudy is the ONE condition that reuses the frozen dark family byte-identical.
@@ -1528,29 +1742,31 @@ describe('softCloudParamsFor / softCloudNodesFor / clusterDepthFactorFor — pur
   });
 });
 
-describe('V2WeatherMotion — cloud-form LIGHT palette stays warm, distinct sizing preserved', () => {
-  it('fog renders v2-fog-bank, overcast/partly_cloudy render v2-cloud-cluster (never v2-haze-band-*), with the same 5/6/4 layer-count relationship as dark', () => {
+describe('V2WeatherMotion — cloud-form LIGHT palette is neutral (not warm, not cold-blue), distinct sizing preserved', () => {
+  it('LIGHT fog renders dedicated horizontal mist banks (v2-light-mist-bank, 2026-07-24 device pass), NOT the FogBank cloud form; overcast/partly_cloudy still render v2-cloud-cluster (ACCEPTED, unchanged); never v2-haze-band-*', () => {
     const fogTree = render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition="fog" />).toJSON() as JsonNode;
     const overcastTree = render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition="overcast" />).toJSON() as JsonNode;
     const partlyCloudyTree = render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition="partly_cloudy" />).toJSON() as JsonNode;
 
-    expect(collectTestIDs(fogTree).filter((id) => id === 'v2-fog-bank').length).toBe(5);
-    expect(collectTestIDs(overcastTree).filter((id) => id === 'v2-cloud-cluster').length).toBe(6);
-    expect(collectTestIDs(partlyCloudyTree).filter((id) => id === 'v2-cloud-cluster').length).toBe(4);
+    expect(collectTestIDs(fogTree).filter((id) => id.startsWith('v2-light-mist-bank-')).length).toBe(3);
+    expect(collectTestIDs(fogTree)).not.toContain('v2-fog-bank'); // light fog no longer uses the feathered cloud form
+    expect(collectTestIDs(fogTree)).not.toContain('v2-cloud-cluster');
+    expect(collectTestIDs(overcastTree).filter((id) => id === 'v2-cloud-cluster').length).toBe(7); // accepted, unchanged
+    expect(collectTestIDs(partlyCloudyTree).filter((id) => id === 'v2-cloud-cluster').length).toBe(4); // accepted, unchanged
     for (const tree of [fogTree, overcastTree, partlyCloudyTree]) {
       expect(collectTestIDs(tree).some((id) => id.startsWith('v2-haze-band-'))).toBe(false);
     }
   });
 
-  it('the light cloud-form gradient colour is warm (R≥G≥B), never the cold dark MIST_BAND_RGB family', () => {
-    for (const condition of ['fog', 'overcast', 'partly_cloudy'] as const) {
+  it('the light cloud-CLUSTER gradient colour is NEUTRAL (near-grey, never a saturated cold blue), never the dark MIST_BAND_RGB family — overcast/partly_cloudy (fog no longer uses a gradient)', () => {
+    for (const condition of ['overcast', 'partly_cloudy'] as const) {
       const tree = render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition={condition} />).toJSON() as JsonNode;
       const gradients = collectRadialGradients(tree);
       expect(gradients.length).toBeGreaterThan(0);
       for (const grad of gradients) {
         const { r, g, b } = decodeARGB(grad.gradient[1]);
-        expect(r).toBeGreaterThanOrEqual(g);
-        expect(g).toBeGreaterThanOrEqual(b);
+        // Near-neutral: blue never leads R/G by a strong margin (rules out cold blue-grey).
+        expect(b - Math.max(r, g)).toBeLessThanOrEqual(12);
         // Rule out the cold dark family (96,104,124) leaking into light.
         expect([r, g, b]).not.toEqual([96, 104, 124]);
       }
@@ -1580,13 +1796,13 @@ describe('V2WeatherMotion — cloud forms do not affect Rainy/Drizzly or any oth
     }
   });
 
-  it('rain-family conditions in light are completely unaffected (WarmStreak still renders, no cloud-form testID)', () => {
+  it('rain-family conditions in light render their own streak layer, never a cloud-form testID', () => {
     for (const condition of ['drizzle', 'rain', 'showers', 'thunderstorm'] as const) {
       const tree = render(<V2WeatherMotion atmosphere="rain" mode="light" condition={condition} />).toJSON() as JsonNode;
       const testIDs = collectTestIDs(tree);
       expect(testIDs).not.toContain('v2-cloud-cluster');
       expect(testIDs).not.toContain('v2-fog-bank');
-      expect(testIDs.filter((id) => id === 'v2-warm-streak').length).toBeGreaterThan(0);
+      expect(testIDs.filter((id) => id === 'v2-light-rain-streak').length).toBeGreaterThan(0);
     }
   });
 
@@ -1630,5 +1846,204 @@ describe('V2WeatherMotion — reduced-motion / app-state parking still stops con
     reduceMotionSpy.mockResolvedValue(true);
     const rendered = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="rain" />);
     await waitFor(() => expect(rendered.toJSON()).toBeNull());
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// LIGHT WEATHER PARITY (2026-07-24) — snow visible on cream; thunderstorm
+// distinct from rain via a restrained, shared-clock, reduced-motion-respecting
+// lightning glow. DARK is unchanged (pinned throughout this file).
+// ═════════════════════════════════════════════════════════════════════════
+describe('V2WeatherMotion — LIGHT snow is visible on the cream base', () => {
+  it('renders off-white LightSnowflakes with restrained grey-blue edging (visible, not vanishing into cream)', () => {
+    const tree = render(<V2WeatherMotion atmosphere="snow" mode="light" condition="snow" />).toJSON() as JsonNode;
+    expect(collectTestIDs(tree).filter((id) => id === 'v2-light-snowflake').length).toBeGreaterThan(0);
+    const flake = findNodeByTestID(tree, 'v2-light-snowflake');
+    const style = flattenStyle(flake);
+    expect(style.backgroundColor).toBe('rgba(250,251,253,0.95)'); // off-white fill
+    expect(style.borderColor).toBe('rgba(150,170,195,0.55)'); // grey-blue edging
+    expect((style.borderWidth as number) ?? 0).toBeGreaterThan(0);
+  });
+
+  it('does NOT reuse the dark Snowflake colour and still keeps the warm base', () => {
+    const tree = render(<V2WeatherMotion atmosphere="snow" mode="light" condition="snow" />).toJSON() as JsonNode;
+    expect(collectBackgroundColors(tree)).not.toContain('rgba(235,242,252,0.9)'); // dark flake
+    expect(collectTestIDs(tree)).toContain('v2-sun-pulse-light'); // warm base persists
+  });
+
+  it('light snow is distinct from a clear/sunny light render (which has NO flakes)', () => {
+    const snow = render(<V2WeatherMotion atmosphere="snow" mode="light" condition="snow" />).toJSON() as JsonNode;
+    const clear = render(<V2WeatherMotion atmosphere="sunny" mode="light" condition="clear" />).toJSON() as JsonNode;
+    expect(collectTestIDs(snow).filter((id) => id === 'v2-light-snowflake').length).toBeGreaterThan(0);
+    expect(collectTestIDs(clear)).not.toContain('v2-light-snowflake');
+  });
+});
+
+describe('V2WeatherMotion — LIGHT thunderstorm is distinct from rain (restrained lightning glow)', () => {
+  it('thunderstorm renders a lightning glow that plain rain does NOT — over the same dense rain streak layer', () => {
+    const thunder = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="thunderstorm" />).toJSON() as JsonNode;
+    const rain = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="rain" />).toJSON() as JsonNode;
+    expect(collectTestIDs(thunder)).toContain('v2-lightning-glow');
+    expect(collectTestIDs(rain)).not.toContain('v2-lightning-glow');
+    expect(collectTestIDs(thunder).filter((id) => id === 'v2-light-rain-streak').length).toBeGreaterThan(0);
+  });
+
+  it('the lightning glow is RESTRAINED + broad (not a full-screen pure-white flash): a cool-white colour over a partial top region, opacity-driven', () => {
+    const tree = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="thunderstorm" />).toJSON() as JsonNode;
+    const glow = findNodeByTestID(tree, 'v2-lightning-glow');
+    expect(glow).not.toBeNull();
+    const style = flattenStyle(glow);
+    expect(style.backgroundColor).toBe('rgb(236,242,252)'); // cool-white, applied at low animated opacity
+    expect(typeof style.top).toBe('string');
+    expect(typeof style.height).toBe('string');
+    expect(style.height).not.toBe('100%'); // never the whole screen
+  });
+
+  it('the lightning glow uses the shared wall-clock useLoop (no per-instance reseed): two independent mounts render identical trees', () => {
+    const a = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="thunderstorm" />).toJSON() as JsonNode;
+    const b = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="thunderstorm" />).toJSON() as JsonNode;
+    expect(collectTestIDs(a)).toEqual(collectTestIDs(b));
+    expect(collectBackgroundColors(a)).toEqual(collectBackgroundColors(b));
+  });
+
+  it('the lightning glow (and all thunderstorm motion) stops under reduced-motion (shared guard → null)', async () => {
+    reduceMotionSpy.mockResolvedValue(true);
+    const rendered = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="thunderstorm" />);
+    await waitFor(() => expect(rendered.toJSON()).toBeNull());
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// LIGHT visual TUNING PASS (2026-07-24) — Foggy / Drizzly / Rainy only.
+// Mainly clear / Partly cloudy / Overcast were accepted on device and must be
+// unchanged; Dark is unchanged (pinned throughout this file).
+// ═════════════════════════════════════════════════════════════════════════
+describe('V2WeatherMotion — LIGHT fog: dedicated multi-depth mist banks', () => {
+  const fogTree = () => render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition="fog" />).toJSON() as JsonNode;
+
+  it('renders MULTIPLE (2–3) dedicated mist-bank layers, each a distinct indexed testID (not one repeated element)', () => {
+    const banks = collectTestIDs(fogTree()).filter((id) => id.startsWith('v2-light-mist-bank-'));
+    expect(banks.length).toBeGreaterThanOrEqual(2);
+    expect(banks.length).toBeLessThanOrEqual(3);
+    expect(new Set(banks).size).toBe(banks.length); // each layer distinct
+  });
+
+  it('the mist banks sit at DISTINCT depths (different top %) and are horizontal full-bleed bands', () => {
+    const tops = new Set<string>();
+    (function walk(node: JsonNode) {
+      if (!node) return;
+      if (typeof node.props?.testID === 'string' && (node.props.testID as string).startsWith('v2-light-mist-bank-')) {
+        const style = flattenStyle(node);
+        expect(style.top).toBeDefined();
+        tops.add(String(style.top));
+        expect(style.width).toBe('140%'); // full-bleed horizontal band
+      }
+      for (const child of node.children ?? []) walk(child);
+    })(fogTree());
+    expect(tops.size).toBeGreaterThanOrEqual(2); // at least two different depths
+  });
+
+  it('uses cool pearl / blue-grey translucent tones (blue-leaning but never a saturated cold blue), keeping the sandy base visible (0.1 < alpha < 0.3)', () => {
+    const colors = collectBackgroundColors(fogTree()).filter(
+      (c) => c.startsWith('rgba(190,202,218,') || c.startsWith('rgba(176,190,208,') || c.startsWith('rgba(198,208,220,'),
+    );
+    expect(colors.length).toBeGreaterThanOrEqual(2);
+    for (const c of colors) {
+      const m = c.match(/rgba\((\d+),(\d+),(\d+),([\d.]+)\)/)!;
+      const [r, g, b, a] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+      expect(b).toBeGreaterThanOrEqual(r); // cool (blue-leaning)
+      expect(b - Math.max(r, g)).toBeLessThanOrEqual(40); // but never a saturated cold blue
+      expect(a).toBeLessThan(0.3); // translucent — sandy base shows through
+      expect(a).toBeGreaterThan(0.1); // but clearly visible, not cream-on-cream
+    }
+  });
+
+  it('DARK fog is UNCHANGED — still the FogBank cloud form (5 banks), never the light mist-bank layer', () => {
+    const testIDs = collectTestIDs(render(<V2WeatherMotion atmosphere="cloudy" mode="dark" condition="fog" />).toJSON() as JsonNode);
+    expect(testIDs.filter((id) => id === 'v2-fog-bank').length).toBe(5);
+    expect(testIDs.some((id) => id.startsWith('v2-light-mist-bank-'))).toBe(false);
+  });
+});
+
+describe('V2WeatherMotion — LIGHT drizzle vs rain (tuning pass): drizzle visible but clearly weaker than rain', () => {
+  const countStreaks = (n: JsonNode) => collectTestIDs(n).filter((id) => id === 'v2-light-rain-streak').length;
+
+  it('drizzle is NOT effectively invisible — several streaks + opacity above a visibility floor', () => {
+    const drizzle = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="drizzle" />).toJSON() as JsonNode;
+    expect(countStreaks(drizzle)).toBeGreaterThanOrEqual(6);
+    expect(lightRainStreakPlanFor('drizzle').params.opacityBase).toBeGreaterThanOrEqual(0.1);
+  });
+
+  it('drizzle stays lighter than rain on every axis: fewer streaks, fainter, thinner, shorter, slower', () => {
+    const drizzle = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="drizzle" />).toJSON() as JsonNode;
+    const rain = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="rain" />).toJSON() as JsonNode;
+    expect(countStreaks(drizzle)).toBeLessThan(countStreaks(rain));
+    const d = lightRainStreakPlanFor('drizzle').params;
+    const r = lightRainStreakPlanFor('rain').params;
+    expect(d.opacityBase).toBeLessThan(r.opacityBase);
+    expect(d.widthBase).toBeLessThan(r.widthBase);
+    expect(d.heightBase + d.heightVar).toBeLessThan(r.heightBase + r.heightVar); // shorter max length
+    expect(d.durationBaseMs).toBeGreaterThan(r.durationBaseMs); // slower fall
+  });
+
+  it('the density increase is real (drizzle 8 < rain 11); Showers is restored to its pre-task value (10) and left out of scope', () => {
+    expect(lightRainStreakPlanFor('drizzle').nodes.length).toBe(8);
+    expect(lightRainStreakPlanFor('rain').nodes.length).toBe(11);
+    expect(lightRainStreakPlanFor('drizzle').nodes.length).toBeLessThan(lightRainStreakPlanFor('rain').nodes.length);
+    // Showers is intentionally NOT tuned by this pass — restored to pre-task 10.
+    expect(lightRainStreakPlanFor('showers').nodes.length).toBe(10);
+  });
+});
+
+describe('V2WeatherMotion — LIGHT rain (tuning pass): varied streaks, not one uniform treatment', () => {
+  /** Collects every v2-light-rain-streak node's rendered height + backgroundColor alpha. */
+  function streakHeightsAndAlphas(tree: JsonNode): { heights: number[]; alphas: number[] } {
+    const heights: number[] = [];
+    const alphas: number[] = [];
+    (function walk(node: JsonNode) {
+      if (!node) return;
+      if (node.props?.testID === 'v2-light-rain-streak') {
+        const style = flattenStyle(node);
+        if (typeof style.height === 'number') heights.push(style.height);
+        const m = String(style.backgroundColor ?? '').match(/,([\d.]+)\)$/);
+        if (m) alphas.push(Number(m[1]));
+      }
+      for (const child of node.children ?? []) walk(child);
+    })(tree);
+    return { heights, alphas };
+  }
+
+  it('rain streaks use VARIED lengths (a mix, not one uniform length) and are not full-screen lines', () => {
+    const { heights } = streakHeightsAndAlphas(render(<V2WeatherMotion atmosphere="rain" mode="light" condition="rain" />).toJSON() as JsonNode);
+    expect(heights.length).toBeGreaterThanOrEqual(8);
+    expect(new Set(heights).size).toBeGreaterThanOrEqual(4); // several distinct lengths
+    expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(30); // meaningful short↔medium spread
+    expect(Math.max(...heights)).toBeLessThan(140); // never a near-full-screen line
+  });
+
+  it('rain streaks use VARIED opacities, not one uniform alpha', () => {
+    const { alphas } = streakHeightsAndAlphas(render(<V2WeatherMotion atmosphere="rain" mode="light" condition="rain" />).toJSON() as JsonNode);
+    expect(new Set(alphas.map((a) => a.toFixed(3))).size).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('V2WeatherMotion — LIGHT tuning pass leaves the ACCEPTED treatments untouched', () => {
+  it('Clear/sunny light is unchanged: warm haze + gold dust, no weather layer', () => {
+    const testIDs = collectTestIDs(render(<V2WeatherMotion atmosphere="sunny" mode="light" condition="clear" />).toJSON() as JsonNode);
+    expect(testIDs.filter((id) => id.startsWith('v2-haze-band-')).length).toBeGreaterThanOrEqual(2);
+    expect(testIDs).not.toContain('v2-light-rain-streak');
+    expect(testIDs.some((id) => id.startsWith('v2-light-mist-bank-'))).toBe(false);
+    expect(testIDs).not.toContain('v2-light-snowflake');
+  });
+
+  it('Partly cloudy + Overcast LIGHT params are UNCHANGED (accepted): tints, opacities and counts pinned', () => {
+    const partly = softCloudParamsFor('partly_cloudy', 'light');
+    const overcast = softCloudParamsFor('overcast', 'light');
+    expect(partly.rgb).toBe('196,192,188');
+    expect(partly.opacityBase).toBeCloseTo(0.19, 10);
+    expect(overcast.rgb).toBe('172,174,178');
+    expect(overcast.opacityBase).toBeCloseTo(0.23, 10);
+    expect(softCloudNodesFor('partly_cloudy').length).toBe(4);
+    expect(softCloudNodesFor('overcast').length).toBe(7);
   });
 });
