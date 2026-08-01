@@ -932,7 +932,12 @@ function createStyles(T: ThemeTokens) {
   },
   statTile: {
     flex: 1,
-    backgroundColor: T.bg,
+    // Island card on top of the translucent sheet. Dark keeps the existing
+    // opaque T.bg fill (byte-identical); light swaps to the same translucent
+    // warm-white fill GlassSurface's light branch uses (components/ui/
+    // GlassSurface.tsx FILL.light), so it reads as a soft card floating on
+    // the warm atmosphere instead of a cold opaque grey island.
+    backgroundColor: isDark ? T.bg : 'rgba(255,255,255,0.72)',
     borderRadius: 13,
     borderWidth: 1,
     borderColor: T.separator,
@@ -956,7 +961,8 @@ function createStyles(T: ThemeTokens) {
 
   // ── Info rows card (jsx) ──
   infoCard: {
-    backgroundColor: T.bg,
+    // See statTile above — same mode-aware island-card fill.
+    backgroundColor: isDark ? T.bg : 'rgba(255,255,255,0.72)',
     marginTop: 16,
     marginHorizontal: 16,
     borderRadius: 14,
@@ -1021,7 +1027,8 @@ function createStyles(T: ThemeTokens) {
     gap: 8,
   },
   facilityPill: {
-    backgroundColor: T.bg,
+    // See statTile above — same mode-aware island-card fill.
+    backgroundColor: isDark ? T.bg : 'rgba(255,255,255,0.72)',
     borderWidth: 1,
     borderColor: T.separator,
     borderRadius: BorderRadius.pill,
@@ -1040,12 +1047,15 @@ function createStyles(T: ThemeTokens) {
     height: 76,
     borderRadius: 10,
     overflow: 'hidden',
-    backgroundColor: T.bg,
+    // See statTile above — same mode-aware island-card fill (visible only as
+    // the placeholder colour behind a loading/broken photo).
+    backgroundColor: isDark ? T.bg : 'rgba(255,255,255,0.72)',
   },
 
   // Opening hours
   hoursCard: {
-    backgroundColor: T.bg,
+    // See statTile above — same mode-aware island-card fill.
+    backgroundColor: isDark ? T.bg : 'rgba(255,255,255,0.72)',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: T.separator,

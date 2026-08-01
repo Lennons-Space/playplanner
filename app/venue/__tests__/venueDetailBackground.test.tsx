@@ -20,6 +20,7 @@ import { render } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import VenueDetailScreen from '../[id]';
+import { useThemeStore } from '@/store/themeStore';
 import type { Venue } from '@/types';
 
 // ── expo / RN shims ─────────────────────────────────────────────────────────
@@ -202,6 +203,11 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUseVenue.mockReturnValue({ data: venueFixture, isLoading: false, error: null });
   mockUseWeather.mockReturnValue(null);
+  // jest.setup.js's global useColorScheme mock defaults to 'dark', and every
+  // existing test in this file relies on that implicit default — reset the
+  // theme store explicitly each run so the new light-mode tests below
+  // (which set 'light') can never leak into a later 'dark'-assuming test.
+  useThemeStore.setState({ preference: 'system', hasHydrated: true });
 });
 
 describe('Venue Detail — shared v2 background', () => {
@@ -255,5 +261,48 @@ describe('Venue Detail — error state shares the v2 background', () => {
     const { getByText } = render(<VenueDetailScreen />, { wrapper: makeWrapper() });
     expect(getByText('Could not load venue. Check your connection.')).toBeTruthy();
     expect(getByText('Go back')).toBeTruthy();
+  });
+});
+
+// ── statTile / infoCard "island card" mode-aware fill (Phase 2 light-theme
+// fix) ───────────────────────────────────────────────────────────────────
+// Regression guard for the second Phase 2 defect: statTile/infoCard/
+// hoursCard/facilityPill/railPhoto used an opaque `T.bg` fill, which in dark
+// mode (#0C0C11) reads as an intentional near-black island but in light mode
+// (#F1F0F4) painted a cold grey block on top of the warm translucent sheet.
+// Only statTile and infoCard render unconditionally for this fixture
+// (facilityPill/railPhoto/hoursCard need non-empty facilities/photos/
+// opening_hours, out of scope for this background-only suite) — they share
+// the exact same `isDark ? T.bg : 'rgba(255,255,255,0.72)'` ternary in
+// app/venue/[id].tsx's createStyles, verified by direct source read.
+const isStatTileStyle = (style: Record<string, unknown>) =>
+  style.borderRadius === 13 && style.paddingVertical === 11 && style.alignItems === 'center';
+const isInfoCardStyle = (style: Record<string, unknown>) =>
+  style.borderRadius === 14 && style.marginHorizontal === 16 && style.overflow === 'hidden';
+
+describe('Venue Detail — island cards (statTile/infoCard) mode-aware fill', () => {
+  it('LIGHT mode: statTile and infoCard use the translucent warm-white fill, not opaque cold grey', () => {
+    useThemeStore.setState({ preference: 'light', hasHydrated: true });
+    const tree = render(<VenueDetailScreen />, { wrapper: makeWrapper() }).toJSON();
+    const statTile = findStyleByShape(tree, isStatTileStyle);
+    const infoCard = findStyleByShape(tree, isInfoCardStyle);
+    expect(statTile).not.toBeNull();
+    expect(infoCard).not.toBeNull();
+    expect(statTile!.backgroundColor).toBe('rgba(255,255,255,0.72)');
+    expect(infoCard!.backgroundColor).toBe('rgba(255,255,255,0.72)');
+    // Never the old opaque light T.bg (#F1F0F4) — that was the bug.
+    expect(statTile!.backgroundColor).not.toBe('#F1F0F4');
+    expect(infoCard!.backgroundColor).not.toBe('#F1F0F4');
+  });
+
+  it('DARK mode: statTile and infoCard stay byte-identical to the pre-fix opaque T.bg (#0C0C11)', () => {
+    useThemeStore.setState({ preference: 'dark', hasHydrated: true });
+    const tree = render(<VenueDetailScreen />, { wrapper: makeWrapper() }).toJSON();
+    const statTile = findStyleByShape(tree, isStatTileStyle);
+    const infoCard = findStyleByShape(tree, isInfoCardStyle);
+    expect(statTile).not.toBeNull();
+    expect(infoCard).not.toBeNull();
+    expect(statTile!.backgroundColor).toBe('#0C0C11');
+    expect(infoCard!.backgroundColor).toBe('#0C0C11');
   });
 });
