@@ -72,6 +72,7 @@ import { LocationConsentPrompt } from '@/components/consent';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import FilterSheet from '@/components/filters/FilterSheet';
 import { Icon } from '@/components/ui';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { FALLBACK_LOCATION } from '@/constants/location';
@@ -1080,24 +1081,20 @@ function MapScreen({
         shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8,
         shadowOffset: { width: 0, height: 2 }, elevation: 6,
       }}>
-        <TouchableOpacity
-          style={[pillStyles.tab, viewMode === 'map' && pillStyles.tabActive]}
+        <GlassButton
+          active={viewMode === 'map'}
           onPress={() => onViewModeChange('map')}
-          accessibilityRole="button"
           accessibilityLabel="Map view"
-          accessibilityState={{ selected: viewMode === 'map' }}
-        >
-          <Text style={viewMode === 'map' ? pillStyles.labelActive : [pillStyles.labelInactive, { color: T.label3 }]}>Map</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[pillStyles.tab, viewMode === 'list' && pillStyles.tabActive]}
+          label="Map"
+          style={pillStyles.segment}
+        />
+        <GlassButton
+          active={viewMode === 'list'}
           onPress={() => onViewModeChange('list')}
-          accessibilityRole="button"
           accessibilityLabel="List view"
-          accessibilityState={{ selected: viewMode === 'list' }}
-        >
-          <Text style={viewMode === 'list' ? pillStyles.labelActive : [pillStyles.labelInactive, { color: T.label3 }]}>List</Text>
-        </TouchableOpacity>
+          label="List"
+          style={pillStyles.segment}
+        />
       </View>
     </View>
   );
@@ -1130,15 +1127,24 @@ function MapScreen({
       contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 8, gap: 8, alignItems: 'center' }}
       style={{ flexShrink: 0 }}
     >
-      {/* "All" chip */}
-      <DarkChip
+      {/* "All" chip — Phase 3: this one specific chip uses the fixed Ocean
+          accent (not an arbitrary per-category hex), so it maps cleanly onto
+          GlassButton's active/primary model. The per-category chips below
+          stay on DarkChip: GlassButton only resolves 'primary' (Ocean) or
+          'destructive' (coral) tints, and deliberately has no raw-colour
+          escape hatch, so it cannot reproduce each category's own colour
+          (cat.color) without inventing an out-of-spec prop. Converting them
+          would either lose that per-category colour distinction or require
+          exactly the kind of colour-override hole this component is built
+          to prevent — flagged in the Phase 3 report rather than silently
+          done. */}
+      <GlassButton
         active={selectedCategoryId === null}
-        color={ACCENT}
         onPress={() => setSelectedCategoryId(null)}
         accessibilityLabel="All categories"
-      >
-        All
-      </DarkChip>
+        label="All"
+        style={pillStyles.categoryChip}
+      />
 
       {availableCategories.map((cat) => {
         const active = selectedCategoryId === cat.id;
@@ -1594,20 +1600,20 @@ function MapScreen({
                       <Icon name="close" size={12} color={T.label3} />
                     </Pressable>
                   </View>
-                  <Pressable
-                    style={{
-                      backgroundColor: ACCENT, borderRadius: 14,
-                      paddingVertical: 13, alignItems: 'center',
-                    }}
-                    android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
+                  <GlassButton
                     onPress={() => router.push(`/venue/${selectedVenue.id}`)}
-                    accessibilityRole="button"
                     accessibilityLabel={`View ${selectedVenue.name}`}
+                    style={{ borderRadius: 14, paddingVertical: 13 }}
                   >
-                    <Text style={{ fontFamily: FontFamily.caption, fontSize: 15, color: '#FFFFFF', letterSpacing: -0.1 }}>
+                    {/* Custom children (not the `label` prop) so the CTA keeps its
+                        exact caption-weight typography/letter-spacing; colour still
+                        comes from the same Ocean-accent-on-tint resolution GlassButton
+                        itself would use (matches its ACCENT_HEX exactly), not a raw
+                        white — a low-alpha tint can't host white text at contrast. */}
+                    <Text style={{ fontFamily: FontFamily.caption, fontSize: 15, color: ACCENT, letterSpacing: -0.1 }}>
                       View venue →
                     </Text>
-                  </Pressable>
+                  </GlassButton>
                 </View>
               );
             })()}
@@ -1646,14 +1652,16 @@ function MapScreen({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 6, gap: 8 }}
             >
-              <DarkChip
+              {/* "All" chip — see the categoryChipRow copy of this same chip
+                  above for why only this fixed-Ocean-accent instance is a
+                  GlassButton while the per-category chips below stay DarkChip. */}
+              <GlassButton
                 active={selectedCategoryId === null}
-                color={ACCENT}
                 onPress={() => setSelectedCategoryId(null)}
                 accessibilityLabel="All categories"
-              >
-                All
-              </DarkChip>
+                label="All"
+                style={pillStyles.categoryChip}
+              />
               {availableCategories.map((cat) => {
                 const active = selectedCategoryId === cat.id;
                 return (
@@ -1772,13 +1780,24 @@ function MapScreen({
 }
 
 // ─── Pill styles ───────────────────────────────────────────────────────────
+// Phase 3 (glass button system): the Map/List segments are now <GlassButton
+// active={...}/> — colour/border/text all come from its variant+active
+// resolution, so only the horizontal layout survives here. Note: the
+// original hand-rolled pill was ~34px tall (paddingVertical 8 + a 15px
+// label), below the 44dp touch-target minimum — GlassButton's default
+// preset enforces minHeight 44, so this segment is now slightly taller.
+// That is the accessibility floor doing its job, not a mismatch.
 const pillStyles = StyleSheet.create({
-  // jsx: '8px 34px' active pill on the surface track.
-  tab:           { paddingHorizontal: 28, paddingVertical: 8, borderRadius: 999 },
-  tabActive:     { backgroundColor: ACCENT },
-  labelActive:   { fontFamily: FontFamily.bodyStrong, fontSize: 15, color: '#fff' },
-  // color: mode-aware, applied inline where used (T.label3).
-  labelInactive: { fontFamily: FontFamily.body, fontSize: 15 },
+  segment: { paddingHorizontal: 28, borderRadius: 999 },
+  // Matches DarkChip's own paddingHorizontal/paddingVertical/borderRadius so
+  // the "All" GlassButton sits flush with its per-category DarkChip siblings
+  // in the same horizontal row. minHeight/minWidth explicitly zeroed out to
+  // cancel GlassButton's 44dp default preset — DarkChip itself is ~32px tall
+  // (paddingVertical 7 + a 13px label), and this chip must match that exact
+  // height or it visibly stands taller than every chip beside it. Flagged in
+  // the Phase 3 report as a pre-existing sub-44dp site, pixel-matched
+  // on purpose rather than silently grown.
+  categoryChip: { paddingHorizontal: 13, paddingVertical: 7, borderRadius: 999, minHeight: 0, minWidth: 0 },
 });
 
 // ─── MapWithLocation ───────────────────────────────────────────────────────
