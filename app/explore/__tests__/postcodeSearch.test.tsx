@@ -170,6 +170,18 @@ jest.mock('@/store/mapStore', () => ({
   })),
 }));
 
+// MapScreen (rendered via ExploreScreen below) calls useWeather() directly.
+// Without this mock every render fires a REAL fetch to api.open-meteo.com;
+// useWeather's own 5s AbortController + retry:1 means the app-level code
+// always resolves to null and every test here still passes, but the
+// underlying TLS socket Node opened for that real connection attempt isn't
+// reliably torn down by the abort in this sandboxed environment — Jest
+// reports it as a leaked TLSWRAP handle and hangs well past test completion.
+// Same mock shape as map.test.tsx / map.v2.test.tsx.
+jest.mock('@/hooks/useWeather', () => ({
+  useWeather: jest.fn(() => null),
+}));
+
 // ─── Typed helper ─────────────────────────────────────────────────────────────
 const mockInvoke = supabase.functions.invoke as jest.MockedFunction<typeof supabase.functions.invoke>;
 

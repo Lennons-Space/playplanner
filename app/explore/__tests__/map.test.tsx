@@ -189,6 +189,22 @@ jest.mock('@/store/mapStore', () => ({
   })),
 }));
 
+// MapScreen calls useWeather(mapCenter.latitude, mapCenter.longitude) directly
+// (feeds the weatherBadge/weather-sort logic — untested in this file, which
+// covers consent/toggle/list-navigation instead). Without this mock every
+// render fires a REAL fetch to api.open-meteo.com via React Query; the
+// app-level code handles the resulting timeout/failure gracefully (useWeather
+// has its own 5s AbortController + retry:1, so it always resolves to null and
+// every test here still passes), but the underlying TLS socket Node opened
+// for that real connection attempt is not reliably torn down by the abort in
+// this sandboxed test environment (no real route to the host) — Jest reports
+// it as a leaked TLSWRAP open handle and hangs (well past test completion,
+// bound only by the OS's own TCP connect timeout) instead of exiting. Same
+// mock shape as map.v2.test.tsx's mockUseWeather.
+jest.mock('@/hooks/useWeather', () => ({
+  useWeather: jest.fn(() => null),
+}));
+
 // ─── Typed mock helpers ──────────────────────────────────────────────────────
 const mockGetItemAsync = SecureStore.getItemAsync as jest.MockedFunction<
   typeof SecureStore.getItemAsync
