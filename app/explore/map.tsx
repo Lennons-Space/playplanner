@@ -1866,10 +1866,18 @@ export default function ExploreScreen() {
   const handleFilterSheetClose = useCallback(() => setFilterSheetVisible(false), []);
   const handleViewModeChange   = useCallback((mode: 'map' | 'list') => setViewMode(mode), []);
 
-  // State 1: still reading SecureStore — render nothing to avoid consent prompt flash.
-  // Mode-matched base so there is no flash of the wrong-mode colour underneath
-  // ThemedBackground once it mounts.
-  if (status === 'checking') return <View style={{ flex: 1, backgroundColor: T.bg }} />;
+  // State 1: still reading SecureStore — render the shared atmosphere over a
+  // transparent root (same idiom as app/explore/results.tsx's checking state)
+  // rather than a flat T.bg fill, which in light mode flashed a cool grey
+  // frame against the warm cream atmosphere before ThemedBackground mounted.
+  if (status === 'checking') {
+    return (
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+        <ThemedBackground />
+        <StatusBar style={statusBarStyle} />
+      </View>
+    );
+  }
 
   // State 2: consent not yet given — show the plain-English prompt first,
   // over the shared v2 atmosphere. Copy, actions, and consent semantics are

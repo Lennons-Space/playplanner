@@ -30,6 +30,7 @@ import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import { computeIsOpenNow, getOpenUntilLabel } from '@/lib/venueAttributes';
 import { getCollection, type CollectionDef } from '@/lib/collections';
 import { Icon, VenueCard, VenueRowSkeleton } from '@/components/ui';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { ExploreCard } from '@/components/home/ExploreCard';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { DEFAULT_FILTERS } from '@/types';
@@ -311,7 +312,8 @@ export default function CollectionScreen() {
   // Unknown collection key → defensive guard (not a placeholder collection page).
   if (!def) {
     return (
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+        <ThemedBackground />
         <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
           <CollectionHeader />
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
@@ -328,11 +330,16 @@ export default function CollectionScreen() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
-      {/* Weather background lives once, globally, in app/(tabs)/_layout — but the
-          collection page is a stack route outside (tabs), so it sits on the warm
-          app background; the hero gradient carries the colour. */}
-      <SafeAreaView style={{ flex: 1, backgroundColor: tokens.bg }} edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+      {/* Shared v2 atmosphere — same per-screen mount-point pattern as every
+          other screen (Home/Map/Saved/Profile/Discover tab/Search/Results):
+          ThemedBackground is the first child behind a transparent root, and
+          resolves its own light/dark weather timing from the shared
+          wall-clock source. There is no shared background in
+          app/(tabs)/_layout (removed in the v2 dark restyle) — this stack
+          route, like every tab screen, owns its own atmosphere the same way. */}
+      <ThemedBackground />
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 36 }}>
           <CollectionHeader />
           <CollectionHero def={def} />

@@ -289,23 +289,35 @@ function makeWrapper() {
  * consent — SecureStore returns '1' and the map shows immediately.
  */
 async function renderAndWaitForConsent(options: { consentStored?: boolean } = {}) {
+  // Persistent (not `...Once`) on purpose: the consent-'checking' state now
+  // mounts <ThemedBackground/> whose useResolvedWeather reads the SAME
+  // SecureStore consent key (hooks/useResolvedWeather.ts) — so there are TWO
+  // legitimate readers per render. A one-shot mock let whichever consumer ran
+  // first steal the value and left useLocationConsent seeing the default null.
+  // A stable value is also the faithful model: SecureStore returns the same
+  // stored value to every reader.
   if (options.consentStored) {
-    mockGetItemAsync.mockResolvedValueOnce('1');
+    mockGetItemAsync.mockResolvedValue('1');
   } else {
     // Explicit null ensures the consent prompt is shown (default mock returns null,
     // but we set it explicitly here to document intent).
-    mockGetItemAsync.mockResolvedValueOnce(null);
+    mockGetItemAsync.mockResolvedValue(null);
   }
 
   const utils = render(<ExploreScreen />, { wrapper: makeWrapper() });
 
-  // Wait for the useEffect's SecureStore.getItemAsync call to resolve, which
-  // sets consentChecked=true and moves the component out of the blank loading state.
+  // Wait for the useEffect's SecureStore.getItemAsync call to resolve and the
+  // component to leave the 'checking' state. Assert on the REAL post-checking
+  // UI (map in state 3, consent prompt in state 2) — the old
+  // `toJSON() !== null` check became vacuous once the checking state started
+  // rendering the shared atmosphere (it's a non-null tree too), and only ever
+  // advanced past 'checking' by microtask-timing luck.
   await waitFor(() => {
-    // In state 2 (no stored consent) we expect the consent prompt.
-    // In state 3 (stored consent) we expect the toggle pill.
-    // Either way the component has advanced past the loading blank.
-    expect(utils.toJSON()).not.toBeNull();
+    if (options.consentStored) {
+      expect(utils.getByLabelText('Map view')).toBeTruthy();
+    } else {
+      expect(utils.getByText('Find venues near you?')).toBeTruthy();
+    }
   });
 
   return utils;

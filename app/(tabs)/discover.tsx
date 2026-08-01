@@ -29,6 +29,7 @@ import { router } from 'expo-router';
 import { FontFamily } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { Icon } from '@/components/ui';
+import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { CollectionCard, type CollectionCardLayout } from '@/components/discover/CollectionCard';
 import { DISCOVER_COLLECTIONS, COLLECTIONS, getSeasonalCollection } from '@/lib/collections';
 
@@ -75,15 +76,16 @@ export default function DiscoverScreen() {
   const seasonal = useMemo(() => getSeasonalCollection(), []);
 
   return (
-    <View style={{ flex: 1 }}>
-      {/* Opaque tokens.bg (not 'transparent'): useAppTheme() now defaults to
-          dark (Play Planner v2), so this screen's text tokens (tokens.label /
-          label2 / label3) render near-white. The shared WeatherBackground in
-          app/(tabs)/_layout stays on its calm light 'ambient' default (Search /
-          Favourites / Profile still need it light) — so this screen can no
-          longer rely on that shared wash for contrast and must own its
-          background, exactly like app/discover/[collection].tsx already does. */}
-      <SafeAreaView style={{ flex: 1, backgroundColor: tokens.bg }} edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+      {/* Shared v2 atmosphere — the same mount-point pattern every other tab
+          screen uses (Home/Map/Saved/Profile/Search): ThemedBackground is the
+          first child behind a transparent root, and resolves its own
+          light/dark weather timing from the shared wall-clock source. There
+          is no shared background left in app/(tabs)/_layout (removed in the
+          v2 dark restyle) — every screen, including this one, owns its own
+          atmosphere the same way. */}
+      <ThemedBackground />
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 48 }}>
           {/* ── Header: title + small search icon (top-right) ───────── */}
           <View
