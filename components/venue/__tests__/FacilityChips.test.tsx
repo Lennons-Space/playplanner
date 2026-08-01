@@ -75,7 +75,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mutateMock = jest.fn();
   mockUseUser.mockReturnValue({ id: 'user-1' } as any);
-  mockUseCast.mockReturnValue({ mutate: mutateMock } as any);
+  mockUseCast.mockReturnValue({ mutate: mutateMock, isPending: false } as any);
   mockUseStats.mockReturnValue({ data: statsMap() } as any);
 });
 
@@ -194,6 +194,40 @@ describe('tapping a chip', () => {
     options.onError(new Error('network blip'));
 
     expect(mockRouterPush).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// Duplicate-tap prevention
+// ============================================================================
+
+describe('duplicate-tap prevention', () => {
+  it('disables every chip while a vote is in flight (castVote.isPending)', () => {
+    mockUseCast.mockReturnValue({ mutate: mutateMock, isPending: true } as any);
+    render(<FacilityChips venueId={VENUE_ID} />);
+
+    for (const label of [/Toilets\./i, /Baby change\./i, /Parking\./i]) {
+      expect(screen.getByLabelText(label).props.accessibilityState?.disabled).toBe(true);
+    }
+  });
+
+  it('does not fire a second mutation from a tap while the first is still pending', () => {
+    mockUseCast.mockReturnValue({ mutate: mutateMock, isPending: true } as any);
+    render(<FacilityChips venueId={VENUE_ID} />);
+
+    fireEvent.press(screen.getByLabelText(/Toilets\./i));
+
+    expect(mutateMock).not.toHaveBeenCalled();
+  });
+
+  it('re-enables chips and accepts taps again once isPending returns to false', () => {
+    mockUseCast.mockReturnValue({ mutate: mutateMock, isPending: false } as any);
+    render(<FacilityChips venueId={VENUE_ID} />);
+
+    fireEvent.press(screen.getByLabelText(/Toilets\./i));
+
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText(/Toilets\./i).props.accessibilityState?.disabled).not.toBe(true);
   });
 });
 

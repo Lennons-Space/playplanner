@@ -156,6 +156,20 @@ function LoadingSkeleton() {
   );
 }
 
+// The sticky bottom bar's content is fixed (paddingTop 18 + one row of
+// 15pt-padded buttons around ~16-20pt text + its own 14px fixed bottom
+// padding, ~82px) plus a generous buffer for larger accessibility font
+// scales. This is a STATIC constant, not measured via onLayout — an
+// earlier version measured the bar's real height after mount and fed it
+// into the ScrollView's paddingBottom, but that async measure-then-update
+// round trip is exactly the kind of race that only shows up on some real
+// devices (Android in particular can skip re-applying a ScrollView's
+// contentContainerStyle padding change without an explicit re-layout),
+// which is what caused the sticky bar to overlap page content (Phase 8
+// visual-defect report). A fixed, comfortably-generous constant has no
+// such race.
+const BOTTOM_BAR_RESERVED_SPACE = 110;
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function VenueDetailScreen() {
   const { tokens: T, mode } = useAppTheme();
@@ -194,12 +208,6 @@ export default function VenueDetailScreen() {
   // image_url still falls back to CategoryPlaceholder.
   const [coverPhotoError, setCoverPhotoError] = useState(false);
   const [wikimediaImgError, setWikimediaImgError] = useState(false);
-  // Measured height of the sticky bottom bar (Directions + Plan a visit),
-  // fed into the ScrollView's bottom padding so the last content (e.g.
-  // "Report an issue" / ODbL attribution) always scrolls fully clear of it.
-  // 0 until the bar's first onLayout fires; a safe-area-aware fallback is
-  // used for that brief window (never a bare constant — see Blocker 1).
-  const [bottomBarHeight, setBottomBarHeight] = useState(0);
   // useVenue already fetches and filters approved photos in its join — no second query needed.
   const photos = venue?.photos ?? [];
 
@@ -403,12 +411,9 @@ export default function VenueDetailScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           // Clears the sticky Directions/Plan-a-visit bar on every device.
-          // Before the bar's first onLayout, fall back to a safe-area-aware
-          // estimate (never a bare constant, since Android nav-bar insets vary).
-          paddingBottom:
-            bottomBarHeight > 0
-              ? bottomBarHeight + insets.bottom + 24
-              : 120 + insets.bottom,
+          // Static (BOTTOM_BAR_RESERVED_SPACE + insets.bottom), not measured
+          // via onLayout — see that constant's doc comment for why.
+          paddingBottom: BOTTOM_BAR_RESERVED_SPACE + insets.bottom,
         }}
       >
 
@@ -744,10 +749,7 @@ export default function VenueDetailScreen() {
       </View>
 
       {/* ── Sticky bottom bar (jsx CTA row: Directions + Plan a visit) ──── */}
-      <View
-        style={[styles.bottomBar, { paddingBottom: insets.bottom + 14 }]}
-        onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
-      >
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 14 }]}>
         {/* Fade so the bar lifts off the scrolling content beneath. */}
         <LinearGradient
           colors={['rgba(12,12,17,0)', T.bg]}

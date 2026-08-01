@@ -90,6 +90,7 @@ export function FacilityChips({ venueId }: FacilityChipsProps) {
             def={def}
             stat={stats?.[def.slug]}
             isSignedIn={!!user}
+            disabled={castVote.isPending}
             onPress={() => handlePress(def.slug)}
           />
         ))}
@@ -104,10 +105,11 @@ interface FacilityChipProps {
   def: ChipDef;
   stat: FacilityStat | undefined;
   isSignedIn: boolean;
+  disabled: boolean;
   onPress: () => void;
 }
 
-function FacilityChip({ def, stat, onPress }: FacilityChipProps) {
+function FacilityChip({ def, stat, disabled, onPress }: FacilityChipProps) {
   const { tokens: T } = useAppTheme();
   const total = stat?.total ?? 0;
   const present = stat?.present ?? null;
@@ -170,6 +172,7 @@ function FacilityChip({ def, stat, onPress }: FacilityChipProps) {
     // feedback comes from android_ripple instead of the old opacity style.
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={`${def.label}. ${stateLabel}`}
       accessibilityHint="Confirms whether this facility is available at this venue"
@@ -177,6 +180,7 @@ function FacilityChip({ def, stat, onPress }: FacilityChipProps) {
       style={[
         styles.chip,
         filled ? styles.chipFilled : [styles.chipOutline, { backgroundColor: T.bg, borderColor: T.separator }],
+        disabled ? styles.chipDisabled : null,
       ]}
     >
       {display}
@@ -218,9 +222,20 @@ const styles = StyleSheet.create({
     // backgroundColor / borderColor: mode-aware, applied inline.
     borderWidth: 1,
   },
+  // Selected state — the shared tinted-glass treatment (same tokens
+  // GlassButton's active/primary variant resolves to: ocean.light fill +
+  // a ~0.4-alpha accent hairline), not a solid fill. A heavy opaque
+  // ocean.accent block was the one remaining place still using the
+  // pre-Phase-3 solid-CTA pattern GlassButton replaced everywhere else
+  // (Phase 8 visual-defect report — see components/ui/GlassButton.tsx's
+  // doc comment for the full "why glass, not solid" reasoning).
   chipFilled: {
-    backgroundColor: ocean.accent,
-    borderWidth: 0,
+    backgroundColor: ocean.light,
+    borderWidth: 1,
+    borderColor: 'rgba(76,141,246,0.4)', // mirrors GlassButton's ACCENT_BORDER
+  },
+  chipDisabled: {
+    opacity: 0.6,
   },
   emoji: {
     fontSize: 15,
@@ -232,16 +247,24 @@ const styles = StyleSheet.create({
   chipTextOutline: {
     // color: mode-aware, applied inline (T.label).
   },
+  // A low-alpha tint fill cannot host white text at readable contrast (see
+  // GlassButton's "WHY ACCENT-COLOURED TEXT INSTEAD OF WHITE" doc comment) —
+  // the accent hex itself is the label colour, same as every other glass
+  // control in the app.
   chipTextFilled: {
-    color: '#FFFFFF',
+    color: ocean.accent,
   },
   checkMark: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
-    color: '#FFFFFF',
+    color: ocean.accent,
   },
+  // The count badge stays a small SOLID accent pill (not tinted) — it's a
+  // number that must stay clearly legible at a glance, and its footprint is
+  // small enough that a solid accent chip-within-a-chip doesn't reintroduce
+  // the "heavy block" problem the outer chip's fill was fixed for.
   countBadge: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: ocean.accent,
     borderRadius: BorderRadius.pill,
     minWidth: 20,
     paddingHorizontal: 6,
