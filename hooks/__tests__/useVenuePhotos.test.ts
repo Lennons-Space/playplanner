@@ -24,6 +24,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { supabase }               from '@/lib/supabase';
 import * as ImageManipulator      from 'expo-image-manipulator';
+import * as FileSystem            from 'expo-file-system/legacy';
 import { useAuthStore }           from '@/store/authStore';
 import {
   useVenuePhotos,
@@ -84,10 +85,13 @@ jest.mock('expo-image-manipulator', () => ({
   SaveFormat: { JPEG: 'jpeg' },
 }));
 
-// expo-file-system — deleteAsync is called in the finally block of
-// useUploadVenuePhoto to clean up the manipulated temp file.
+// expo-file-system — readAsStringAsync reads the manipulated file as base64
+// (the RN-safe alternative to fetch().blob() — see useVenuePhotos.ts Step 2);
+// deleteAsync is called in the finally block to clean up the temp file.
 jest.mock('expo-file-system/legacy', () => ({
-  deleteAsync: jest.fn().mockResolvedValue(undefined),
+  readAsStringAsync: jest.fn(),
+  deleteAsync:        jest.fn().mockResolvedValue(undefined),
+  EncodingType: { Base64: 'base64' },
 }));
 
 // authStore is mocked so we can control whether a user is signed in.
@@ -103,8 +107,9 @@ process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _s = supabase as any;
 
-const mockManipulate   = ImageManipulator.manipulateAsync as jest.Mock;
-const mockUseAuthStore = useAuthStore as jest.MockedFunction<typeof useAuthStore>;
+const mockManipulate      = ImageManipulator.manipulateAsync as jest.Mock;
+const mockReadAsString    = FileSystem.readAsStringAsync as jest.Mock;
+const mockUseAuthStore    = useAuthStore as jest.MockedFunction<typeof useAuthStore>;
 
 // Convenience getters so tests can override individual operations without
 // rebuilding the entire mock chain.
@@ -168,12 +173,10 @@ beforeEach(() => {
   // Default manipulate: return a stripped URI.
   mockManipulate.mockResolvedValue({ uri: MANIP_URI });
 
-  // Default fetch (used to convert manipulated URI to Blob).
-  // ok: true is required — the hook checks response.ok and throws if false.
-  global.fetch = jest.fn().mockResolvedValue({
-    ok:   true,
-    blob: jest.fn().mockResolvedValue(new Blob(['data'], { type: 'image/jpeg' })),
-  });
+  // Default file read: base64 for the ASCII string "data" (non-empty, decodes
+  // to a 4-byte ArrayBuffer). This replaces the old fetch().blob() mock — see
+  // useVenuePhotos.ts Step 2 for why Blob is not used on React Native.
+  mockReadAsString.mockResolvedValue('ZGF0YQ==');
 
   // Default crypto.randomUUID.
   global.crypto = { randomUUID: jest.fn().mockReturnValue('generated-uuid') } as any;
@@ -304,6 +307,76 @@ describe('useUploadVenuePhoto', () => {
     expect(storagePath).not.toContain(FAKE_USER.id);
   });
 
+  // React Native's Blob/fetch layer does not reliably transmit binary data
+  // through the multipart body that @supabase/storage-js builds around a
+  // Blob (this is documented by storage-js itself). Uploading an ArrayBuffer
+  // instead is the fix — regressing back to a Blob here would silently
+  // reintroduce the "Upload failed" bug.
+  it('uploads an ArrayBuffer (not a Blob) to Supabase Storage', async () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const uploadedBody = mockUpload().mock.calls[0][1];
+    expect(uploadedBody).toBeInstanceOf(ArrayBuffer);
+    expect(uploadedBody).not.toBeInstanceOf(Blob);
+    // 'ZGF0YQ==' (the default mock read) decodes to the 4 ASCII bytes "data".
+    expect((uploadedBody as ArrayBuffer).byteLength).toBe(4);
+  });
+
+  // If the manipulated file cannot be read (e.g. the OS evicted the cache
+  // file, or a permissions edge case), the failure must surface as a safe,
+  // generic message — and the local file path must never reach the logs.
+  it('surfaces a safe message and never logs the file path when reading the manipulated file fails', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockReadAsString.mockRejectedValue(new Error(`File '${MANIP_URI}' does not exist`));
+
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(result.current.error?.message).toBe('Could not read the photo from your device. Please try again.');
+    const allLogArgs = consoleSpy.mock.calls.flat().join(' ');
+    expect(allLogArgs).not.toContain(MANIP_URI);
+    expect(allLogArgs).not.toContain(IMAGE_URI);
+
+    consoleSpy.mockRestore();
+  });
+
+  // If crypto.randomUUID were ever unavailable on-device (no polyfill is
+  // installed, and this is the only client call site in the app — see the
+  // generatePhotoFilename doc comment), uploads must still work via the
+  // Math.random() fallback rather than crashing before any network call.
+  it('still builds a valid storage path when crypto.randomUUID is unavailable', async () => {
+    const originalCrypto = global.crypto;
+    // @ts-expect-error — simulating an environment without crypto.randomUUID.
+    global.crypto = undefined;
+
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const storagePath: string = mockUpload().mock.calls[0][0];
+    expect(storagePath).toMatch(new RegExp(`^${VENUE_ID}/.+\\.jpg$`));
+
+    global.crypto = originalCrypto;
+  });
+
   // If the DB insert omits status='pending', the photo could be immediately
   // visible before moderation — a safety risk in a children's app.
   it("inserts the DB row with status='pending'", async () => {
@@ -339,6 +412,33 @@ describe('useUploadVenuePhoto', () => {
     expect(mockInsert()).not.toHaveBeenCalled();
   });
 
+  // Raw Supabase Storage error messages must never reach the thrown error
+  // (which the UI's onError handler could one day read) — only a safe,
+  // generic message. The raw detail may still be logged, but only via safe
+  // fields (name/status), never the full message text.
+  it('surfaces a safe generic message (not the raw Storage error) when the Storage upload fails', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockUpload().mockResolvedValue({
+      error: { name: 'StorageApiError', status: 400, message: 'Sensitive backend detail: bucket policy denied for path venue-123/abc.jpg' },
+    });
+
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(result.current.error?.message).toBe('Could not upload photo. Please try again.');
+    const allLogArgs = consoleSpy.mock.calls.flat().join(' ');
+    expect(allLogArgs).not.toContain('Sensitive backend detail');
+    expect(allLogArgs).not.toContain(VENUE_ID); // storage path must not be logged
+
+    consoleSpy.mockRestore();
+  });
+
   // If the DB insert fails after a successful upload, we'd have an orphaned
   // file in Storage with no corresponding DB row — wasted space and a data
   // integrity problem. The rollback must remove the file.
@@ -359,6 +459,33 @@ describe('useUploadVenuePhoto', () => {
     expect(mockRemove()).toHaveBeenCalledWith([uploadPath]);
   });
 
+  // Raw Postgres error messages/details must never reach the thrown error.
+  // Safe fields (code/hint) may be logged, matching the pattern already used
+  // by useCastFacilityVote in useFacilities.ts.
+  it('surfaces a safe generic message (not the raw Postgres error) when the DB insert fails', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockInsert().mockResolvedValue({
+      data: null,
+      error: { code: '23505', hint: 'duplicate key', message: 'duplicate key value violates unique constraint "venue_photos_pkey" for user user-abc' },
+    });
+
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(result.current.error?.message).toBe('Could not save photo. Please try again.');
+    const allLogArgs = consoleSpy.mock.calls.flat().join(' ');
+    expect(allLogArgs).not.toContain(FAKE_USER.id);
+    expect(allLogArgs).not.toContain('duplicate key value violates');
+
+    consoleSpy.mockRestore();
+  });
+
   // On success the venuePhotos cache for this venue must be invalidated so
   // the UI can show a pending-approval message or refresh when the photo
   // is eventually approved.
@@ -376,6 +503,29 @@ describe('useUploadVenuePhoto', () => {
 
     expect(invalidateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ['venuePhotos', VENUE_ID] })
+    );
+  });
+
+  // The venue detail screen (app/venue/[id].tsx) reads photos via useVenue's
+  // own venue_photos join under the ['venue', id] key, NOT via useVenuePhotos
+  // (which is never mounted anywhere in the app). Invalidating only
+  // 'venuePhotos' would be a silent no-op for the screen users actually look
+  // at once a photo is later approved and the venue query is the one that
+  // needs a fresh fetch.
+  it('also invalidates the venue query key on success so the venue detail screen can refresh', async () => {
+    const { Wrapper, client } = makeWrapper();
+    const invalidateSpy = jest.spyOn(client, 'invalidateQueries');
+
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['venue', VENUE_ID] })
     );
   });
 

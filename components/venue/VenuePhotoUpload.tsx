@@ -35,6 +35,41 @@ export function VenuePhotoUpload({ venueId }: Props) {
   // Not signed in — nothing to render.
   if (!user) return null;
 
+  // B1 — Pass callbacks inline so we can guard them with mountedRef.
+  // Extracted from launchPicker so the "Try again" button in the failure
+  // alert can resubmit the SAME already-picked image without reopening the
+  // system picker (the user should not have to re-select their photo just
+  // because the network hiccuped).
+  const submitUpload = (imageUri: string) => {
+    uploadMutation.mutate(
+      { venueId, imageUri },
+      {
+        onSuccess: () => {
+          if (mountedRef.current) {
+            Alert.alert('Photo submitted', 'Photo submitted for review. It will appear once approved.');
+          }
+        },
+        onError: () => {
+          if (!mountedRef.current) return;
+          // Retry re-uses the same picked asset — cheap, and avoids forcing
+          // the user back through the system picker for a transient failure
+          // (e.g. a dropped connection). No raw error detail is ever shown
+          // here (see useUploadVenuePhoto — it only ever throws a safe,
+          // generic message).
+          Alert.alert('Upload failed', 'Please try again.', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Try again',
+              onPress: () => {
+                if (mountedRef.current) submitUpload(imageUri);
+              },
+            },
+          ]);
+        },
+      }
+    );
+  };
+
   const launchPicker = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -44,27 +79,18 @@ export function VenuePhotoUpload({ venueId }: Props) {
         // (compress: 0.85) which also strips EXIF/GPS. Two lossy encodes
         // in sequence degrade quality multiplicatively.
         quality: 1,
-        exifData: false,
+        // Was `exifData` (not a real ImagePickerOptions field — silently
+        // ignored at runtime, and the source of one of the pre-existing
+        // baseline tsc errors). The real option is `exif`. Harmless either
+        // way since EXIF/GPS is always stripped downstream by the mandatory
+        // re-encode in useUploadVenuePhoto, but this avoids ever requesting
+        // EXIF data from the picker in the first place.
+        exif: false,
       });
 
       if (result.canceled || !result.assets || result.assets.length === 0) return;
 
-      // B1 — Pass callbacks inline so we can guard them with mountedRef.
-      uploadMutation.mutate(
-        { venueId, imageUri: result.assets[0].uri },
-        {
-          onSuccess: () => {
-            if (mountedRef.current) {
-              Alert.alert('Photo submitted', 'Photo submitted for review. It will appear once approved.');
-            }
-          },
-          onError: () => {
-            if (mountedRef.current) {
-              Alert.alert('Upload failed', 'Please try again.');
-            }
-          },
-        }
-      );
+      submitUpload(result.assets[0].uri);
     } finally {
       // B6 — Always release the lock so later taps work after picker closes.
       pickingRef.current = false;

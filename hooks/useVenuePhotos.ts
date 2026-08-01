@@ -11,6 +11,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
+import { decode as decodeBase64 } from 'base64-arraybuffer';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import type { VenuePhoto, PendingPhotoWithVenue } from '../types';
@@ -43,6 +44,28 @@ export function useVenuePhotos(venueId: string) {
   });
 }
 
+/**
+ * Generates a filename-safe unique id for a newly uploaded photo.
+ *
+ * crypto.randomUUID() is expected to be available on the Hermes engine this
+ * app ships with, but a repo-wide search found this is the ONLY client-side
+ * call site of it in the whole app — there is no other evidence it actually
+ * works on-device, and no crypto polyfill (e.g. react-native-get-random-values)
+ * is installed as a safety net. If it were ever unavailable, every upload
+ * would throw synchronously before any network activity, surfacing as the
+ * same generic "Upload failed" error with nothing to distinguish it. This is
+ * only used as a storage object-name suffix — not a security boundary or an
+ * identifier anyone can enumerate against — so a Math.random()-based
+ * fallback is an appropriate, low-risk mitigation rather than a security
+ * regression.
+ */
+function generatePhotoFilename(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${crypto.randomUUID()}.jpg`;
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+}
+
 // ─── useUploadVenuePhoto ───────────────────────────────────────────────────────
 
 interface UploadPhotoInput {
@@ -54,7 +77,8 @@ interface UploadPhotoInput {
 /**
  * Mutation that handles the full photo upload flow:
  * 1. Strip EXIF/GPS by re-encoding as JPEG via expo-image-manipulator.
- * 2. Convert to blob and upload to Supabase Storage.
+ * 2. Read the file as base64 and convert to an ArrayBuffer, then upload to
+ *    Supabase Storage (NOT a Blob — see the inline comment at Step 2 for why).
  * 3. Insert a DB row with status='pending' (awaits moderation before going live).
  * 4. If either step fails, the other is rolled back to avoid orphaned data.
  */
@@ -82,24 +106,55 @@ export function useUploadVenuePhoto() {
       // failure. expo-image-manipulator writes a new file each call; without
       // cleanup they accumulate in the device cache across sessions.
       try {
-        // Step 2: Read as a blob. We use fetch() because React Native's FileSystem
-        // blob support is limited; fetch() works reliably with local file:// URIs.
-        const response = await fetch(manipResult.uri);
-        if (!response.ok) throw new Error('Failed to read image data from device.');
-        const blob = await response.blob();
-        if (blob.size === 0) throw new Error('Image data is empty.');
+        // Step 2: Read the re-encoded file and convert it to an ArrayBuffer.
+        //
+        // We deliberately do NOT use fetch(uri).blob() here, even though it
+        // looks like the "normal" web pattern. @supabase/storage-js's own
+        // upload() documents this explicitly (see StorageFileApi.ts): "For
+        // React Native, using either Blob, File or FormData does not work as
+        // intended. Upload file using ArrayBuffer from base64 file data
+        // instead." React Native's Blob/fetch layer does not reliably carry
+        // binary data through the multipart body storage-js builds once it
+        // detects a Blob — this can silently produce a truncated/empty
+        // object upload while the client only sees a generic failure with no
+        // useful diagnostic (this is believed to be the root cause of the
+        // "Upload failed" reports). ArrayBuffer is the vendor-documented,
+        // verified-working path on RN, and expo-file-system (already a
+        // dependency) already gives us base64 for free.
+        let base64: string;
+        try {
+          base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+        } catch {
+          // Never log manipResult.uri — it is a local file path (module
+          // docblock: image URIs are never logged).
+          console.error('useUploadVenuePhoto: failed to read manipulated image file');
+          throw new Error('Could not read the photo from your device. Please try again.');
+        }
+        if (!base64) throw new Error('Image data is empty.');
 
-        // Step 3: Generate a filename. crypto.randomUUID() is available in RN/Hermes.
+        const arrayBuffer = decodeBase64(base64);
+        if (arrayBuffer.byteLength === 0) throw new Error('Image data is empty.');
+
+        // Step 3: Generate a filename (falls back off crypto.randomUUID if it's
+        // ever unavailable — see generatePhotoFilename doc comment above).
         // We deliberately exclude the user ID from the path — see module docblock.
-        const filename = `${crypto.randomUUID()}.jpg`;
+        const filename = generatePhotoFilename();
         const storagePath = `${venueId}/${filename}`;
 
         // Step 4: Upload to Storage.
         const { error: uploadError } = await supabase.storage
           .from('venue-photos')
-          .upload(storagePath, blob, { contentType: 'image/jpeg', upsert: false });
+          .upload(storagePath, arrayBuffer, { contentType: 'image/jpeg', upsert: false });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          // Safe diagnostic only (name/status) — never the raw message, which
+          // can echo request detail. Matches the console.error(code, hint)
+          // pattern used in useFacilities.ts (useCastFacilityVote).
+          console.error('useUploadVenuePhoto storage upload error:', uploadError.name, uploadError.status);
+          throw new Error('Could not upload photo. Please try again.');
+        }
 
         // Step 5: Get the public URL.
         const { data: urlData } = supabase.storage
@@ -127,10 +182,12 @@ export function useUploadVenuePhoto() {
             .from('venue-photos')
             .remove([storagePath]);
           if (cleanupError) {
-            // Log path only — no user data (GDPR). Send to error tracker in production.
-            console.error('[useUploadVenuePhoto] Storage cleanup failed:', cleanupError.message);
+            // Safe diagnostic only — never cleanupError.message (may embed
+            // the storage path). GDPR: no user data in logs.
+            console.error('useUploadVenuePhoto storage cleanup error:', cleanupError.name, cleanupError.status);
           }
-          throw insertError;
+          console.error('useUploadVenuePhoto insert error:', insertError.code, insertError.hint);
+          throw new Error('Could not save photo. Please try again.');
         }
       } finally {
         // Delete the temp re-encoded JPEG regardless of success or failure.
@@ -143,10 +200,20 @@ export function useUploadVenuePhoto() {
       }
     },
     onSuccess: (_data, variables) => {
-      // Invalidate the approved-photos cache for this venue.
+      // Invalidate the approved-photos cache for this venue (useVenuePhotos).
       // The newly uploaded photo is pending, so it won't appear yet — but if a
       // subsequent approval happens, the next fetch will pick it up.
       queryClient.invalidateQueries({ queryKey: ['venuePhotos', variables.venueId] });
+      // Also invalidate ['venue', venueId] — this is the query the venue detail
+      // screen (app/venue/[id].tsx) actually reads photos from (useVenue's own
+      // venue_photos join; see the comment there: "useVenue already fetches and
+      // filters approved photos in its join — no second query needed"). Without
+      // this, a photo approved via useModeratePhoto (which correctly invalidates
+      // both keys) would still show up, but this hook alone invalidating only
+      // the unused 'venuePhotos' key would be a silent no-op on the page users
+      // actually look at. Matches the invalidation pattern already used by
+      // useReviews.ts, useFacilities.ts and useVenueClaims.ts for this table.
+      queryClient.invalidateQueries({ queryKey: ['venue', variables.venueId] });
     },
   });
 }

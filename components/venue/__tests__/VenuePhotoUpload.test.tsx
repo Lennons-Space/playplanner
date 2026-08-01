@@ -346,6 +346,79 @@ describe('VenuePhotoUpload', () => {
     });
   });
 
+  // ── Retry ──────────────────────────────────────────────────────────────────
+
+  // Pressing "Try again" on the failure alert must resubmit the SAME picked
+  // image without reopening the system picker — the user should never have
+  // to re-select a photo just because of a transient network failure.
+  it('resubmits the same picked image when "Try again" is pressed on the failure alert', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    const pickedUri = 'file:///storage/picked.jpg';
+
+    // mutate that immediately calls onError every time it is invoked.
+    const mutate = jest.fn((_vars, callbacks: any) => {
+      callbacks?.onError?.();
+    });
+
+    mockLaunchPicker.mockResolvedValue({
+      canceled: false,
+      assets:   [{ uri: pickedUri }],
+    });
+    mockUseUploadVenuePhoto.mockReturnValue(buildMutationMock({ mutate }) as any);
+
+    render(<VenuePhotoUpload venueId={VENUE_ID} />);
+    fireEvent.press(screen.getByLabelText('Add a photo of this venue'));
+
+    await act(async () => {
+      pressAlertButton(alertSpy, 'I agree & continue');
+    });
+
+    // First mutate call happened via the picker result.
+    expect(mutate).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pressAlertButton(alertSpy, 'Try again');
+    });
+
+    // Second mutate call is the retry, with the SAME venueId/imageUri — no
+    // picker was reopened (mockLaunchPicker was called only once).
+    expect(mutate).toHaveBeenCalledTimes(2);
+    expect(mutate).toHaveBeenNthCalledWith(
+      2,
+      { venueId: VENUE_ID, imageUri: pickedUri },
+      expect.any(Object)
+    );
+    expect(mockLaunchPicker).toHaveBeenCalledTimes(1);
+  });
+
+  // The failure alert must offer a way to back out without retrying.
+  it('offers a Cancel option on the failure alert that does not resubmit', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    const pickedUri = 'file:///storage/picked.jpg';
+
+    const mutate = jest.fn((_vars, callbacks: any) => {
+      callbacks?.onError?.();
+    });
+
+    mockLaunchPicker.mockResolvedValue({
+      canceled: false,
+      assets:   [{ uri: pickedUri }],
+    });
+    mockUseUploadVenuePhoto.mockReturnValue(buildMutationMock({ mutate }) as any);
+
+    render(<VenuePhotoUpload venueId={VENUE_ID} />);
+    fireEvent.press(screen.getByLabelText('Add a photo of this venue'));
+
+    await act(async () => {
+      pressAlertButton(alertSpy, 'I agree & continue');
+    });
+
+    const failureCall = alertSpy.mock.calls.find((c) => c[0] === 'Upload failed');
+    const buttons: { text: string }[] = (failureCall?.[2] as any) ?? [];
+    expect(buttons.map((b) => b.text)).toEqual(expect.arrayContaining(['Cancel', 'Try again']));
+    expect(mutate).toHaveBeenCalledTimes(1);
+  });
+
   // ── Picker result: empty assets array ─────────────────────────────────────
 
   // If the result has canceled=false but an empty assets array (edge case on
