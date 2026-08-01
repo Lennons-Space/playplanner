@@ -17,6 +17,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import ExploreScreen from '../map';
 import type { Venue } from '@/types';
+import type { WeatherState } from '@/lib/weather';
 
 // ─── Module mocks (same surface as map.test.tsx) ────────────────────────────
 jest.mock('expo-secure-store', () => ({
@@ -149,7 +150,7 @@ jest.mock('@/store/mapStore', () => ({
 }));
 
 // V2Background reads the same coarse weather fetch every v2 screen uses.
-const mockUseWeather = jest.fn(() => null);
+const mockUseWeather = jest.fn<WeatherState | null, unknown[]>(() => null);
 jest.mock('@/hooks/useWeather', () => ({
   useWeather: (...args: unknown[]) => mockUseWeather(...(args as [])),
 }));
@@ -308,6 +309,78 @@ describe('Map v2 — AreaVenueCard honest data', () => {
     await waitFor(() => expect(screen.getByLabelText('Tappable Venue')).toBeTruthy());
     fireEvent.press(screen.getByLabelText('Tappable Venue'));
     expect(router.push).toHaveBeenCalledWith('/venue/v-tap');
+  });
+});
+
+// Phase 9 "weather-driven content consistency" fix (gap #2): AreaVenueCard's
+// weatherBadge used to render as bare `Text` in the muted `T.label3` tone —
+// no background, no glass treatment — while components/ui/VenueCard.tsx's
+// weatherBadge already used a proper dark glass pill. These tests lock in
+// that AreaVenueCard now uses the SAME pill (fixed dark scrim + white text),
+// so the app has one weather-badge look, not two.
+describe('Map v2 — AreaVenueCard weatherBadge glass-pill treatment (Phase 9 fix)', () => {
+  it('renders the weatherBadge inside a dark glass pill, matching VenueCard.tsx', async () => {
+    mockGetItemAsync.mockResolvedValue('1');
+    mockUseWeather.mockReturnValue({
+      condition: 'clear',
+      temperatureC: 22,
+      precipProbabilityPct: 0,
+      emoji: '☀️',
+      label: 'Sunny',
+    });
+    mockUseNearbyVenues.mockReturnValue({
+      data: [
+        makeVenue({
+          id: 'v-weather',
+          name: 'Sunny Park',
+          category: { id: 'cat-park', name: 'Park', icon: '🌳', color: '#4CAF50', slug: 'park' },
+        }),
+      ],
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useNearbyVenues>);
+
+    const screen = render(<ExploreScreen />, { wrapper: makeWrapper() });
+    const badge = await waitFor(() => screen.getByText('☀️ Ideal today'));
+
+    // Walk up to the pill View. `badge.parent` is RN's internal Text host
+    // wrapper (not our JSX), so the actual <View> pill we render is the
+    // grandparent — asserts the same fixed dark-scrim glass treatment
+    // VenueCard.tsx uses, not the bare, backgroundless T.label3 text this
+    // replaced.
+    const pill = badge.parent?.parent;
+    expect(pill?.type).toBe('View');
+    expect(pill?.props?.style).toMatchObject({
+      backgroundColor: 'rgba(20,28,38,0.72)',
+    });
+    expect(badge.props.style).toMatchObject({ color: '#FFFFFF' });
+  });
+
+  it('renders nothing for the weatherBadge slot when no weather-worthy condition applies', async () => {
+    mockGetItemAsync.mockResolvedValue('1');
+    mockUseWeather.mockReturnValue({
+      condition: 'overcast',
+      temperatureC: 12,
+      precipProbabilityPct: 0,
+      emoji: '☁️',
+      label: 'Overcast',
+    });
+    mockUseNearbyVenues.mockReturnValue({
+      data: [
+        makeVenue({
+          id: 'v-neutral',
+          name: 'Neutral Venue',
+          category: { id: 'cat-soft-play', name: 'Soft Play', icon: '🏀', color: '#8E6BD8', slug: 'soft-play' },
+        }),
+      ],
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useNearbyVenues>);
+
+    const screen = render(<ExploreScreen />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(screen.getByText('Neutral Venue')).toBeTruthy());
+    // Overcast + soft-play gets no badge from getWeatherBadge — no pill, no text.
+    expect(screen.queryByText(/Ideal today|Wet today|Great in rain|Dry inside|Safe inside|Check safety|Cosy pick|Check conditions|Good today/)).toBeNull();
   });
 });
 

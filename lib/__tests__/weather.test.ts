@@ -344,6 +344,16 @@ describe('getWeatherBadge', () => {
   it('mainly_clear returns null for indoor venues, same as clear', () => {
     expect(getWeatherBadge('soft-play', 'mainly_clear')).toBeNull();
   });
+
+  // Phase 9 "weather-driven content consistency": fog gives no reliable
+  // indoor-vs-outdoor signal (unlike rain/snow/thunderstorm), so a per-venue
+  // badge would be a fabricated claim. This documents that as INTENTIONAL,
+  // not an oversight — see getWeatherBanner below for the fog banner fix.
+  it('returns null for fog regardless of category (documented, not a gap)', () => {
+    expect(getWeatherBadge('park',      'fog')).toBeNull();
+    expect(getWeatherBadge('soft-play', 'fog')).toBeNull();
+    expect(getWeatherBadge(null,        'fog')).toBeNull();
+  });
 });
 
 // ── getWeatherBanner ───────────────────────────────────────────────────────
@@ -409,6 +419,44 @@ describe('getWeatherBanner', () => {
     const banner = getWeatherBanner(makeWeather({ condition: 'mainly_clear', temperatureC: 21 }), 'list');
     expect(banner).not.toBeNull();
     expect(banner!.text).toContain('21°C');
+  });
+
+  // Phase 9 fix ("weather-driven content consistency" — docx gap #1): fog
+  // used to fall through every branch here and return null, so Map/Search
+  // showed no weather acknowledgement at all on a foggy day, while Home
+  // (getWeatherCta/getHomeContextLine in lib/homeIntents.ts) already showed
+  // fog-specific "cosy local pick" copy. This locks in the fix: fog now
+  // gets a coherent, non-null banner with matching cosy/local framing (NOT
+  // indoor-forcing rain wording) — getWeatherBadge and scoreVenueForWeather
+  // remain intentionally neutral for fog (see their own tests), this is
+  // purely the informational banner strip.
+  describe('fog (Phase 9 fix)', () => {
+    it('returns a non-null banner for fog (previously fell through to null)', () => {
+      const banner = getWeatherBanner(makeWeather({ condition: 'fog', temperatureC: 10 }));
+      expect(banner).not.toBeNull();
+      expect(banner!.text).toContain('🌫');
+    });
+
+    it('fog copy is cosy/local, not rain/indoor-forcing wording', () => {
+      const banner = getWeatherBanner(makeWeather({ condition: 'fog', temperatureC: 10 }));
+      expect(banner!.text.toLowerCase()).not.toContain('indoor');
+      expect(banner!.text.toLowerCase()).not.toContain('rain');
+    });
+
+    it('fog banner takes priority over the cold-temperature banner', () => {
+      // <=3C would otherwise trigger the "Very cold" banner — fog's own
+      // condition-specific banner must win, same as rain/snow do.
+      const banner = getWeatherBanner(makeWeather({ condition: 'fog', temperatureC: 1 }));
+      expect(banner!.text).toContain('🌫');
+      expect(banner!.text).not.toContain('cold');
+    });
+
+    it('fog banner is unaffected by viewMode (fog does not drive venue re-sorting)', () => {
+      const weather = makeWeather({ condition: 'fog', temperatureC: 10 });
+      const mapBanner  = getWeatherBanner(weather, 'map');
+      const listBanner = getWeatherBanner(weather, 'list');
+      expect(mapBanner).toEqual(listBanner);
+    });
   });
 });
 

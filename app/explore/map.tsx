@@ -73,7 +73,7 @@ import { Icon } from '@/components/ui';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { FALLBACK_LOCATION } from '@/constants/location';
-import { ocean, FontFamily } from '@/constants/theme';
+import { ocean, FontFamily, BorderRadius } from '@/constants/theme';
 import { getCategoryMeta } from '@/constants/categories';
 import { resolveVenueCategory, buildCategoryLookup } from '@/lib/venues/resolveVenueCategory';
 import { useMapStore } from '@/store/mapStore';
@@ -535,9 +535,36 @@ function AreaVenueCard({
             </Text>
           )}
           {weatherBadge && (
-            <Text style={{ fontFamily: FontFamily.body, fontSize: 12, color: T.label3 }}>
-              {weatherBadge}
-            </Text>
+            // Same glass-pill treatment as components/ui/VenueCard.tsx's
+            // weatherBadge (~line 202-233) — Phase 9 fix: this used to be
+            // bare `Text` in the muted `T.label3` tertiary-label colour, no
+            // background at all, which read as "faint" next to the
+            // ages/category metadata either side of it. `T.label3` is
+            // designed to be a quiet secondary label, not a badge, so no
+            // theme-token tweak could fix the contrast — it needed the same
+            // pill VenueCard.tsx already uses. The dark scrim
+            // (rgba(20,28,38,0.72) + white text) is a FIXED colour, not a
+            // theme token, by design (see the identical `featured` badge a
+            // few lines above VenueCard's weatherBadge, and its inline
+            // comment) — it overlays photo/tinted-icon thumbnails in both
+            // light and dark app themes, so it stays legible either way
+            // rather than flipping with `T.*` tokens the way surrounding
+            // text does.
+            <View
+              style={{
+                backgroundColor: 'rgba(20,28,38,0.72)',
+                borderRadius: BorderRadius.pill,
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+              }}
+            >
+              <Text
+                style={{ fontFamily: FontFamily.caption, fontSize: 11, color: '#FFFFFF', letterSpacing: 0.2 }}
+                numberOfLines={1}
+              >
+                {weatherBadge}
+              </Text>
+            </View>
           )}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>

@@ -192,6 +192,14 @@ export function getWeatherBadge(
     return '⛅ Good today';
   }
 
+  // fog: deliberately no per-venue badge. Unlike rain/snow/thunderstorm, fog
+  // gives no reliable indoor-vs-outdoor signal (it's not a reason to avoid a
+  // park, and it's not a special reason to pick a soft-play centre either),
+  // so inventing one here would be a fabricated claim, not an honest badge.
+  // scoreVenueForWeather() correctly treats fog as neutral (returns 0) for
+  // the same reason. The banner-level fog acknowledgement lives in
+  // getWeatherBanner() below (Phase 9 fix — see getWeatherBanner's fog
+  // branch for why the banner still needs to say SOMETHING).
   return null;
 }
 
@@ -230,6 +238,22 @@ export function getWeatherBanner(
   }
   if (condition === 'snow') {
     return { text: `❄️  Snow forecast — check travel before you go`, tint: '#EDF2F8' };
+  }
+  // fog (Phase 9 fix — docx "weather-driven content consistency"): previously
+  // fog fell through every branch here and rendered NOTHING on Map/Search,
+  // while Home (getWeatherCta/getHomeContextLine in lib/homeIntents.ts)
+  // already shows thoughtful fog-specific copy ("Foggy morning — a cosy
+  // local pick?"). That was the "not deriving from one coherent
+  // weather/content state" gap — fog is a first-class WeatherCondition with
+  // its own CONDITION_META entry, it just wasn't wired in here. Matches the
+  // same cosy/local framing as Home, NOT indoor-forcing language — fog gets
+  // no venue-level sort/badge treatment (see getWeatherBadge and
+  // scoreVenueForWeather above, both intentionally neutral for fog), this is
+  // purely an honest acknowledgement banner. Tint is a muted grey in the
+  // same pastel family as the snow/cold banners above, not the warmer
+  // thunderstorm/rain blues (fog isn't a warning).
+  if (condition === 'fog') {
+    return { text: '🌫  Foggy — sticking local today', tint: '#ECEEF0' };
   }
   if (temperatureC <= 3) {
     return { text: `🧊  Very cold (${temperatureC}°C) — wrap up warm`, tint: '#EDF2F8' };
