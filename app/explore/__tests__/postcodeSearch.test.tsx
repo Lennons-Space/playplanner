@@ -132,6 +132,8 @@ jest.mock('@/services/consent/locationConsent', () => ({
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
+  // See map.test.tsx for why this no-op mock is sufficient here.
+  useFocusEffect: jest.fn(),
 }));
 
 jest.mock('@expo/vector-icons', () => {

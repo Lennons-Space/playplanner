@@ -31,6 +31,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // ─── Imports (after mocks) ───────────────────────────────────────────────────
 import * as SecureStore from 'expo-secure-store';
+import { router } from 'expo-router';
 import { useNearbyVenues } from '@/hooks/useVenues';
 import ExploreScreen from '../map';
 import type { Venue } from '@/types';
@@ -147,6 +148,11 @@ jest.mock('@/services/consent/locationConsent', () => ({
 // imports router. Provide a stub to prevent the crash.
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
+  // MapScreen calls useFocusEffect to restore the List-mode FlatList's scroll
+  // position on refocus. A no-op mock is enough for these tests — none of
+  // them assert on that restore behaviour, but the hook must still exist and
+  // be callable or MapScreen would throw on render.
+  useFocusEffect: jest.fn(),
 }));
 
 // @expo/vector-icons: renders SVG icons via a native module — replace with a
@@ -653,6 +659,87 @@ describe('ExploreScreen — list mode renders venues', () => {
     await waitFor(() => {
       expect(getByLabelText('Happy Kids Zone, Soft Play')).toBeTruthy();
     });
+  });
+});
+
+// =============================================================================
+// 4b. LIST MODE ROW NAVIGATION (bug fix regression guard)
+// =============================================================================
+// Before this fix, tapping a row in List mode only set `selectedVenue` and
+// (in map mode only) collapsed the bottom sheet — since List mode has no map
+// or sheet to react to that state, the tap visibly did nothing. See
+// handleVenueRowPress in app/explore/map.tsx.
+describe('ExploreScreen — list mode row navigation', () => {
+  beforeEach(() => {
+    (router.push as jest.Mock).mockClear();
+  });
+
+  it('tapping a List-mode row navigates to the venue detail screen', async () => {
+    const venue = makeVenue({
+      id: 'venue-42',
+      name: 'Riverside Play Park',
+      category: { id: 'c1', name: 'Park', icon: '🌳', color: '#2E8B57', slug: 'park' },
+    });
+    mockUseNearbyVenues.mockReturnValue({
+      data: [venue],
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useNearbyVenues>);
+
+    const { getByLabelText } = await renderAndWaitForConsent({
+      consentStored: true,
+    });
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('List view'));
+    });
+
+    await waitFor(() => {
+      expect(getByLabelText('Riverside Play Park, Park')).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('Riverside Play Park, Park'));
+    });
+
+    expect(router.push).toHaveBeenCalledWith('/venue/venue-42');
+  });
+
+  // A rapid double-tap (e.g. an over-eager finger, or a slow device replaying
+  // a buffered touch) must not stack two venue detail screens on top of each
+  // other — only the first tap should navigate.
+  it('a rapid double-tap on the same row navigates only once', async () => {
+    const venue = makeVenue({
+      id: 'venue-99',
+      name: 'Seaside Soft Play',
+      category: { id: 'c2', name: 'Soft Play', icon: '🏀', color: '#000', slug: 'soft-play' },
+    });
+    mockUseNearbyVenues.mockReturnValue({
+      data: [venue],
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useNearbyVenues>);
+
+    const { getByLabelText } = await renderAndWaitForConsent({
+      consentStored: true,
+    });
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('List view'));
+    });
+
+    await waitFor(() => {
+      expect(getByLabelText('Seaside Soft Play, Soft Play')).toBeTruthy();
+    });
+
+    await act(async () => {
+      const row = getByLabelText('Seaside Soft Play, Soft Play');
+      fireEvent.press(row);
+      fireEvent.press(row);
+    });
+
+    expect(router.push).toHaveBeenCalledTimes(1);
+    expect(router.push).toHaveBeenCalledWith('/venue/venue-99');
   });
 });
 

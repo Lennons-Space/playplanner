@@ -50,8 +50,10 @@ import {
   Keyboard,
   Image,
   Pressable,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
@@ -651,12 +653,46 @@ function MapScreen({
   // per mount. Without this, every pan → fetch → load cycle fires the bounce.
   const initialLoadDoneRef = useRef(false);
 
+  // rowNavigatingRef: set true for ~500ms after a List-mode row navigates to
+  // the venue detail screen. Same idiom as markerPressedRef above — guards
+  // against a rapid double-tap on the same row firing two router.push calls
+  // (e.g. two detail screens stacked on top of each other).
+  const rowNavigatingRef = useRef(false);
+  const rowNavigatingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // listRef + listScrollOffsetRef: remember the List-mode FlatList's scroll
+  // position across a navigate-away-and-back cycle (e.g. tap a row, view the
+  // venue, press back). undefined means "no prior visit yet" — restoring to
+  // offset 0 on first mount would be a no-op anyway, but the undefined check
+  // makes the intent explicit and avoids ever calling scrollToOffset before
+  // the list has rendered any content.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const listRef = useRef<FlatList<any>>(null);
+  const listScrollOffsetRef = useRef<number | undefined>(undefined);
+
   useEffect(() => {
     return () => {
       cancelledRef.current = true;
       if (markerPressTimerRef.current) clearTimeout(markerPressTimerRef.current);
       if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current);
+      if (rowNavigatingTimerRef.current) clearTimeout(rowNavigatingTimerRef.current);
     };
+  }, []);
+
+  // Restore the List-mode FlatList to where the user left it when this
+  // screen regains focus (e.g. after backing out of a venue detail screen).
+  // Skipped on the very first focus — listScrollOffsetRef only gets a real
+  // value once the user has actually scrolled the list at least once.
+  useFocusEffect(
+    useCallback(() => {
+      if (listScrollOffsetRef.current !== undefined) {
+        listRef.current?.scrollToOffset({ offset: listScrollOffsetRef.current, animated: false });
+      }
+    }, []),
+  );
+
+  const handleListScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    listScrollOffsetRef.current = e.nativeEvent.contentOffset.y;
   }, []);
 
   // Derive a display location label.
@@ -875,9 +911,26 @@ function MapScreen({
 
   // Stable renderItem for FlatList in the bottom sheet / list mode.
   const handleVenueRowPress = useCallback((item: Venue) => {
-    // Always set the selected venue and collapse the sheet, regardless of coordinates.
+    // Always set the selected venue, regardless of mode or coordinates.
     setSelectedVenue(item);
-    if (viewMode === 'map') collapseSheet();
+
+    if (viewMode === 'list') {
+      // List mode has no visible map to animate the camera on and no bottom
+      // sheet to collapse — the only sensible action is to navigate straight
+      // to the venue detail screen. Guard against a rapid double-tap on the
+      // same row firing two navigations (same idiom as markerPressedRef
+      // above, for marker presses).
+      if (rowNavigatingRef.current) return;
+      rowNavigatingRef.current = true;
+      if (rowNavigatingTimerRef.current) clearTimeout(rowNavigatingTimerRef.current);
+      rowNavigatingTimerRef.current = setTimeout(() => { rowNavigatingRef.current = false; }, 500);
+      router.push(`/venue/${item.id}`);
+      return;
+    }
+
+    // Map mode (bottom-sheet row press): collapse the sheet and animate the
+    // camera to the tapped venue. Unchanged from before.
+    collapseSheet();
     // Guard against null/undefined coordinates before animating.
     // Number(null) = 0 and Number(undefined) = NaN — passing NaN to animateToRegion
     // can crash the iOS map renderer. Only animate when both values are valid finite numbers.
@@ -1254,12 +1307,15 @@ function MapScreen({
           </View>
         ) : (
           <FlatList
+            ref={listRef}
             data={weatherSortedVenues}
             keyExtractor={(v) => v.id}
             renderItem={renderVenueRow}
             ItemSeparatorComponent={VenueRowSeparator}
             showsVerticalScrollIndicator={false}
             removeClippedSubviews
+            onScroll={handleListScroll}
+            scrollEventThrottle={16}
             style={{ marginBottom: tabSafeZone }}
             contentContainerStyle={{ paddingBottom: 24 + (tabSafeZone === 0 ? insets.bottom : 0) }}
           />

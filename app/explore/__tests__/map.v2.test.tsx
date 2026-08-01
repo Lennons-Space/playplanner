@@ -10,6 +10,8 @@
  */
 
 import React from 'react';
+import fs from 'fs';
+import path from 'path';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -119,6 +121,8 @@ jest.mock('@/services/consent/locationConsent', () => ({
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
+  // See map.test.tsx for why this no-op mock is sufficient here.
+  useFocusEffect: jest.fn(),
 }));
 
 jest.mock('expo-status-bar', () => ({
@@ -507,6 +511,46 @@ describe('Map v2 — honest category labels + section heading', () => {
     await waitFor(() => expect(screen.queryByText('View venue →')).toBeNull());
   });
 
+  it('the final nearby venue card can scroll clear of the tab bar (renders the last of many cards, honest data)', async () => {
+    mockGetItemAsync.mockResolvedValue('1');
+    mockUseNearbyVenues.mockReturnValue({
+      data: Array.from({ length: 12 }, (_, i) => makeVenue({ id: `v-${i}`, name: `Venue ${i}` })),
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useNearbyVenues>);
+    const screen = render(<ExploreScreen />, { wrapper: makeWrapper() });
+    // The last card is present in the scrollable feed (viewport ends above the
+    // tab bar via marginBottom: tabSafeZone — asserted structurally below).
+    await waitFor(() => expect(screen.getByText('Venue 11')).toBeTruthy());
+  });
+});
+
+// ── Tab-safe bottom content spacing (source guard) ──────────────────────────
+// The final nearby venue card must be able to scroll completely above the tab
+// bar / Android navigation area. The map applies this the same accepted way as
+// Home/Saved/Profile: the scroll VIEWPORT ends above the bar (marginBottom:
+// tabSafeZone), and when there's no tab bar (stack route) the inner bottom
+// padding adds the safe-area inset instead. A source guard protects both the
+// nearby-feed ScrollView and the list-mode FlatList against a regression.
+describe('Map v2 — tab-safe bottom content spacing (source guard)', () => {
+  const source: string = fs.readFileSync(path.join(__dirname, '..', 'map.tsx'), 'utf8');
+
+  it('computes tabSafeZone from the tab bar height / safe-area inset', () => {
+    expect(source).toMatch(/tabSafeZone[\s\S]{0,80}Math\.max\(tabBarHeight, 52 \+ insets\.bottom\)/);
+  });
+
+  it('ends BOTH scroll viewports (nearby feed + list mode) above the tab bar via marginBottom: tabSafeZone', () => {
+    const occurrences = source.split('marginBottom: tabSafeZone').length - 1;
+    expect(occurrences).toBeGreaterThanOrEqual(2);
+  });
+
+  it('adds the Android nav-bar inset to the inner bottom padding when there is no tab bar (stack route)', () => {
+    const occurrences = source.split('tabSafeZone === 0 ? insets.bottom : 0').length - 1;
+    expect(occurrences).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('Map v2 — honest category labels + section heading (cont.)', () => {
   it('does NOT show a fabricated "0.0" rating in list mode for an unrated venue', async () => {
     mockGetItemAsync.mockResolvedValue('1');
     mockUseNearbyVenues.mockReturnValue({
