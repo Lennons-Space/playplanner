@@ -23,9 +23,20 @@
  * background architecture behind a transparent root; FlowHeader is the one
  * deliberate header for this component (restyled dark, not duplicated
  * elsewhere); FlowFooter stays absolute and safe-area-aware.
+ *
+ * Phase 6 (Android keyboard/input fix, UI Trust & Reliability Repair Sprint):
+ * the step-2 body field no longer uses native `autoFocus` (replaced with an
+ * imperative `.focus()` triggered by that step's own onLayout event, not a
+ * guessed timer — see the comments above ReviewForm's return statement) and
+ * the ScrollView's footer clearance is now computed from FlowFooter's own
+ * sizing formula instead of a flat guess. The outer SafeAreaView is
+ * edges=['top'] only, so FlowFooter's own insets.bottom read is the single
+ * source of truth for the bottom safe-area inset (previously double-counted).
+ * All step content, validation, and submit behaviour are unchanged — see the
+ * root-cause comments inline for why the focus timing was the suspected bug.
  */
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -36,6 +47,7 @@ import {
   StyleSheet,
   Platform,
   KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -44,6 +56,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Stars } from '@/components/ui';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 
@@ -84,6 +97,26 @@ type Styles = ReturnType<typeof createStyles>;
 
 const BODY_MIN  = 10;
 const BODY_MAX  = 500;   // data minimisation + easier moderation
+
+// ---------------------------------------------------------------------------
+// Phase 6 (Android keyboard/input fix, UI Trust & Reliability Repair Sprint):
+// footer scroll-clearance constants.
+//
+// Root-cause note: the ScrollView's contentContainerStyle previously used a
+// flat `paddingBottom: 120` GUESS to keep content clear of the absolutely-
+// positioned FlowFooter. That guess doesn't account for the safe-area inset
+// FlowFooter itself adds (`Math.max(28, insets.bottom + 12)`), so on devices/
+// gesture-nav configurations with a larger bottom inset than assumed, the
+// footer can end up taller than the guessed clearance — covering the last
+// few pixels of step 2 (the body field / anonymous toggle) once the keyboard
+// has also shrunk the visible viewport. Instead of guessing, we compute the
+// same formula FlowFooter uses for its own height, matching the deterministic
+// (non-measured) approach already established in this app at
+// app/profile/edit.tsx's SAVE_BAR_* constants (Phase 5C), rather than an
+// onLayout-based measurement that would race with mount timing.
+const FOOTER_TOP_PADDING   = 12; // styles.footer.paddingTop
+const FOOTER_BUTTON_HEIGHT = 50; // GlassButton's rendered height with footerPrimaryLayout's paddingVertical:14 (14*2 + text line height + border)
+const FOOTER_SCROLL_GAP    = 16; // breathing room between the last field and the footer
 
 const TAG_LIST = [
   { id: 'pram-friendly',   label: 'Pram friendly' },
@@ -230,21 +263,13 @@ function FlowFooter({
           <Text style={styles.footerSecondaryText}>{secondary}</Text>
         </TouchableOpacity>
       )}
-      <TouchableOpacity
-        onPress={disabled ? undefined : onPrimary}
-        style={[styles.footerPrimary, disabled && styles.footerPrimaryDisabled]}
-        accessibilityRole="button"
+      <GlassButton
+        onPress={onPrimary}
+        disabled={!!disabled}
         accessibilityState={{ disabled: !!disabled }}
-      >
-        <Text
-          style={[
-            styles.footerPrimaryText,
-            disabled && styles.footerPrimaryTextDisabled,
-          ]}
-        >
-          {primary}
-        </Text>
-      </TouchableOpacity>
+        label={primary}
+        style={styles.footerPrimaryLayout}
+      />
     </GlassSurface>
   );
 }
@@ -264,6 +289,7 @@ export function ReviewForm({
   const PP = useMemo(() => createPP(T), [T]);
   const styles = useMemo(() => createStyles(PP), [PP]);
   const footerTint = mode === 'dark' ? 'rgba(12,12,17,0.9)' : 'rgba(255,255,255,0.9)';
+  const insets = useSafeAreaInsets();
   const [step, setStep]             = useState<1 | 2 | 3>(1);
   const [rating, setRating]         = useState(0);
   const [tags, setTags]             = useState<Record<string, boolean>>({});
@@ -273,6 +299,80 @@ export function ReviewForm({
 
   const [ratingError, setRatingError]   = useState('');
   const [bodyMinError, setBodyMinError] = useState('');
+
+  // -------------------------------------------------------------------------
+  // Phase 6 — Android keyboard/input visibility (step 2's body field)
+  // -------------------------------------------------------------------------
+  //
+  // Root cause: the body TextInput previously used the native `autoFocus`
+  // prop, which requests focus (and therefore opens the keyboard)
+  // SYNCHRONOUSLY on mount — i.e. the instant the step-2 JSX first renders,
+  // while this screen is still mid-navigation-transition and the
+  // KeyboardAvoidingView/ScrollView have not finished their own layout pass.
+  // On Android this races against the OS-level window resize
+  // (windowSoftInputMode="adjustResize" — Expo's default; no override is
+  // configured in app.json) and KeyboardAvoidingView's own `behavior="height"`
+  // frame measurement, both of which need a settled layout to compute
+  // correctly. When the keyboard opens before that settles, the height
+  // calculation is taken from a stale/incomplete frame, so the container
+  // doesn't shrink enough — leaving the body field (and on small screens,
+  // the sticky footer) covered. This is a plausible, and the most PROBABLE,
+  // explanation for the docx's reported symptom, since this is the ONLY
+  // multi-step form in the app that autoFocuses a field as part of a step
+  // transition (app/venue/add.tsx and app/profile/edit.tsx's multiline
+  // inputs are not autoFocused, and are not reported as broken).
+  //
+  // Fix: focus imperatively via a ref, triggered by the step-2 content's own
+  // onLayout event instead of a guessed setTimeout delay — onLayout fires
+  // once Yoga has actually committed that View's layout, which is the real
+  // signal that the surrounding layout (KeyboardAvoidingView, ScrollView,
+  // footer) has settled enough to safely open the keyboard against. A blind
+  // timer duration is exactly the kind of arbitrary, undocumented-margin
+  // offset that tends to be right on one device and wrong on another;
+  // onLayout has no such guess built in. Guarded by a ref (not state) so it
+  // fires exactly once per step-2 entry — onLayout can refire on later
+  // relayouts (e.g. the tag row wrapping differently once a chip is toggled)
+  // and must not refocus/reopen the keyboard on every one of those.
+  const bodyInputRef = useRef<TextInput>(null);
+  const hasFocusedStep2Ref = useRef(false);
+  useEffect(() => {
+    if (step !== 2) hasFocusedStep2Ref.current = false;
+  }, [step]);
+  function handleStep2Layout() {
+    if (step !== 2 || hasFocusedStep2Ref.current) return;
+    hasFocusedStep2Ref.current = true;
+    bodyInputRef.current?.focus();
+  }
+
+  // Defensive backstop for "the focused input must scroll fully above the
+  // keyboard": React Native's own ScrollView-scrolls-focused-TextInput-
+  // above-keyboard mechanism depends on an accurate keyboard height being
+  // reported to JS, which is a documented Android flakiness on some OEM
+  // keyboards/versions when combined with adjustResize (the height/frame
+  // event can be mistimed or under-report). Rather than guessing how long
+  // that report takes, listen for the real `keyboardDidShow` event (fired
+  // once Android has actually reported the final keyboard frame) and scroll
+  // then — deterministic against the real signal instead of a timer. Scoped
+  // to Android + step 2 only: iOS is not reported as affected and already
+  // has its own `behavior="padding"` handling.
+  const scrollRef = useRef<ScrollView>(null);
+  function handleBodyFocus() {
+    setBodyFocused(true);
+  }
+  useEffect(() => {
+    if (Platform.OS !== 'android' || step !== 2) return undefined;
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => sub.remove();
+  }, [step]);
+
+  // Computed (not guessed) footer clearance — see FOOTER_* constants above.
+  const footerHeight = FOOTER_TOP_PADDING + FOOTER_BUTTON_HEIGHT + Math.max(28, insets.bottom + 12);
+  const scrollContentStyle = useMemo(
+    () => [styles.scrollContent, { paddingBottom: footerHeight + FOOTER_SCROLL_GAP }],
+    [styles, footerHeight],
+  );
 
   const trimmedBodyLength = body.trim().length;
   const bodyOverLimit     = trimmedBodyLength > BODY_MAX;
@@ -355,8 +455,15 @@ export function ReviewForm({
         },
         onError: (err) => {
           submitLocked.current = false;
+          // useSubmitReview's own-venue guard throws the internal sentinel
+          // 'OWNER_REVIEW_NOT_ALLOWED' (not a user-facing string — every
+          // other branch in that hook already throws a friendly message).
+          // This screen's own isOwnVenue gate should make that guard
+          // unreachable in normal use, but if it ever is reached (e.g. venue
+          // ownership changing between page load and submit), the raw
+          // internal code must never reach Alert.alert.
           const message =
-            err instanceof Error
+            err instanceof Error && err.message !== 'OWNER_REVIEW_NOT_ALLOWED'
               ? err.message
               : 'Something went wrong. Please try again.';
           Alert.alert('Submission failed', message);
@@ -374,7 +481,14 @@ export function ReviewForm({
   return (
     <View style={styles.outer}>
       <ThemedBackground />
-      <SafeAreaView style={styles.root}>
+      {/* edges=['top'] only: FlowFooter is the single source of truth for the
+          bottom safe-area inset (it already reads insets.bottom for its own
+          paddingBottom). Without this restriction SafeAreaView ALSO reserves
+          insets.bottom as padding around KeyboardAvoidingView, stacking on
+          top of FlowFooter's own inset — the same double-counted-inset "dead
+          gap above the footer" bug already identified and fixed this way in
+          app/profile/edit.tsx (Phase 5C, SAVE_BAR_* constants). */}
+      <SafeAreaView style={styles.root} edges={['top']}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -390,8 +504,9 @@ export function ReviewForm({
           />
 
           <ScrollView
+            ref={scrollRef}
             style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={scrollContentStyle}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -461,7 +576,7 @@ export function ReviewForm({
                 STEP 2 — Tags + body + anonymous toggle
             ---------------------------------------------------------------- */}
             {step === 2 && (
-              <View>
+              <View onLayout={handleStep2Layout} testID="review-step-2">
                 {/* Tags */}
                 <Text style={styles.fieldLabel}>What stood out?</Text>
                 <View style={styles.tagRow}>
@@ -510,14 +625,14 @@ export function ReviewForm({
                   ]}
                 >
                   <TextInput
+                    ref={bodyInputRef}
                     style={styles.bodyInput}
                     value={body}
                     onChangeText={setBody}
-                    onFocus={() => setBodyFocused(true)}
+                    onFocus={handleBodyFocus}
                     onBlur={() => setBodyFocused(false)}
                     multiline
                     numberOfLines={5}
-                    autoFocus
                     textAlignVertical="top"
                     maxLength={BODY_MAX}
                     placeholder="What would you tell another parent? Parking? Facilities? Age suitability?"
@@ -744,7 +859,12 @@ function createStyles(PP: PPType) {
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 120, // clears the absolute-positioned footer
+    // Phase 6: this 120 is now only a fallback base — the ReviewForm
+    // component always merges a computed `{ paddingBottom }` override
+    // (footerHeight + FOOTER_SCROLL_GAP) on top of this style array, so the
+    // real clearance tracks FlowFooter's actual formula (incl. safe-area
+    // inset) instead of a flat guess. See scrollContentStyle in ReviewForm().
+    paddingBottom: 120,
   },
 
   // Footer
@@ -760,23 +880,15 @@ function createStyles(PP: PPType) {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
-  footerPrimary: {
+  // Phase 3 (glass button system): FlowFooter's primary CTA is now a
+  // <GlassButton/> — colour/disabled-dimming come from its own variant
+  // resolution, so only layout survives here (no backgroundColor: this
+  // style is merged AFTER GlassButton's internal preset, and colour must
+  // only ever come from variant/active, never a style override).
+  footerPrimaryLayout: {
     flex: 1.4,
-    backgroundColor: PP.sky,
     borderRadius: 14,
     paddingVertical: 14,
-    alignItems: 'center',
-  },
-  footerPrimaryDisabled: {
-    backgroundColor: PP.lineSoft,
-  },
-  footerPrimaryText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 14,
-    color: '#fff',
-  },
-  footerPrimaryTextDisabled: {
-    color: PP.mute,
   },
   footerSecondary: {
     flex: 1,

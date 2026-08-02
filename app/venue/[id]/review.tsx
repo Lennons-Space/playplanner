@@ -41,6 +41,7 @@ import { useUser } from '@/hooks/useAuth';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { Icon } from '@/components/ui/Icon';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 
@@ -102,14 +103,16 @@ export default function WriteReviewScreen() {
             <Text style={styles.gateSub}>
               You need to be signed in to share your experience with other parents.
             </Text>
-            <TouchableOpacity
-              style={[styles.btnPrimary, { marginBottom: 12 }]}
+            {/* Phase 5F: the two other "Go back" sites in this file (in the
+                own-venue and duplicate-review gates below) are now also
+                <GlassButton/>s — all three gates share the same glass CTA
+                treatment. */}
+            <GlassButton
               onPress={() => router.push('/(auth)/login')}
-              accessibilityRole="button"
               accessibilityLabel="Sign in"
-            >
-              <Text style={styles.btnPrimaryText}>Sign in</Text>
-            </TouchableOpacity>
+              label="Sign in"
+              style={{ borderRadius: 24, paddingHorizontal: 32, paddingVertical: 14, marginBottom: 12 }}
+            />
             <TouchableOpacity
               style={styles.btnOutline}
               onPress={() => router.back()}
@@ -170,14 +173,12 @@ export default function WriteReviewScreen() {
               As the listing owner, you're not able to write a review for this venue. This keeps
               reviews trustworthy for families.
             </Text>
-            <TouchableOpacity
-              style={styles.btnPrimary}
+            <GlassButton
               onPress={() => router.back()}
-              accessibilityRole="button"
               accessibilityLabel="Go back"
-            >
-              <Text style={styles.btnPrimaryText}>Go back</Text>
-            </TouchableOpacity>
+              label="Go back"
+              style={{ borderRadius: 24, paddingHorizontal: 32, paddingVertical: 14 }}
+            />
           </View>
         </SafeAreaView>
       </View>
@@ -201,29 +202,35 @@ export default function WriteReviewScreen() {
             <Text style={styles.gateTitle}>You've already reviewed this venue</Text>
 
             {isApproved ? (
-              // Green-tinted card for approved reviews — positive framing
-              <View style={styles.approvedCard}>
-                <Text style={styles.approvedCardText}>
+              // Phase 5F: plain text, no card/box — matches the auth gate and
+              // own-venue gate's plain-text treatment (styles.gateSub). The
+              // OPEN_GREEN tint on the first line is kept as the positive-
+              // framing colour cue; it no longer sits inside a bordered card.
+              <>
+                <Text style={styles.approvedText}>
                   Your review is live and helping other families.
                 </Text>
-                <Text style={[styles.approvedCardText, { marginTop: 4, color: T.label2 }]}>
+                <Text style={[styles.approvedText, styles.approvedTextMuted]}>
                   Visit your profile to edit or delete your existing review.
                 </Text>
-              </View>
+              </>
             ) : (
               <Text style={styles.gateSub}>
                 Your review is waiting for moderation. It will appear here once approved.
               </Text>
             )}
 
-            <TouchableOpacity
-              style={[styles.btnPrimary, { marginTop: isApproved ? 24 : 0 }]}
+            <GlassButton
               onPress={() => router.back()}
-              accessibilityRole="button"
               accessibilityLabel="Go back"
-            >
-              <Text style={styles.btnPrimaryText}>Go back</Text>
-            </TouchableOpacity>
+              label="Go back"
+              style={{
+                borderRadius: 24,
+                paddingHorizontal: 32,
+                paddingVertical: 14,
+                marginTop: isApproved ? 24 : 0,
+              }}
+            />
           </View>
         </SafeAreaView>
       </View>
@@ -297,17 +304,6 @@ function createStyles(T: ThemeTokens) {
     lineHeight: 22,
     marginBottom: 24,
   },
-  btnPrimary: {
-    borderRadius: 24,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    backgroundColor: ACCENT.accent,
-  },
-  btnPrimaryText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 15,
-    color: '#FFFFFF',
-  },
   btnOutline: {
     borderRadius: 24,
     paddingHorizontal: 32,
@@ -321,22 +317,20 @@ function createStyles(T: ThemeTokens) {
     fontSize: 15,
     color: T.label,
   },
-  // Approved review — green-tinted info card
-  approvedCard: {
-    backgroundColor: 'rgba(52,199,123,0.12)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: OPEN_GREEN,
-    padding: 14,
-    marginBottom: 24,
-    width: '100%',
-  },
-  approvedCardText: {
+  // Approved review — plain text, no card chrome (Phase 5F). First line
+  // keeps the OPEN_GREEN positive-framing tint; second line is muted
+  // guidance text, spaced to match gateSub's rhythm under gateTitle.
+  approvedText: {
     fontFamily: FontFamily.bodyStrong,
     fontSize: 13,
     color: OPEN_GREEN,
     textAlign: 'center',
     lineHeight: 20,
+    marginBottom: 4,
+  },
+  approvedTextMuted: {
+    color: T.label2,
+    marginBottom: 24,
   },
   });
 }

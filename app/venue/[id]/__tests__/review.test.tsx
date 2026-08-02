@@ -405,3 +405,65 @@ describe('WriteReviewScreen — v2 palette + background source guards', () => {
     expect(src).not.toMatch(/Nunito-/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Review Flow Reliability checkpoint — already-reviewed presentation cleanup
+//
+// The approved-review branch previously sat inside a heavy bordered/tinted
+// card (styles.approvedCard). It now renders as plain text directly on the
+// shared themed background, matching the auth gate and own-venue gate's
+// existing plain-text treatment — and every "Go back" CTA across all three
+// gates in this file now uses the shared <GlassButton/> instead of a
+// TouchableOpacity + solid-accent-fill button.
+// ---------------------------------------------------------------------------
+
+describe('WriteReviewScreen — already-reviewed presentation has no heavy surrounding card', () => {
+  const src = fs.readFileSync(path.resolve(__dirname, '../review.tsx'), 'utf8');
+
+  it('no longer defines the bordered/tinted approvedCard style', () => {
+    expect(src).not.toMatch(/approvedCard\s*:/);
+  });
+
+  it('the approved-review text still renders directly on the shared background', () => {
+    setup({ myReview: { moderation_status: 'approved' } });
+    render(<WriteReviewScreen />);
+    expect(
+      screen.getByText('Your review is live and helping other families.'),
+    ).toBeTruthy();
+  });
+
+  it('the muted guidance line resolves its colour from a theme token, not a hardcoded literal (readable in both Light and Dark)', () => {
+    expect(src).toMatch(/approvedTextMuted:\s*\{[^}]*color:\s*T\.label2/);
+  });
+});
+
+describe('WriteReviewScreen — gate CTAs use the shared GlassButton', () => {
+  const src = fs.readFileSync(path.resolve(__dirname, '../review.tsx'), 'utf8');
+
+  it('imports GlassButton and uses it for every gate CTA (no solid-accent TouchableOpacity primary buttons remain)', () => {
+    expect(src).toMatch(/import\s*{\s*GlassButton\s*}\s*from\s*'@\/components\/ui\/GlassButton'/);
+    expect(src).not.toMatch(/btnPrimary\s*:/);
+  });
+
+  it('the own-venue gate\'s GlassButton "Go back" CTA calls router.back() (note: the gate header\'s chevron back icon also shares this label — this presses the CTA specifically, the last "Go back" element in the tree)', () => {
+    // Cast needed because `defaultVenue`'s inferred type pins claimed_by to
+    // the `null` literal — same pre-existing pattern used elsewhere in this
+    // file (see the "mounts <V2Background/> on the own-venue gate" test).
+    setup({
+      venue: { ...defaultVenue, claimed_by: 'user-abc', submitted_by: null } as unknown as typeof defaultVenue,
+    });
+    render(<WriteReviewScreen />);
+    const goBackButtons = screen.getAllByLabelText('Go back');
+    expect(goBackButtons.length).toBeGreaterThanOrEqual(2); // header chevron + GlassButton CTA
+    fireEvent.press(goBackButtons[goBackButtons.length - 1]);
+    expect(router.back).toHaveBeenCalled();
+  });
+
+  it('the already-reviewed gate\'s "Go back" calls router.back()', () => {
+    setup({ myReview: { moderation_status: 'approved' } });
+    render(<WriteReviewScreen />);
+    const goBackButtons = screen.getAllByLabelText('Go back');
+    fireEvent.press(goBackButtons[goBackButtons.length - 1]);
+    expect(router.back).toHaveBeenCalled();
+  });
+});

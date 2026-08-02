@@ -25,7 +25,8 @@
 import React from 'react';
 import fs from 'fs';
 import path from 'path';
-import { render, screen, fireEvent } from '@testing-library/react-native';
+import { Keyboard, Platform, ScrollView, TextInput } from 'react-native';
+import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import { ReviewForm } from '../ReviewForm';
 import { useSubmitReview } from '@/hooks/useReviews';
 
@@ -632,5 +633,262 @@ describe('ReviewForm — v2 palette + background source guards', () => {
 
   it('never uses a raw "Nunito-" font literal (replaced by FontFamily tokens)', () => {
     expect(src).not.toMatch(/Nunito-/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6 — Android keyboard/input fix (UI Trust & Reliability Repair Sprint,
+// Review Flow Reliability checkpoint)
+//
+// IMPORTANT LIMITATION: RNTL/jest run against a test renderer, not a real
+// device — there is no actual on-screen keyboard, no real window resize, and
+// no real IME geometry to measure. These tests can only verify the JS-level
+// wiring introduced by this fix (onLayout-triggered focus replacing native
+// autoFocus, the computed footer-clearance formula, and the Android-only
+// keyboardDidShow scroll-to-end backstop) behaves as intended and never
+// crashes. They do NOT prove the real-device symptom described in the docx
+// is fixed — that requires a real Android device test, which this
+// environment cannot perform.
+// ---------------------------------------------------------------------------
+
+describe('ReviewForm — Phase 6: Android keyboard/input fix', () => {
+  const src = fs.readFileSync(path.resolve(__dirname, '../ReviewForm.tsx'), 'utf8');
+
+  it('never uses the native autoFocus JSX prop on the body field (replaced by an onLayout-triggered imperative focus, to avoid racing the Android keyboard/layout timing)', () => {
+    // A prose mention of "autoFocus" is fine (see the root-cause comment
+    // block above ReviewForm's return statement) — what must never come
+    // back is the actual JSX prop usage, i.e. the bare word standalone on
+    // its own line inside the <TextInput ... /> tag.
+    expect(src).not.toMatch(/^\s*autoFocus\s*$/m);
+  });
+
+  it('computes the ScrollView footer clearance instead of using a flat paddingBottom guess', () => {
+    expect(src).toMatch(/scrollContentStyle/);
+    expect(src).toMatch(/footerHeight/);
+  });
+
+  it('restricts the outer SafeAreaView to the top edge only, so FlowFooter is the single source of truth for the bottom safe-area inset', () => {
+    expect(src).toMatch(/<SafeAreaView[^>]*edges=\{\['top'\]\}/);
+  });
+
+  it('never uses a guessed setTimeout for the deferred focus or scroll-to-end backstop (replaced by onLayout / keyboardDidShow, both real signals)', () => {
+    // A prose mention of "setTimeout" in the root-cause comments is fine —
+    // what must never come back is an actual setTimeout(...) call.
+    expect(src).not.toMatch(/setTimeout\(/);
+  });
+
+  it('focuses the body input once the step-2 content reports its own layout, without crashing', () => {
+    const { UNSAFE_getByType, getByTestId } = renderForm();
+    goToStep2();
+
+    const inputInstance = UNSAFE_getByType(TextInput).instance as unknown as {
+      focus: () => void;
+    };
+    const focusSpy = jest.spyOn(inputInstance, 'focus').mockImplementation(() => {});
+
+    fireEvent(getByTestId('review-step-2'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 400 } },
+    });
+
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refocus on a subsequent relayout of the same step-2 visit (e.g. tag row rewrapping)', () => {
+    const { UNSAFE_getByType, getByTestId } = renderForm();
+    goToStep2();
+
+    const inputInstance = UNSAFE_getByType(TextInput).instance as unknown as {
+      focus: () => void;
+    };
+    const focusSpy = jest.spyOn(inputInstance, 'focus').mockImplementation(() => {});
+
+    const layoutEvent = { nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 400 } } };
+    fireEvent(getByTestId('review-step-2'), 'layout', layoutEvent);
+    fireEvent(getByTestId('review-step-2'), 'layout', layoutEvent);
+    fireEvent(getByTestId('review-step-2'), 'layout', layoutEvent);
+
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throw when the form unmounts before step 2 ever reports a layout', () => {
+    const { unmount } = renderForm();
+    goToStep2();
+    expect(() => unmount()).not.toThrow();
+  });
+
+  it('schedules a scroll-to-end backstop on Android via the real keyboardDidShow event (not a guessed delay)', () => {
+    // NOTE: KeyboardAvoidingView itself registers its own internal
+    // 'keyboardDidShow' listener (for its own height/offset bookkeeping) the
+    // moment it mounts — i.e. before ReviewForm's own listener exists. So
+    // this asserts on the LAST 'keyboardDidShow' registration (ours),
+    // registered only once step 2 is reached, not the first one found.
+    const originalOS = Platform.OS;
+    Platform.OS = 'android';
+    const addListenerSpy = jest.spyOn(Keyboard, 'addListener');
+
+    const { UNSAFE_getByType } = renderForm();
+
+    const keyboardDidShowCallsBeforeStep2 = addListenerSpy.mock.calls.filter(
+      ([event]) => event === 'keyboardDidShow',
+    ).length;
+
+    goToStep2();
+
+    const keyboardDidShowCalls = addListenerSpy.mock.calls.filter(
+      ([event]) => event === 'keyboardDidShow',
+    );
+    // Reaching step 2 on Android must add exactly one new registration —
+    // ours — on top of whatever KeyboardAvoidingView already registered.
+    expect(keyboardDidShowCalls.length).toBe(keyboardDidShowCallsBeforeStep2 + 1);
+    const handler = keyboardDidShowCalls[keyboardDidShowCalls.length - 1][1] as () => void;
+
+    const scrollInstance = UNSAFE_getByType(ScrollView).instance as unknown as {
+      scrollToEnd: (opts?: { animated?: boolean }) => void;
+    };
+    const scrollSpy = jest.spyOn(scrollInstance, 'scrollToEnd').mockImplementation(() => {});
+
+    act(() => {
+      handler();
+    });
+
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    Platform.OS = originalOS;
+    addListenerSpy.mockRestore();
+  });
+
+  it('does NOT register an additional keyboardDidShow scroll backstop on iOS when reaching step 2', () => {
+    const originalOS = Platform.OS;
+    Platform.OS = 'ios';
+    const addListenerSpy = jest.spyOn(Keyboard, 'addListener');
+
+    renderForm();
+    const keyboardDidShowCallsBeforeStep2 = addListenerSpy.mock.calls.filter(
+      ([event]) => event === 'keyboardDidShow',
+    ).length;
+
+    goToStep2();
+
+    const keyboardDidShowCallsAfterStep2 = addListenerSpy.mock.calls.filter(
+      ([event]) => event === 'keyboardDidShow',
+    ).length;
+    // On iOS only KeyboardAvoidingView's own internal listener exists —
+    // reaching step 2 must not add a second one.
+    expect(keyboardDidShowCallsAfterStep2).toBe(keyboardDidShowCallsBeforeStep2);
+
+    Platform.OS = originalOS;
+    addListenerSpy.mockRestore();
+  });
+
+  // Preserving entered text across step navigation is an explicit docx
+  // requirement ("Preserve entered text when moving between steps or
+  // temporarily dismissing the keyboard") — this was already true before
+  // Phase 6 (state lives in the parent, steps are conditionally rendered
+  // from the same mounted tree, never unmounted), but is guarded here
+  // explicitly since it is one of the six things the docx asks to be tested.
+  it('preserves entered body text when navigating from step 2 back to step 1 and forward again', () => {
+    renderForm();
+    goToStep2(4);
+    typeBody('This text must survive a trip back to step 1.');
+    fireEvent.press(screen.getByText('Back'));
+    expect(screen.getByText('STEP 1 OF 3')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Next'));
+    expect(screen.getByText('STEP 2 OF 3')).toBeTruthy();
+    expect(
+      screen.getByDisplayValue('This text must survive a trip back to step 1.'),
+    ).toBeTruthy();
+  });
+
+  it('preserves entered body text across a blur (keyboard dismiss) and refocus', () => {
+    renderForm();
+    goToStep2(4);
+    typeBody('This should survive losing and regaining focus.');
+
+    const input = screen.getByPlaceholderText(/What would you tell another parent/);
+    fireEvent(input, 'blur');
+    fireEvent(input, 'focus');
+
+    expect(
+      screen.getByDisplayValue('This should survive losing and regaining focus.'),
+    ).toBeTruthy();
+  });
+
+  it('preserves entered body text after a recoverable submit failure', () => {
+    mockMutate.mockImplementation(
+      (_p: unknown, cbs: { onError: (e: Error) => void }) =>
+        cbs.onError(new Error('Could not submit your review. Please check your connection and try again.')),
+    );
+    jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
+
+    renderForm();
+    goToStep2(4);
+    typeBody('This draft must not be lost on a network failure.');
+    fireEvent.press(screen.getByText('Post review'));
+
+    expect(
+      screen.getByDisplayValue('This draft must not be lost on a network failure.'),
+    ).toBeTruthy();
+  });
+
+  it('both sticky Back and Post review controls remain rendered and usable on step 2', () => {
+    renderForm();
+    goToStep2(4);
+
+    const backBtn = screen.getByText('Back');
+    const postBtn = screen.getByText('Post review');
+    expect(backBtn).toBeTruthy();
+    expect(postBtn).toBeTruthy();
+
+    fireEvent.press(backBtn);
+    expect(screen.getByText('STEP 1 OF 3')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review Flow Reliability checkpoint — submission error translation
+// ---------------------------------------------------------------------------
+
+describe('ReviewForm — never surfaces raw internal error sentinels', () => {
+  it('translates the internal OWNER_REVIEW_NOT_ALLOWED sentinel into a friendly message instead of rendering it raw', () => {
+    const AlertSpy = jest
+      .spyOn(require('react-native').Alert, 'alert')
+      .mockImplementation(() => {});
+
+    mockMutate.mockImplementation(
+      (_p: unknown, cbs: { onError: (e: Error) => void }) =>
+        cbs.onError(new Error('OWNER_REVIEW_NOT_ALLOWED')),
+    );
+
+    renderForm();
+    goToStep2(3);
+    typeBody('Good park, kids had fun on the climbing frames.');
+    fireEvent.press(screen.getByText('Post review'));
+
+    expect(AlertSpy).toHaveBeenCalledWith(
+      'Submission failed',
+      'Something went wrong. Please try again.',
+    );
+    const [, message] = AlertSpy.mock.calls[0];
+    expect(message).not.toBe('OWNER_REVIEW_NOT_ALLOWED');
+
+    AlertSpy.mockRestore();
+  });
+
+  it('"Post review" button is disabled while a submission is pending, even with a valid body', () => {
+    // Reach step 2 with a valid body BEFORE switching the mock to isPending —
+    // otherwise disabled=true could just be the "body too short" rule, not
+    // proof that the pending state itself disables the button.
+    (useSubmitReview as jest.Mock).mockReturnValue({ mutate: mockMutate, isPending: false });
+    render(<ReviewForm {...defaultProps} />);
+    tapStar(4);
+    fireEvent.press(screen.getByText('Next'));
+    typeBody('A perfectly valid review body, well over the minimum length.');
+
+    (useSubmitReview as jest.Mock).mockReturnValue({ mutate: mockMutate, isPending: true });
+    // Trigger a re-render so the component re-reads the updated mock.
+    typeBody('A perfectly valid review body, well over the minimum length!');
+
+    const postBtn = screen.getByRole('button', { name: 'Posting...' });
+    expect(postBtn.props.accessibilityState?.disabled).toBe(true);
   });
 });
