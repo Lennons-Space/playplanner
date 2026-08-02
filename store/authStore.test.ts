@@ -10,7 +10,7 @@
 
 // ---- Mock Supabase BEFORE importing the store ----
 // This must come before any import that touches supabase.
-import { useAuthStore } from './authStore';
+import { useAuthStore, consumeDeliberateSignOut } from './authStore';
 import { supabase } from '@/lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
 import type { Profile } from '../types';
@@ -99,6 +99,9 @@ beforeEach(() => {
     isLoading: true,
   });
   jest.clearAllMocks();
+  // deliberateSignOut is module-level state (not part of the Zustand store),
+  // so it survives across tests unless explicitly drained here.
+  consumeDeliberateSignOut();
 });
 
 // ======================================================================
@@ -334,5 +337,67 @@ describe('signOut', () => {
     expect(profile).toBeNull();
     // Extra safety: even if someone checks profile?.is_admin, it's falsy
     expect(profile?.is_admin).toBeFalsy();
+  });
+
+  // Auth Session Recovery checkpoint: still clear local state even if the
+  // server-side signOut call itself reports an error (e.g. the refresh
+  // token was already invalid) — a server-side failure must never leave
+  // this device still appearing signed in.
+  it('still clears local state when supabase.auth.signOut() resolves an error', async () => {
+    mockSignOut.mockResolvedValueOnce({
+      error: { code: 'session_not_found', message: 'Session not found' },
+    });
+    useAuthStore.setState({
+      session: fakeSession,
+      user: fakeUser,
+      profile: fakeProfile,
+      isLoading: false,
+    });
+
+    await useAuthStore.getState().signOut();
+
+    const state = useAuthStore.getState();
+    expect(state.session).toBeNull();
+    expect(state.user).toBeNull();
+    expect(state.profile).toBeNull();
+  });
+});
+
+// ======================================================================
+// consumeDeliberateSignOut — Auth Session Recovery checkpoint
+//
+// Coordination flag that lets useAuthListener (hooks/useAuth.ts) tell a
+// user-initiated "Sign out" apart from an involuntary SIGNED_OUT event (the
+// Supabase SDK's own internal recovery from a terminal stale-refresh-token
+// error) — both fire the identical SIGNED_OUT event with no other way to
+// distinguish them.
+// ======================================================================
+describe('consumeDeliberateSignOut', () => {
+  it('returns false before any signOut() call has happened', () => {
+    expect(consumeDeliberateSignOut()).toBe(false);
+  });
+
+  it('returns true exactly once after signOut() is called, then resets to false', async () => {
+    await useAuthStore.getState().signOut();
+
+    expect(consumeDeliberateSignOut()).toBe(true);
+    // Consuming it resets the flag — a second read must not still see it set.
+    expect(consumeDeliberateSignOut()).toBe(false);
+  });
+
+  it('is set to true before the supabase.auth.signOut() network call resolves (not after)', async () => {
+    // Deferred promise so we can inspect the flag while signOut() is still
+    // in flight — proves the flag is set BEFORE the await, not after.
+    let resolveSignOut!: (value: { error: null }) => void;
+    mockSignOut.mockReturnValueOnce(
+      new Promise((resolve) => { resolveSignOut = resolve; }),
+    );
+
+    const signOutPromise = useAuthStore.getState().signOut();
+    // Still in flight — the flag must already be set.
+    expect(consumeDeliberateSignOut()).toBe(true);
+
+    resolveSignOut({ error: null });
+    await signOutPromise;
   });
 });

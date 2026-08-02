@@ -52,12 +52,17 @@ jest.mock('@/store/authStore', () => ({
 // Supporting mocks required because useAuth.ts imports these at module level.
 // ---------------------------------------------------------------------------
 
+const mockStartAutoRefresh = jest.fn();
+const mockStopAutoRefresh = jest.fn();
+
 jest.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
       onAuthStateChange: jest.fn(() => ({
         data: { subscription: { unsubscribe: jest.fn() } },
       })),
+      startAutoRefresh: (...args: unknown[]) => mockStartAutoRefresh(...args),
+      stopAutoRefresh: (...args: unknown[]) => mockStopAutoRefresh(...args),
     },
   },
 }));
@@ -100,6 +105,8 @@ beforeEach(() => {
   capturedCallback = null;
   mockFetchProfile.mockClear();
   mockRemove.mockClear();
+  mockStartAutoRefresh.mockClear();
+  mockStopAutoRefresh.mockClear();
 
   // Spy on addEventListener so we capture the callback without replacing react-native.
   addEventListenerSpy = jest
@@ -225,5 +232,49 @@ describe('useProfileForegroundRefresh', () => {
     simulateTransition('active');
 
     expect(mockFetchProfile).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auth Session Recovery checkpoint — startAutoRefresh()/stopAutoRefresh()
+// paired with the SAME AppState listener (no second subscription added).
+// ---------------------------------------------------------------------------
+
+describe('useProfileForegroundRefresh — auto-refresh start/stop', () => {
+  it('calls supabase.auth.startAutoRefresh() on background→active', () => {
+    setCurrentState('background');
+    renderHook(() => useProfileForegroundRefresh());
+
+    simulateTransition('active');
+
+    expect(mockStartAutoRefresh).toHaveBeenCalledTimes(1);
+    expect(mockStopAutoRefresh).not.toHaveBeenCalled();
+  });
+
+  it('calls supabase.auth.stopAutoRefresh() on active→background', () => {
+    setCurrentState('active');
+    renderHook(() => useProfileForegroundRefresh());
+
+    simulateTransition('background');
+
+    expect(mockStopAutoRefresh).toHaveBeenCalledTimes(1);
+    expect(mockStartAutoRefresh).not.toHaveBeenCalled();
+  });
+
+  it('does not call startAutoRefresh again on active→active', () => {
+    setCurrentState('active');
+    renderHook(() => useProfileForegroundRefresh());
+
+    simulateTransition('active');
+
+    expect(mockStartAutoRefresh).not.toHaveBeenCalled();
+  });
+
+  it('registers startAutoRefresh/stopAutoRefresh through the single existing AppState subscription — no second listener added', () => {
+    renderHook(() => useProfileForegroundRefresh());
+    // Same assertion already proven above (exactly one addEventListener call)
+    // — restated here to make the "no second subscription" contract explicit
+    // for this specific checkpoint's requirement.
+    expect(addEventListenerSpy).toHaveBeenCalledTimes(1);
   });
 });

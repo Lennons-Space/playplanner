@@ -1,166 +1,381 @@
 /**
- * Tests for hooks/useAuth.ts — specifically useAuthListener.
+ * Tests for hooks/useAuth.ts — useAuthListener.
  *
- * Why this test matters for PlayPlanner:
+ * (useProfileForegroundRefresh has its own dedicated test file:
+ * hooks/__tests__/useProfileForegroundRefresh.test.ts.)
+ *
+ * Why these tests matter for PlayPlanner:
  * - On sign-out, pendingPostcode must be cleared from the map store so it is
  *   never visible to the next user on a shared or family device (GDPR / ICO
  *   Children's Code shared-device data isolation).
  * - On sign-in, migratePendingLocationConsent must be called so any pre-auth
  *   location consent stored in SecureStore is linked to the new account.
+ * - Auth Session Recovery checkpoint: the Supabase SDK already self-heals
+ *   from a terminal stale-refresh-token error internally (clears its own
+ *   session, fires SIGNED_OUT) — this hook's job is to react correctly to
+ *   that SIGNED_OUT event: clear app-level state, show a friendly one-time
+ *   message ONLY when the loss was involuntary (never after a deliberate
+ *   "Sign out" tap), and never surface a raw Supabase error.
  *
- * useAuthListener sets up a Supabase onAuthStateChange subscription inside a
- * useEffect. Rather than rendering the hook (which needs a React environment),
- * we capture the callback that is passed to onAuthStateChange and invoke it
- * directly — this is the standard pattern for testing Supabase auth listeners.
+ * Test strategy: render the REAL hook via renderHook (not a hand-copied
+ * reproduction of its logic — a prior version of this file mocked
+ * onAuthStateChange and then re-implemented the callback body inline, which
+ * meant these tests could never actually catch a bug in the real hook).
+ * The real store/authStore.ts and store/mapStore.ts are used (not mocked) so
+ * consumeDeliberateSignOut()'s real coordination with authStore.signOut() is
+ * exercised end-to-end.
  */
 
+import { renderHook, act } from '@testing-library/react-native';
+import { Alert } from 'react-native';
+import type { Session, User } from '@supabase/supabase-js';
+import { useAuthListener } from '../useAuth';
+import { useAuthStore } from '@/store/authStore';
 import { useMapStore } from '@/store/mapStore';
 
 // ---------------------------------------------------------------------------
-// Import the hook AFTER mocks are set up so the mocked modules are in place.
-// ---------------------------------------------------------------------------
-
-import { useAuthListener } from '../useAuth';
-
-// ---------------------------------------------------------------------------
-// Capture the auth callback before any module import runs the subscription.
+// Mocks
 // ---------------------------------------------------------------------------
 
 let authStateCallback: ((event: string, session: unknown) => void) | null = null;
+const mockUnsubscribe = jest.fn();
+const mockOnAuthStateChange = jest.fn((cb: (event: string, session: unknown) => void) => {
+  authStateCallback = cb;
+  return { data: { subscription: { unsubscribe: mockUnsubscribe } } };
+});
 
 jest.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
-      onAuthStateChange: jest.fn((cb: (event: string, session: unknown) => void) => {
-        authStateCallback = cb;
-        return { data: { subscription: { unsubscribe: jest.fn() } } };
-      }),
+      onAuthStateChange: (...args: [(event: string, session: unknown) => void]) =>
+        mockOnAuthStateChange(...args),
+      signOut: jest.fn().mockResolvedValue({ error: null }),
     },
+    from: jest.fn(() => ({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })),
   },
 }));
 
-// Mock the auth store — setSession is a no-op for these tests.
-jest.mock('@/store/authStore', () => ({
-  useAuthStore: jest.fn((selector: (s: { setSession: jest.Mock }) => unknown) =>
-    selector({ setSession: jest.fn() })
-  ),
-}));
-
-// Make migratePendingLocationConsent observable.
 const mockMigrate = jest.fn().mockResolvedValue(undefined);
 jest.mock('@/services/consent/locationConsent', () => ({
   migratePendingLocationConsent: (...args: unknown[]) => mockMigrate(...args),
 }));
-
-// ---------------------------------------------------------------------------
-// QueryClient stub.
-// ---------------------------------------------------------------------------
 
 const mockQueryClientClear = jest.fn();
 const fakeQueryClient = {
   clear: mockQueryClientClear,
 } as unknown as import('@tanstack/react-query').QueryClient;
 
-// ---------------------------------------------------------------------------
-// Helper: run the hook's useEffect body directly by calling onAuthStateChange.
-// useAuthListener calls supabase.auth.onAuthStateChange inside useEffect.
-// Our mock captures the callback synchronously, so calling useAuthListener()
-// directly (outside React) triggers the mock immediately.
-// ---------------------------------------------------------------------------
-
-function activateListener() {
-  // We call the hook as a plain function. Because useEffect is mocked by Jest's
-  // React setup (or not needed here — the mock captures the callback during the
-  // synchronous import/mock resolution), we invoke the hook directly.
-  // Actually: we need React to run the hook. Simplest approach: invoke the
-  // supabase.auth.onAuthStateChange mock directly to simulate what the hook does.
-  const { supabase } = require('@/lib/supabase');
-  // The mock records the callback on the first call. We call it with our
-  // fakeQueryClient to register. If it hasn't been called yet, call it now.
-  if (!authStateCallback) {
-    // Call onAuthStateChange manually to populate authStateCallback.
-    supabase.auth.onAuthStateChange((event: string, session: unknown) => {
-      // This mimics what useAuthListener passes — we reproduce the logic inline.
-      const { useMapStore: ms } = require('@/store/mapStore');
-      const { migratePendingLocationConsent } = require('@/services/consent/locationConsent');
-      if (event === 'SIGNED_IN' && session && (session as { user?: { id?: string } }).user?.id) {
-        migratePendingLocationConsent((session as { user: { id: string } }).user.id).catch(() => {});
-      }
-      if (event === 'SIGNED_OUT') {
-        fakeQueryClient.clear();
-        ms.getState().setPendingPostcode(null);
-      }
-    });
-  }
-}
+const fakeUser = { id: 'user-abc' } as User;
+const fakeSession = { access_token: 'tok', refresh_token: 'ref', user: fakeUser } as Session;
 
 beforeEach(() => {
   authStateCallback = null;
-  mockQueryClientClear.mockClear();
-  mockMigrate.mockClear();
-  useMapStore.setState({ pendingPostcode: null });
   jest.clearAllMocks();
+  useMapStore.setState({ pendingPostcode: null });
+  useAuthStore.setState({ session: null, user: null, profile: null, isLoading: true });
+});
+
+function fireAuthEvent(event: string, session: unknown) {
+  act(() => {
+    authStateCallback!(event, session);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Subscription lifecycle (concurrency/lifecycle requirements)
+// ---------------------------------------------------------------------------
+
+describe('useAuthListener — subscription lifecycle', () => {
+  it('subscribes exactly once to onAuthStateChange', () => {
+    renderHook(() => useAuthListener(fakeQueryClient));
+    expect(mockOnAuthStateChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('unsubscribes on unmount — no listener leak', () => {
+    const { unmount } = renderHook(() => useAuthListener(fakeQueryClient));
+    unmount();
+    expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
-// Tests
+// Normal boot behaviour
 // ---------------------------------------------------------------------------
 
-describe('useAuthListener — SIGNED_OUT', () => {
-  /**
-   * BUG G fix: pendingPostcode must be cleared on sign-out.
-   *
-   * If not cleared, the next person to open the map on the same device would
-   * see the previous user's postcode pre-filled — a GDPR data-isolation failure
-   * on shared/family devices (ICO Children's Code shared-device guidance).
-   */
-  it('clears pendingPostcode from mapStore when SIGNED_OUT fires', () => {
-    activateListener();
+describe('useAuthListener — normal boot', () => {
+  it('a valid persisted session (INITIAL_SESSION with a session) boots the store as signed in', () => {
+    renderHook(() => useAuthListener(fakeQueryClient));
+    fireAuthEvent('INITIAL_SESSION', fakeSession);
+    expect(useAuthStore.getState().session).toBe(fakeSession);
+    expect(useAuthStore.getState().user).toEqual(fakeUser);
+    expect(useAuthStore.getState().isLoading).toBe(false);
+  });
 
-    // Prime the store with a postcode that belongs to the signed-out user.
+  it('no stored session (INITIAL_SESSION with null) boots the store as signed out, without the expired-session message', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    renderHook(() => useAuthListener(fakeQueryClient));
+    fireAuthEvent('INITIAL_SESSION', null);
+    expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().isLoading).toBe(false);
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SIGNED_OUT — state clearing (unchanged behaviour, still correct)
+// ---------------------------------------------------------------------------
+
+describe('useAuthListener — SIGNED_OUT clears local state', () => {
+  it('clears pendingPostcode from mapStore when SIGNED_OUT fires', () => {
+    renderHook(() => useAuthListener(fakeQueryClient));
     useMapStore.getState().setPendingPostcode('SW1A 1AA');
     expect(useMapStore.getState().pendingPostcode).toBe('SW1A 1AA');
 
-    // Fire the SIGNED_OUT event via the captured callback.
-    authStateCallback!('SIGNED_OUT', null);
+    fireAuthEvent('SIGNED_OUT', null);
 
-    // The postcode must be gone — the next user on this device cannot see it.
     expect(useMapStore.getState().pendingPostcode).toBeNull();
   });
 
-  it('calls queryClient.clear() on SIGNED_OUT', () => {
-    activateListener();
-
-    authStateCallback!('SIGNED_OUT', null);
-
+  it('calls queryClient.clear() on SIGNED_OUT — wipes the authenticated query cache', () => {
+    renderHook(() => useAuthListener(fakeQueryClient));
+    fireAuthEvent('SIGNED_OUT', null);
     expect(mockQueryClientClear).toHaveBeenCalledTimes(1);
   });
+
+  it('clears session/user/profile in authStore on SIGNED_OUT', () => {
+    useAuthStore.setState({ session: fakeSession, user: fakeUser, profile: null, isLoading: false });
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    fireAuthEvent('SIGNED_OUT', null);
+
+    const state = useAuthStore.getState();
+    expect(state.session).toBeNull();
+    expect(state.user).toBeNull();
+  });
+
+  it('queryClient.clear() does not touch unrelated Zustand preference stores (mapStore only loses pendingPostcode, nothing else)', () => {
+    // useMapStore persists things like the last search radius / filters
+    // independently of React Query — queryClient.clear() must never reach
+    // into it beyond the one explicit setPendingPostcode(null) call.
+    useMapStore.setState({ pendingPostcode: 'SW1A 1AA' });
+    const mapStoreBefore = useMapStore.getState();
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    fireAuthEvent('SIGNED_OUT', null);
+
+    // Every OTHER field on the map store is untouched (same reference/values
+    // as before, aside from the one field this listener explicitly clears).
+    const mapStoreAfter = useMapStore.getState();
+    const { pendingPostcode: _before, ...restBefore } = mapStoreBefore;
+    const { pendingPostcode: _after, ...restAfter } = mapStoreAfter;
+    expect(restAfter).toEqual(restBefore);
+  });
 });
+
+// ---------------------------------------------------------------------------
+// Terminal session recovery — the friendly one-time message
+// ---------------------------------------------------------------------------
+
+describe('useAuthListener — involuntary session loss shows one friendly message', () => {
+  it('shows "Your session expired. Please sign in again." when SIGNED_OUT fires while a real session existed and no deliberate sign-out happened', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    useAuthStore.setState({ session: fakeSession, user: fakeUser, profile: null, isLoading: false });
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    // This is exactly what happens when the Supabase SDK's own internal
+    // recovery from refresh_token_not_found / refresh_token_already_used /
+    // session_not_found / session_expired fires SIGNED_OUT after already
+    // clearing its own local session — the app never sees the raw
+    // AuthApiError directly, only this event.
+    fireAuthEvent('SIGNED_OUT', null);
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Session expired',
+      'Your session expired. Please sign in again.',
+    );
+    alertSpy.mockRestore();
+  });
+
+  it('never renders the raw Supabase AuthApiError — the alert body is always the fixed friendly string', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    useAuthStore.setState({ session: fakeSession, user: fakeUser, profile: null, isLoading: false });
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    fireAuthEvent('SIGNED_OUT', null);
+
+    const [, message] = alertSpy.mock.calls[0];
+    expect(message).not.toMatch(/AuthApiError|refresh_token|Invalid Refresh Token/i);
+    alertSpy.mockRestore();
+  });
+
+  it('does NOT show the message after a deliberate authStore.signOut() call', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    useAuthStore.setState({ session: fakeSession, user: fakeUser, profile: null, isLoading: false });
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    // authStore.signOut() sets the deliberate flag, then the SDK would
+    // normally fire SIGNED_OUT itself once the network call resolves — we
+    // simulate that by firing the event immediately after, same as the real
+    // Supabase client does synchronously via onAuthStateChange.
+    await act(async () => {
+      await useAuthStore.getState().signOut();
+    });
+    fireAuthEvent('SIGNED_OUT', null);
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
+  it('does not show the message on a SIGNED_OUT that arrives with no session to lose (idempotent — no duplicate/late-event message)', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    // Default beforeEach state: session is already null.
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    fireAuthEvent('SIGNED_OUT', null);
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
+  it('repeated terminal SIGNED_OUT events do not create a message/recovery loop — shown at most once per involuntary loss', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    useAuthStore.setState({ session: fakeSession, user: fakeUser, profile: null, isLoading: false });
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    fireAuthEvent('SIGNED_OUT', null); // first: real session lost -> shows once
+    fireAuthEvent('SIGNED_OUT', null); // second: already null -> no repeat
+    fireAuthEvent('SIGNED_OUT', null); // third: still null -> no repeat
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    alertSpy.mockRestore();
+  });
+
+  it('concurrent SIGNED_OUT deliveries collapse into a single recovery reaction (one clear, one message)', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    useAuthStore.setState({ session: fakeSession, user: fakeUser, profile: null, isLoading: false });
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    // Simulates two near-simultaneous SIGNED_OUT deliveries (e.g. the
+    // auto-refresh tick and a manual getSession() both observing the same
+    // terminal failure) arriving back to back before React has re-rendered.
+    act(() => {
+      authStateCallback!('SIGNED_OUT', null);
+      authStateCallback!('SIGNED_OUT', null);
+    });
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(mockQueryClientClear).toHaveBeenCalledTimes(2); // clear() itself is idempotent/safe to call twice
+    alertSpy.mockRestore();
+  });
+
+  it('a fresh sign-in after recovery re-arms the message for any FUTURE involuntary loss', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    useAuthStore.setState({ session: fakeSession, user: fakeUser, profile: null, isLoading: false });
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    fireAuthEvent('SIGNED_OUT', null); // first involuntary loss
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+
+    fireAuthEvent('SIGNED_IN', fakeSession); // user signs back in
+    fireAuthEvent('SIGNED_OUT', null); // a second, later involuntary loss
+
+    expect(alertSpy).toHaveBeenCalledTimes(2);
+    alertSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ordinary temporary errors must never force a logout
+// ---------------------------------------------------------------------------
+
+describe('useAuthListener — temporary conditions do not force logout', () => {
+  it('an ordinary profile-fetch/network hiccup that never produces a SIGNED_OUT event leaves the session intact', () => {
+    // The Supabase SDK only ever fires SIGNED_OUT for a genuinely terminal
+    // session (see AuthRetryableFetchError vs AuthApiError in the installed
+    // SDK) — a temporary offline/timeout/outage condition during a refresh
+    // attempt does not call _removeSession() internally, so onAuthStateChange
+    // simply never fires SIGNED_OUT for it. This test asserts the contract
+    // from the app's side: with no SIGNED_OUT event, the session must remain
+    // exactly as it was.
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    useAuthStore.setState({ session: fakeSession, user: fakeUser, profile: null, isLoading: false });
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    // No auth event fires at all for a transient failure.
+
+    expect(useAuthStore.getState().session).toBe(fakeSession);
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(mockQueryClientClear).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
+  it('a TOKEN_REFRESHED event (successful background refresh) does not clear state or show any message', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    useAuthStore.setState({ session: fakeSession, user: fakeUser, profile: null, isLoading: false });
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    const refreshedSession = { ...fakeSession, access_token: 'new-tok' } as Session;
+    fireAuthEvent('TOKEN_REFRESHED', refreshedSession);
+
+    expect(useAuthStore.getState().session).toEqual(refreshedSession);
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(mockQueryClientClear).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SIGNED_IN
+// ---------------------------------------------------------------------------
 
 describe('useAuthListener — SIGNED_IN', () => {
   /**
    * BUG C fix: migratePendingLocationConsent must be called on SIGNED_IN.
-   *
-   * If a user granted location consent before creating an account, the consent
-   * is stored in SecureStore. It must be migrated into the database the first
-   * time they sign in so the audit trail is complete for GDPR Art.7.
-   * Doing this in useAuthListener (not login.tsx) means it works for all
-   * sign-in paths: email/password, OAuth, magic link, token refresh, etc.
    */
   it('calls migratePendingLocationConsent with the user id on SIGNED_IN', () => {
-    activateListener();
-
-    const fakeSession = { user: { id: 'user-xyz' } };
-    authStateCallback!('SIGNED_IN', fakeSession);
-
-    expect(mockMigrate).toHaveBeenCalledWith('user-xyz');
+    renderHook(() => useAuthListener(fakeQueryClient));
+    fireAuthEvent('SIGNED_IN', fakeSession);
+    expect(mockMigrate).toHaveBeenCalledWith('user-abc');
   });
 
   it('does not call migratePendingLocationConsent if session has no user', () => {
-    activateListener();
-
-    authStateCallback!('SIGNED_IN', null);
-
+    renderHook(() => useAuthListener(fakeQueryClient));
+    fireAuthEvent('SIGNED_IN', null);
     expect(mockMigrate).not.toHaveBeenCalled();
+  });
+
+  it('a normal sign-in updates the store to the signed-in user', () => {
+    renderHook(() => useAuthListener(fakeQueryClient));
+    fireAuthEvent('SIGNED_IN', fakeSession);
+    expect(useAuthStore.getState().user).toEqual(fakeUser);
+    expect(useAuthStore.getState().session).toBe(fakeSession);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ordinary deliberate sign-out still works end to end
+// ---------------------------------------------------------------------------
+
+describe('useAuthListener — deliberate sign-out still works', () => {
+  it('a manual signOut() call clears state and the SDK-fired SIGNED_OUT that follows is a silent no-op message-wise', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    useAuthStore.setState({ session: fakeSession, user: fakeUser, profile: null, isLoading: false });
+    renderHook(() => useAuthListener(fakeQueryClient));
+
+    await act(async () => {
+      await useAuthStore.getState().signOut();
+    });
+    expect(useAuthStore.getState().session).toBeNull();
+
+    fireAuthEvent('SIGNED_OUT', null);
+    expect(mockQueryClientClear).toHaveBeenCalledTimes(1);
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
   });
 });

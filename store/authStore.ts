@@ -3,6 +3,29 @@ import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/types';
 
+// ---------------------------------------------------------------------------
+// Deliberate-sign-out coordination flag (Auth Session Recovery checkpoint).
+//
+// Supabase's own SDK already self-heals from a terminal stale-refresh-token
+// error (e.g. "Invalid Refresh Token: Refresh Token Not Found"): internally
+// it clears its local session and fires the SAME 'SIGNED_OUT' event onto
+// onAuthStateChange (hooks/useAuth.ts's useAuthListener) that a genuine
+// user-initiated "Sign out" tap also fires — there is no way to tell the two
+// apart from the event itself. This module-level flag is set immediately
+// before the deliberate `signOut()` action below calls
+// `supabase.auth.signOut()`, and consumed (read-and-reset, so it only ever
+// applies to the very next SIGNED_OUT) by the listener — so the "your
+// session expired" message is shown only for the involuntary case, never
+// after a deliberate sign-out.
+let deliberateSignOut = false;
+
+/** @internal — consumed only by hooks/useAuth.ts's useAuthListener. */
+export function consumeDeliberateSignOut(): boolean {
+  const was = deliberateSignOut;
+  deliberateSignOut = false;
+  return was;
+}
+
 interface AuthState {
   session: Session | null;
   user: User | null;
@@ -55,7 +78,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
+    deliberateSignOut = true;
+    // supabase.auth.signOut() resolves { error } rather than throwing in the
+    // installed SDK version — even when the server no longer recognises the
+    // refresh token, 401/403/404 from the underlying admin sign-out call are
+    // already treated as "already signed out, proceed" internally. Log
+    // defensively (code only, never raw error content) but always clear
+    // local state below regardless of the result — a server-side failure
+    // must never leave this device still appearing signed in.
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('signOut error:', error.code ?? error.message);
+    }
     set({ session: null, user: null, profile: null, isLoading: false });
     // CONTRACT: callers must also call queryClient.clear() immediately after this
     // to prevent cached venue/profile data from leaking to the next user on a
