@@ -165,7 +165,17 @@ function FavCard({
           row only renders when a real numeric rating exists: no reviews →
           no row (never a fabricated value or an awkward "★ –"). */}
       <View style={styles.cardFooter} pointerEvents="none">
-        <Text style={styles.venueName} numberOfLines={1}>{venue.name}</Text>
+        {/* Real venue name, up to 2 lines, tail-ellipsised beyond that — never
+            a premature single-line cut for a normal-length name, and never a
+            fabricated value. The footer is position:absolute with no fixed
+            height (content-sized, anchored to `bottom`), so a wrapped 2nd
+            line simply grows the footer upward over the photo — it cannot
+            push the rating row off-card or collide with the top-left badge
+            (badge ends ~y28; even at the smallest realistic grid cell the
+            2-line name + rating row block starts well below that). Card
+            itself stays a fixed square (grid symmetry preserved); only the
+            text block within it grows. */}
+        <Text style={styles.venueName} numberOfLines={2} ellipsizeMode="tail">{venue.name}</Text>
         {rating > 0 && (
           <View style={styles.metaRow}>
             <Icon name="star" size={10} color={CARD_STAR} />

@@ -143,6 +143,13 @@ describe('Saved tab — v2 grid', () => {
     expect(getByText('2 saved')).toBeTruthy();
   });
 
+  it('venue title allows 2 lines before ellipsising (no premature single-line cut for a normal-length real name)', async () => {
+    const screen = render(<FavouritesScreen />, { wrapper: makeWrapper() });
+    const name = await screen.findByText('Bright Soft Play Barn'); // the real venue name, not fabricated
+    expect(name.props.numberOfLines).toBe(2);
+    expect(name.props.ellipsizeMode).toBe('tail');
+  });
+
   it('renders a card per saved venue from the real query rows', async () => {
     const { findByText, getByText, queryByText } = render(<FavouritesScreen />, { wrapper: makeWrapper() });
     expect(await findByText('Bright Soft Play Barn')).toBeTruthy();

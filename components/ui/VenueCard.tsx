@@ -7,12 +7,13 @@
 //   NO VenueIllustration cartoon scenes.
 // ─────────────────────────────────────────────────────────────────
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 import type { Venue } from '../../types';
 import { getCategoryMeta } from '../../constants/categories';
 import { computeIsOpenNow } from '../../lib/venueAttributes';
 import { Colors, FontFamily, BorderRadius } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import type { WeatherTheme } from '@/lib/weatherTheme';
 import { CategoryPlaceholder } from './CategoryPlaceholder';
 import { Icon } from './Icon';
@@ -90,19 +91,38 @@ export interface VenueCardProps {
 }
 
 export function VenueCard({ venue, saved = false, onToggleSave, onPress, weatherBadge, familyBadges, theme }: VenueCardProps) {
+  const { tokens } = useAppTheme();
   const categorySlug = venue.category?.slug ?? null;
   const meta = getCategoryMeta(categorySlug);
+  // A cover_photo_url that fails to actually load (broken link, deleted
+  // storage object, transient network error) must fall back to the same
+  // designed CategoryPlaceholder used when there's no photo at all — never a
+  // blank/broken image box. Same pattern already established in
+  // app/(tabs)/favourites.tsx's FavCard and app/explore/map.tsx's VenueRow.
+  const [imgError, setImgError] = useState(false);
+  const hasPhoto = !!venue.cover_photo_url && !imgError;
 
+  // ── Solid-card theming ────────────────────────────────────────────────────
+  // The solid ("paper") card now resolves its colours from the SAME
+  // useAppTheme() tokens every other v2 screen uses (VenueCard2, Discover,
+  // the collection page, Profile, Map — see hooks/useAppTheme.ts), instead of
+  // the legacy light-only `Colors` export. In light mode these tokens are
+  // byte-identical to the old Colors.* values (Themes.light.surface ===
+  // Colors.surface === '#FFFFFF', etc. — see constants/theme.ts), so every
+  // existing light-mode screen is visually unchanged. In dark mode the card
+  // now correctly renders the v2 dark surface instead of a white "paper"
+  // card with dark-on-light text (the bug this fixes).
+  //
   // ── Glass theming (rain/night on Home only) ──────────────────────────────
-  // Every override is gated on `glass`; when false we use the exact original
-  // Colors so the card is unchanged everywhere else.
+  // Every override is gated on `glass`; when false we use the resolved
+  // tokens above so the solid card matches the rest of the app's theme.
   const glass = theme?.card.style === 'glass';
-  const cardBg = glass ? theme!.card.background : Colors.surface;
-  const cardBorder = glass ? theme!.card.border : Colors.separator;
-  const nameColor = glass ? theme!.text.primary : Colors.label; // card title
-  const strongColor = glass ? theme!.text.primary : Colors.label; // rating value
-  const secondaryColor = glass ? theme!.text.secondary : Colors.label2; // distance
-  const mutedColor = glass ? theme!.text.tertiary : Colors.label3; // ages / dots / "no reviews"
+  const cardBg = glass ? theme!.card.background : tokens.surface;
+  const cardBorder = glass ? theme!.card.border : tokens.separator;
+  const nameColor = glass ? theme!.text.primary : tokens.label; // card title
+  const strongColor = glass ? theme!.text.primary : tokens.label; // rating value
+  const secondaryColor = glass ? theme!.text.secondary : tokens.label2; // distance
+  const mutedColor = glass ? theme!.text.tertiary : tokens.label3; // ages / dots / "no reviews"
 
   const openStatus = computeIsOpenNow(venue);
   const distanceText = formatDistance(venue.distance_km);
@@ -124,8 +144,11 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
         borderColor: cardBorder,
         // Solid cards keep the crisp border + tight shadow. Glass cards use a
         // softer, more diffuse drop and no Android elevation (elevation on a
-        // translucent surface reads as a hard grey slab).
-        shadowColor: glass ? '#000000' : Colors.label,
+        // translucent surface reads as a hard grey slab). Shadow colour is a
+        // fixed black in both cases — using a theme text token here would
+        // paint a white shadow in dark mode, which is wrong regardless of
+        // theme.
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: glass ? 8 : 2 },
         shadowOpacity: glass ? 0.18 : 0.05,
         shadowRadius: glass ? 18 : 8,
@@ -143,12 +166,13 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
           position: 'relative',
         }}
       >
-        {venue.cover_photo_url ? (
+        {hasPhoto ? (
           <Image
-            source={{ uri: venue.cover_photo_url }}
+            source={{ uri: venue.cover_photo_url! }}
             style={{ width: 92, height: 92 }}
             resizeMode="cover"
             accessibilityLabel={`Photo of ${venue.name}`}
+            onError={() => setImgError(true)}
           />
         ) : (
           <CategoryPlaceholder categorySlug={categorySlug} size={92} borderRadius={0} />
@@ -163,7 +187,11 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
               paddingHorizontal: 7,
               paddingVertical: 3,
               borderRadius: BorderRadius.pill,
-              backgroundColor: Colors.label,
+              // Fixed dark scrim (not a theme token) — this badge overlays a
+              // photo, so it needs stable contrast against white text in
+              // both app themes, the same treatment as the weatherBadge
+              // pill below rather than a mode-flipping label colour.
+              backgroundColor: 'rgba(16,16,22,0.82)',
             }}
           >
             <Text
@@ -315,7 +343,12 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
                 paddingHorizontal: 8,
                 paddingVertical: 3,
                 borderRadius: BorderRadius.pill,
-                backgroundColor: openStatus ? '#DCF4E4' : Colors.surface2,
+                // CLOSED fill uses the resolved fill token (subtle, theme-
+                // appropriate tint) instead of the old hardcoded cream
+                // (Colors.surface2) — the same flash-of-cream bug as
+                // SkeletonLoader, just smaller. OPEN keeps its fixed mint
+                // (a semantic status colour, not a surface).
+                backgroundColor: openStatus ? '#DCF4E4' : tokens.fill,
               }}
             >
               <View
@@ -323,7 +356,7 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
                   width: 5,
                   height: 5,
                   borderRadius: BorderRadius.pill,
-                  backgroundColor: openStatus ? '#3CAE6B' : Colors.label3,
+                  backgroundColor: openStatus ? '#3CAE6B' : mutedColor,
                 }}
               />
               <Text
@@ -331,7 +364,7 @@ export function VenueCard({ venue, saved = false, onToggleSave, onPress, weather
                   fontFamily: FontFamily.caption,
                   fontSize: 10,
                   letterSpacing: 0.3,
-                  color: openStatus ? '#2A7A4C' : Colors.label3,
+                  color: openStatus ? '#2A7A4C' : mutedColor,
                 }}
               >
                 {openStatus ? 'OPEN NOW' : 'CLOSED'}
