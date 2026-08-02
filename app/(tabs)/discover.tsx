@@ -24,7 +24,8 @@
 
 import { useMemo } from 'react';
 import { ScrollView, Text, View, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { router } from 'expo-router';
 import { FontFamily } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
@@ -75,6 +76,16 @@ export default function DiscoverScreen() {
   const { tokens } = useAppTheme();
   const seasonal = useMemo(() => getSeasonalCollection(), []);
 
+  // Tab-safe zone — same rule as every other tab screen (Home/Map/Saved/
+  // Profile/Search, see e.g. app/(tabs)/index.tsx): the scroll viewport itself
+  // ends above the floating glass tab bar so content can never sit or pass
+  // beneath it. Discover is href:null'd out of the visible bar (see
+  // app/(tabs)/_layout.tsx) but is still a real Tabs.Screen, so this hook
+  // resolves correctly here too.
+  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  const tabSafeZone = Math.max(tabBarHeight, 52 + insets.bottom);
+
   return (
     <View style={{ flex: 1, backgroundColor: 'transparent' }}>
       {/* Shared v2 atmosphere — the same mount-point pattern every other tab
@@ -86,7 +97,11 @@ export default function DiscoverScreen() {
           atmosphere the same way. */}
       <ThemedBackground />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 48 }}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          style={{ marginBottom: tabSafeZone }}
+          contentContainerStyle={{ paddingBottom: 32 }}
+        >
           {/* ── Header: title + small search icon (top-right) ───────── */}
           <View
             style={{
