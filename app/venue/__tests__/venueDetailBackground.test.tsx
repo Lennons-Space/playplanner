@@ -249,6 +249,19 @@ describe('Venue Detail — shared v2 background', () => {
   });
 });
 
+// Phase 4 (loading-state design system): the screen-local `LoadingSkeleton`
+// was promoted to the shared `VenueDetailSkeleton` export
+// (components/ui/SkeletonLoader.tsx). This guards that the promotion didn't
+// change the loading state's background behaviour — it must still mount the
+// shared <V2Background/>, exactly like the loaded and error states above.
+describe('Venue Detail — loading state (VenueDetailSkeleton) shares the v2 background', () => {
+  it('mounts the shared <V2Background/> behind the loading skeleton too', () => {
+    mockUseVenue.mockReturnValue({ data: undefined, isLoading: true, error: null });
+    const tree = render(<VenueDetailScreen />, { wrapper: makeWrapper() }).toJSON();
+    expect(containsTestID(tree, 'v2-background')).toBe(true);
+  });
+});
+
 describe('Venue Detail — error state shares the v2 background', () => {
   it('mounts the shared <V2Background/> behind the error state too', () => {
     mockUseVenue.mockReturnValue({ data: undefined, isLoading: false, error: new Error('Network request failed') });

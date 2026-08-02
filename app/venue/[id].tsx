@@ -60,7 +60,7 @@ import { ReviewCard } from '@/components/reviews/ReviewCard';
 import { VenuePhotoUpload } from '@/components/venue/VenuePhotoUpload';
 import { VenueContactRow } from '@/components/venue/VenueContactRow';
 import { FacilityChips } from '@/components/venue/FacilityChips';
-import { Skeleton } from '@/components/ui/SkeletonLoader';
+import { VenueDetailSkeleton } from '@/components/ui/SkeletonLoader';
 import { Icon } from '@/components/ui/Icon';
 import { Stars } from '@/components/ui/Stars';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
@@ -70,8 +70,9 @@ import { ocean, FontFamily, BorderRadius, type ThemeTokens } from '@/constants/t
 import { useAppTheme } from '@/hooks/useAppTheme';
 
 // v2 design tokens — T is resolved per-render via useAppTheme() inside
-// VenueDetailScreen/LoadingSkeleton below (createStyles(T) mirrors the
-// pattern already used by app/(tabs)/profile.tsx).
+// VenueDetailScreen below (createStyles(T) mirrors the pattern already used
+// by app/(tabs)/profile.tsx). The loading state's own token resolution now
+// lives in the shared VenueDetailSkeleton (components/ui/SkeletonLoader.tsx).
 const ACCENT = ocean;
 
 // Prototype literals with no token equivalent.
@@ -132,28 +133,6 @@ function getTodayClosingTime(hours: HoursRow[]): string | null {
   const todayHours = hours.find((h) => h.day_of_week === todayIndex);
   if (!todayHours || todayHours.is_closed || !todayHours.closes_at) return null;
   return todayHours.closes_at;
-}
-
-// ─── LoadingSkeleton ──────────────────────────────────────────────────────────
-function LoadingSkeleton() {
-  const { mode } = useAppTheme();
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
-      <ThemedBackground />
-      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
-      <Skeleton width="100%" height={300} borderRadius={0} />
-      <View style={{ padding: 20, gap: 12 }}>
-        <Skeleton width="70%" height={28} borderRadius={8} />
-        <Skeleton width="45%" height={14} borderRadius={6} />
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-          <Skeleton width={80} height={32} borderRadius={999} />
-          <Skeleton width={80} height={32} borderRadius={999} />
-          <Skeleton width={80} height={32} borderRadius={999} />
-        </View>
-        <Skeleton width="100%" height={60} borderRadius={18} style={{ marginTop: 8 }} />
-      </View>
-    </SafeAreaView>
-  );
 }
 
 // The sticky bottom bar's content is fixed (paddingTop 18 + one row of
@@ -321,7 +300,7 @@ export default function VenueDetailScreen() {
     }
   }, [venue?.latitude, venue?.longitude, venue?.name]);
 
-  if (isLoading) return <LoadingSkeleton />;
+  if (isLoading) return <VenueDetailSkeleton />;
 
   if (error || !venue) {
     return (
