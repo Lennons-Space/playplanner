@@ -1598,8 +1598,8 @@ describe('V2WeatherMotion — LIGHT rain family: muted blue-grey streaks + subtl
       // No warm haze once any weather condition is active.
       expect(testIDs.filter((id) => id.startsWith('v2-haze-band-')).length).toBe(0);
       if (condition === 'fog') {
-        // LIGHT fog = dedicated mist banks (2026-07-24), not the cloud form.
-        expect(testIDs.filter((id) => id.startsWith('v2-light-mist-bank-')).length).toBeGreaterThan(0);
+        // LIGHT fog = soft feathered mist layers (2026-07-24), not the cloud form.
+        expect(testIDs.filter((id) => id.startsWith('v2-light-mist-layer-')).length).toBeGreaterThan(0);
         expect(testIDs).not.toContain('v2-fog-bank');
       } else if (isSoftCloudCondition(condition)) {
         // overcast / partly_cloudy — cloud clusters
@@ -1743,13 +1743,13 @@ describe('softCloudParamsFor / softCloudNodesFor / clusterDepthFactorFor — pur
 });
 
 describe('V2WeatherMotion — cloud-form LIGHT palette is neutral (not warm, not cold-blue), distinct sizing preserved', () => {
-  it('LIGHT fog renders dedicated horizontal mist banks (v2-light-mist-bank, 2026-07-24 device pass), NOT the FogBank cloud form; overcast/partly_cloudy still render v2-cloud-cluster (ACCEPTED, unchanged); never v2-haze-band-*', () => {
+  it('LIGHT fog renders soft feathered mist LAYERS (v2-light-mist-layer), NOT the FogBank cloud form; overcast/partly_cloudy still render v2-cloud-cluster (ACCEPTED, unchanged); never v2-haze-band-*', () => {
     const fogTree = render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition="fog" />).toJSON() as JsonNode;
     const overcastTree = render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition="overcast" />).toJSON() as JsonNode;
     const partlyCloudyTree = render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition="partly_cloudy" />).toJSON() as JsonNode;
 
-    expect(collectTestIDs(fogTree).filter((id) => id.startsWith('v2-light-mist-bank-')).length).toBe(3);
-    expect(collectTestIDs(fogTree)).not.toContain('v2-fog-bank'); // light fog no longer uses the feathered cloud form
+    expect(collectTestIDs(fogTree).filter((id) => id.startsWith('v2-light-mist-layer-')).length).toBe(6); // 2026-07-28: raised 4→6
+    expect(collectTestIDs(fogTree)).not.toContain('v2-fog-bank'); // light fog uses its own feathered mist layers, not the dark FogBank
     expect(collectTestIDs(fogTree)).not.toContain('v2-cloud-cluster');
     expect(collectTestIDs(overcastTree).filter((id) => id === 'v2-cloud-cluster').length).toBe(7); // accepted, unchanged
     expect(collectTestIDs(partlyCloudyTree).filter((id) => id === 'v2-cloud-cluster').length).toBe(4); // accepted, unchanged
@@ -1918,50 +1918,115 @@ describe('V2WeatherMotion — LIGHT thunderstorm is distinct from rain (restrain
 // Mainly clear / Partly cloudy / Overcast were accepted on device and must be
 // unchanged; Dark is unchanged (pinned throughout this file).
 // ═════════════════════════════════════════════════════════════════════════
-describe('V2WeatherMotion — LIGHT fog: dedicated multi-depth mist banks', () => {
+describe('V2WeatherMotion — LIGHT fog: soft heavily-feathered mist layers (no hard-edged panels/stripes)', () => {
   const fogTree = () => render(<V2WeatherMotion atmosphere="cloudy" mode="light" condition="fog" />).toJSON() as JsonNode;
 
-  it('renders MULTIPLE (2–3) dedicated mist-bank layers, each a distinct indexed testID (not one repeated element)', () => {
-    const banks = collectTestIDs(fogTree()).filter((id) => id.startsWith('v2-light-mist-bank-'));
-    expect(banks.length).toBeGreaterThanOrEqual(2);
-    expect(banks.length).toBeLessThanOrEqual(3);
-    expect(new Set(banks).size).toBe(banks.length); // each layer distinct
+  it('renders 6 distinct mist LAYERS (each an indexed testID), not one repeated element — MORE than the old 4-layer treatment (2026-07-28: "too close to ordinary clear light mode")', () => {
+    const layers = collectTestIDs(fogTree()).filter((id) => id.startsWith('v2-light-mist-layer-'));
+    expect(layers.length).toBe(6);
+    expect(layers.length).toBeGreaterThan(4); // strictly more than the pre-2026-07-28 count
+    expect(new Set(layers).size).toBe(layers.length); // each layer distinct
   });
 
-  it('the mist banks sit at DISTINCT depths (different top %) and are horizontal full-bleed bands', () => {
-    const tops = new Set<string>();
+  it('every mist layer is a FEATHERED SVG blob (radial gradient whose OUTER stop is exactly 0 alpha) — never a solid-fill band/panel/stripe', () => {
+    const tree = fogTree();
+    // No mist-layer wrapper carries a backgroundColor or a full-bleed width — a
+    // solid fill / 140%-wide band is exactly the "flat grey panel" being removed.
     (function walk(node: JsonNode) {
       if (!node) return;
-      if (typeof node.props?.testID === 'string' && (node.props.testID as string).startsWith('v2-light-mist-bank-')) {
+      if (typeof node.props?.testID === 'string' && (node.props.testID as string).startsWith('v2-light-mist-layer-')) {
         const style = flattenStyle(node);
-        expect(style.top).toBeDefined();
-        tops.add(String(style.top));
-        expect(style.width).toBe('140%'); // full-bleed horizontal band
+        expect(style.backgroundColor).toBeUndefined();
+        expect(style.width).not.toBe('140%');
+        expect(typeof style.width).toBe('number');
       }
       for (const child of node.children ?? []) walk(child);
-    })(fogTree());
-    expect(tops.size).toBeGreaterThanOrEqual(2); // at least two different depths
-  });
-
-  it('uses cool pearl / blue-grey translucent tones (blue-leaning but never a saturated cold blue), keeping the sandy base visible (0.1 < alpha < 0.3)', () => {
-    const colors = collectBackgroundColors(fogTree()).filter(
-      (c) => c.startsWith('rgba(190,202,218,') || c.startsWith('rgba(176,190,208,') || c.startsWith('rgba(198,208,220,'),
-    );
-    expect(colors.length).toBeGreaterThanOrEqual(2);
-    for (const c of colors) {
-      const m = c.match(/rgba\((\d+),(\d+),(\d+),([\d.]+)\)/)!;
-      const [r, g, b, a] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
-      expect(b).toBeGreaterThanOrEqual(r); // cool (blue-leaning)
-      expect(b - Math.max(r, g)).toBeLessThanOrEqual(40); // but never a saturated cold blue
-      expect(a).toBeLessThan(0.3); // translucent — sandy base shows through
-      expect(a).toBeGreaterThan(0.1); // but clearly visible, not cream-on-cream
+    })(tree);
+    // Every radial gradient fades to EXACTLY 0 alpha at its edge → no hard boundary anywhere.
+    const gradients = collectRadialGradients(tree);
+    expect(gradients.length).toBeGreaterThanOrEqual(3);
+    for (const g of gradients) {
+      const lastAlpha = (g.gradient[g.gradient.length - 1] >>> 24) & 0xff;
+      expect(lastAlpha).toBe(0);
     }
   });
 
-  it('DARK fog is UNCHANGED — still the FogBank cloud form (5 banks), never the light mist-bank layer', () => {
+  it('uses a MORE PRONOUNCED cool grey/blue-white tone at a raised-but-capped opacity (2026-07-28: was too close to neutral/ordinary; still never a saturated cold blue, still never washed-out)', () => {
+    const gradients = collectRadialGradients(fogTree());
+    expect(gradients.length).toBeGreaterThanOrEqual(3);
+    const alphas: number[] = [];
+    for (const g of gradients) {
+      const { r, g: green, b, a } = decodeARGB(g.gradient[1]); // peak stop
+      expect(b).toBeGreaterThanOrEqual(green); // slightly cool: blue leads,
+      expect(green).toBeGreaterThanOrEqual(r);
+      expect(b - r).toBeGreaterThanOrEqual(25); // MORE pronounced than the old ~18 spread — genuinely cooler
+      expect(b - r).toBeLessThanOrEqual(40); // …but only marginally — never a cold slate blue
+      expect(a).toBeGreaterThan(0);
+      // Readability ceiling: raised from the old ~0.16 peak, but deliberately
+      // capped so fog never overwhelms text/cards. 0.22 × 255 ≈ 56; 61 gives
+      // rounding headroom without opening the ceiling back up to "anything".
+      expect(a).toBeLessThanOrEqual(61);
+      alphas.push(a);
+    }
+    // At least one layer is obviously more opaque than the old peak (~0.16 × 255 ≈ 41) —
+    // proves the raise is real, not just a ceiling that happens never to be reached.
+    expect(Math.max(...alphas)).toBeGreaterThan(41);
+  });
+
+  it('layers vary in width, height and vertical position (some behind the header, some lower down)', () => {
+    const widths = new Set<number>();
+    const heights = new Set<number>();
+    const tops: number[] = [];
+    (function walk(node: JsonNode) {
+      if (!node) return;
+      if (typeof node.props?.testID === 'string' && (node.props.testID as string).startsWith('v2-light-mist-layer-')) {
+        const style = flattenStyle(node);
+        if (typeof style.width === 'number') widths.add(style.width);
+        if (typeof style.height === 'number') heights.add(style.height);
+        const top = parseFloat(String(style.top));
+        if (!Number.isNaN(top)) tops.push(top);
+      }
+      for (const child of node.children ?? []) walk(child);
+    })(fogTree());
+    expect(widths.size).toBeGreaterThanOrEqual(3); // varied widths
+    expect(heights.size).toBeGreaterThanOrEqual(3); // varied heights
+    expect(Math.min(...tops)).toBeLessThan(20); // some high — behind the header
+    expect(Math.max(...tops)).toBeGreaterThan(40); // some lower down the page
+  });
+
+  it('mist layers now read as wide, FLAT horizontal bands (width clearly exceeds height) rather than round puffs (2026-07-28)', () => {
+    const aspects: number[] = [];
+    (function walk(node: JsonNode) {
+      if (!node) return;
+      if (typeof node.props?.testID === 'string' && (node.props.testID as string).startsWith('v2-light-mist-layer-')) {
+        const style = flattenStyle(node);
+        if (typeof style.width === 'number' && typeof style.height === 'number') {
+          aspects.push(style.width / style.height);
+        }
+      }
+      for (const child of node.children ?? []) walk(child);
+    })(fogTree());
+    expect(aspects.length).toBe(6);
+    // Every layer is a clearly-flat band — well beyond the old ~2.1:1 ratio
+    // (320–560 wide / 150–270 tall), so this reads as layered haze, not puffs.
+    for (const ratio of aspects) {
+      expect(ratio).toBeGreaterThan(3);
+    }
+  });
+
+  it('DARK fog is UNCHANGED — still the FogBank cloud form (5 banks), never the light mist layer', () => {
     const testIDs = collectTestIDs(render(<V2WeatherMotion atmosphere="cloudy" mode="dark" condition="fog" />).toJSON() as JsonNode);
     expect(testIDs.filter((id) => id === 'v2-fog-bank').length).toBe(5);
-    expect(testIDs.some((id) => id.startsWith('v2-light-mist-bank-'))).toBe(false);
+    expect(testIDs.some((id) => id.startsWith('v2-light-mist-layer-'))).toBe(false);
+  });
+
+  it('the same fog renders IDENTICALLY across independent mounts (deterministic seeds + shared wall-clock useLoop → one continuous fog phase carries between Home/Map/Saved with no reseed)', () => {
+    const a = fogTree();
+    const b = fogTree();
+    // Same layers, same positions, same gradient stops — nothing is re-seeded or
+    // re-randomised per mount, so every screen shows the SAME fog at the SAME moment.
+    expect(collectTestIDs(a)).toEqual(collectTestIDs(b));
+    expect(collectRadialGradients(a).map((g) => g.gradient)).toEqual(collectRadialGradients(b).map((g) => g.gradient));
   });
 });
 
@@ -1986,12 +2051,88 @@ describe('V2WeatherMotion — LIGHT drizzle vs rain (tuning pass): drizzle visib
     expect(d.durationBaseMs).toBeGreaterThan(r.durationBaseMs); // slower fall
   });
 
-  it('the density increase is real (drizzle 8 < rain 11); Showers is restored to its pre-task value (10) and left out of scope', () => {
-    expect(lightRainStreakPlanFor('drizzle').nodes.length).toBe(8);
-    expect(lightRainStreakPlanFor('rain').nodes.length).toBe(11);
-    expect(lightRainStreakPlanFor('drizzle').nodes.length).toBeLessThan(lightRainStreakPlanFor('rain').nodes.length);
+  it('the density increase is real (drizzle 10 < rain 11) AND rain paints far more total length than drizzle — proving density is real coverage, not just an opacity illusion; Showers is restored to its pre-task value (10) and left out of scope', () => {
+    const drizzlePlan = lightRainStreakPlanFor('drizzle');
+    const rainPlan = lightRainStreakPlanFor('rain');
+    expect(drizzlePlan.nodes.length).toBe(10);
+    expect(rainPlan.nodes.length).toBe(11);
+    expect(drizzlePlan.nodes.length).toBeLessThan(rainPlan.nodes.length);
+    // The raw count gap is small (10 vs 11) by design — the real density
+    // signal is TOTAL PAINTED LENGTH (count × each node's actual rendered
+    // height, which is driven by node.y since 2026-07-28 — see the
+    // decorrelation test below). This must stay far higher for rain even
+    // though the count difference alone would not prove it.
+    const totalPaintedLength = (plan: typeof drizzlePlan) =>
+      plan.nodes.reduce((sum, n) => sum + plan.params.heightBase + n.y * plan.params.heightVar, 0);
+    const drizzleTotal = totalPaintedLength(drizzlePlan);
+    const rainTotal = totalPaintedLength(rainPlan);
+    expect(rainTotal).toBeGreaterThan(drizzleTotal * 1.5); // far higher, not marginal
     // Showers is intentionally NOT tuned by this pass — restored to pre-task 10.
     expect(lightRainStreakPlanFor('showers').nodes.length).toBe(10);
+  });
+
+  it('LIGHT rain/drizzle length is decorrelated from width/opacity/speed — a DIFFERENT seeded field (node.y) drives length than drives width/opacity/duration (node.r), fixing the old "longest streak is also thickest/most opaque/slowest" scratches defect', () => {
+    const rain = lightRainStreakPlanFor('rain').params;
+    const drizzle = lightRainStreakPlanFor('drizzle').params;
+    const showers = lightRainStreakPlanFor('showers').params;
+    expect(rain.lengthFrom).toBe('y');
+    expect(drizzle.lengthFrom).toBe('y');
+    // Showers is explicitly out of scope for this tuning pass — must default
+    // (undefined ⇒ node.r, the original fully-correlated formula), unchanged.
+    expect(showers.lengthFrom).toBeUndefined();
+
+    // Prove it's not just a flag with no effect: for the actual seeded RAIN
+    // node set, the ORDER of nodes by rendered height (node.y-driven) must
+    // differ from the order by rendered opacity (node.r-driven) — if length
+    // were still driven by the same field as opacity, these orders would be
+    // identical.
+    const { nodes, params } = lightRainStreakPlanFor('rain');
+    const byHeight = nodes.map((n, i) => ({ i, v: params.heightBase + n.y * params.heightVar }));
+    const byOpacity = nodes.map((n, i) => ({ i, v: params.opacityBase + n.r * params.opacityVar }));
+    const heightOrder = [...byHeight].sort((a, b) => a.v - b.v).map((x) => x.i);
+    const opacityOrder = [...byOpacity].sort((a, b) => a.v - b.v).map((x) => x.i);
+    expect(heightOrder).not.toEqual(opacityOrder);
+  });
+
+  it('rain streak length is substantially shorter than before: new max is below the old formula\'s actual max (~106.6px, from heightBase 34 + r_max 0.981 × heightVar 74) and well below the hard 108px ceiling', () => {
+    const { nodes, params } = lightRainStreakPlanFor('rain');
+    const heights = nodes.map((n) => params.heightBase + n.y * params.heightVar);
+    const maxHeight = Math.max(...heights);
+    expect(maxHeight).toBeLessThan(108); // hard ceiling from the spec
+    expect(maxHeight).toBeLessThan(90); // comfortably below the old actual max (~106.6)
+  });
+});
+
+describe('V2WeatherMotion — LIGHT showers: BYTE-IDENTICAL pin (explicitly OUT OF SCOPE for the 2026-07-28 rain/drizzle/fog tuning pass)', () => {
+  it('showers params are pinned to their exact pre-tuning values (including the absence of lengthFrom)', () => {
+    const showers = lightRainStreakPlanFor('showers').params;
+    expect(showers).toEqual({
+      durationBaseMs: 640,
+      durationVarMs: 520,
+      widthBase: 1,
+      widthVar: 0.9,
+      heightBase: 56,
+      heightVar: 100,
+      opacityBase: 0.17,
+      opacityVar: 0.13,
+    });
+    expect(lightRainStreakPlanFor('showers').nodes.length).toBe(10);
+  });
+
+  it('showers RENDERS with the pinned node.r-driven height formula (rendering-level pin, not just params)', () => {
+    const tree = render(<V2WeatherMotion atmosphere="rain" mode="light" condition="showers" />).toJSON() as JsonNode;
+    const { nodes, params } = lightRainStreakPlanFor('showers');
+    const expectedHeights = nodes.map((n) => params.heightBase + n.r * params.heightVar).sort((a, b) => a - b);
+    const renderedHeights: number[] = [];
+    (function walk(node: JsonNode) {
+      if (!node) return;
+      if (node.props?.testID === 'v2-light-rain-streak') {
+        const style = flattenStyle(node);
+        if (typeof style.height === 'number') renderedHeights.push(style.height);
+      }
+      for (const child of node.children ?? []) walk(child);
+    })(tree);
+    expect(renderedHeights.sort((a, b) => a - b)).toEqual(expectedHeights);
   });
 });
 
@@ -2013,17 +2154,30 @@ describe('V2WeatherMotion — LIGHT rain (tuning pass): varied streaks, not one 
     return { heights, alphas };
   }
 
-  it('rain streaks use VARIED lengths (a mix, not one uniform length) and are not full-screen lines', () => {
+  it('rain streaks use VARIED lengths (a mix, not one uniform length) and are never long "scratches" (2026-07-28: max lowered from ~108px to ~70px)', () => {
     const { heights } = streakHeightsAndAlphas(render(<V2WeatherMotion atmosphere="rain" mode="light" condition="rain" />).toJSON() as JsonNode);
     expect(heights.length).toBeGreaterThanOrEqual(8);
     expect(new Set(heights).size).toBeGreaterThanOrEqual(4); // several distinct lengths
     expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(30); // meaningful short↔medium spread
-    expect(Math.max(...heights)).toBeLessThan(140); // never a near-full-screen line
+    expect(Math.max(...heights)).toBeLessThan(108); // never approaches the old 108px "scratch" length
   });
 
   it('rain streaks use VARIED opacities, not one uniform alpha', () => {
     const { alphas } = streakHeightsAndAlphas(render(<V2WeatherMotion atmosphere="rain" mode="light" condition="rain" />).toJSON() as JsonNode);
     expect(new Set(alphas.map((a) => a.toFixed(3))).size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('RENDERED streak length does not rank-order the same way as RENDERED opacity (2026-07-28 decorrelation, proven at the render level, not just in the pure params)', () => {
+    const { heights, alphas } = streakHeightsAndAlphas(render(<V2WeatherMotion atmosphere="rain" mode="light" condition="rain" />).toJSON() as JsonNode);
+    expect(heights.length).toBe(alphas.length);
+    // If length and opacity were still driven by the same field (the old,
+    // fully-correlated formula), sorting node indices by rendered height
+    // would produce the SAME order as sorting by rendered opacity. They no
+    // longer do, because height now tracks node.y and opacity still tracks
+    // node.r — two independently-seeded fields.
+    const heightOrder = heights.map((v, i) => i).sort((a, b) => heights[a] - heights[b]);
+    const alphaOrder = alphas.map((v, i) => i).sort((a, b) => alphas[a] - alphas[b]);
+    expect(heightOrder).not.toEqual(alphaOrder);
   });
 });
 
@@ -2032,7 +2186,7 @@ describe('V2WeatherMotion — LIGHT tuning pass leaves the ACCEPTED treatments u
     const testIDs = collectTestIDs(render(<V2WeatherMotion atmosphere="sunny" mode="light" condition="clear" />).toJSON() as JsonNode);
     expect(testIDs.filter((id) => id.startsWith('v2-haze-band-')).length).toBeGreaterThanOrEqual(2);
     expect(testIDs).not.toContain('v2-light-rain-streak');
-    expect(testIDs.some((id) => id.startsWith('v2-light-mist-bank-'))).toBe(false);
+    expect(testIDs.some((id) => id.startsWith('v2-light-mist-layer-'))).toBe(false);
     expect(testIDs).not.toContain('v2-light-snowflake');
   });
 

@@ -323,7 +323,7 @@ function LocationNudge() {
 // ── Screen ───────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const profile = useProfile();
-  const { tokens, accent } = useAppTheme();
+  const { tokens, accent, mode } = useAppTheme();
   const { status: consentStatus } = useLocationConsent();
 
   // Tab-safe zone (2026-07-09 round 4): the scroll VIEWPORT itself ends above
@@ -349,6 +349,15 @@ export default function HomeScreen() {
   const { weather, condition, usingConsentedLocation } = useResolvedWeather();
   const isRain =
     condition === 'rain' || condition === 'drizzle' || condition === 'showers' || condition === 'thunderstorm';
+  // ADDITIVE (2026-07-28, light fog pill): strictly mode-gated (mode ===
+  // 'light' && condition === 'fog') so DARK is provably untouched — dark fog
+  // still falls through to the existing amber `else` branch exactly as
+  // before this change. Cool grey-blue tint distinct from the rain-blue
+  // branch (never confused with rain) and from the warm amber default.
+  // #4E617A text verified ≈5.6:1 contrast against the Light cream surface
+  // (#F6F1E6) — comfortably clears WCAG AA's 4.5:1 for normal text (see
+  // home.test.tsx's dedicated contrast-ratio test).
+  const isLightFog = mode === 'light' && condition === 'fog';
 
   // Shared between the production <View> and the __DEV__-only <Pressable>
   // wrapper below so the two branches render byte-identical content —
@@ -357,9 +366,9 @@ export default function HomeScreen() {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: 5,
-    backgroundColor: isRain ? 'rgba(91,155,213,0.16)' : 'rgba(255,178,62,0.16)',
+    backgroundColor: isLightFog ? 'rgba(126,142,163,0.16)' : isRain ? 'rgba(91,155,213,0.16)' : 'rgba(255,178,62,0.16)',
     borderWidth: 1,
-    borderColor: isRain ? 'rgba(91,155,213,0.3)' : 'rgba(255,178,62,0.3)',
+    borderColor: isLightFog ? 'rgba(126,142,163,0.3)' : isRain ? 'rgba(91,155,213,0.3)' : 'rgba(255,178,62,0.3)',
     borderRadius: BorderRadius.pill,
     paddingVertical: 3,
     paddingLeft: 8,
@@ -372,7 +381,7 @@ export default function HomeScreen() {
         style={{
           fontFamily: FontFamily.bodyStrong,
           fontSize: 12,
-          color: isRain ? '#8FBEE8' : '#FFC976',
+          color: isLightFog ? '#4E617A' : isRain ? '#8FBEE8' : '#FFC976',
         }}
       >
         {weather.label}
@@ -425,11 +434,14 @@ export default function HomeScreen() {
           mode (Step 10A Part 2, dual-theme foundation) — see
           components/ui/ThemedBackground.tsx. */}
       <ThemedBackground />
-      {/* Home renders dark by design (v2). The shared <StatusBar style="dark">
-          in app/(tabs)/_layout stays "dark" for the 3 legacy light screens —
+      {/* Status bar glyphs follow the resolved theme mode (dark app → light
+          glyphs on the dark atmosphere; light app → dark glyphs on the warm
+          cream atmosphere) — same idiom every other v2 screen uses (Map,
+          Results, Discover). The shared <StatusBar style="dark"> in
+          app/(tabs)/_layout stays "dark" for the 3 legacy light screens —
           expo-status-bar stacks mounted instances, so this local override wins
           while Home is focused and reverts on other tabs. */}
-      <StatusBar style="light" />
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
         <ScrollView
           testID="home-scroll"

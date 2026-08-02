@@ -658,6 +658,19 @@ export interface StreakParams {
   heightVar: number;
   opacityBase: number;
   opacityVar: number;
+  /**
+   * OPTIONAL, ADDITIVE (2026-07-28 light rain/drizzle tuning). Which seeded
+   * node field drives streak LENGTH (height). Defaults to 'r' — the
+   * ORIGINAL formula, where the same field also drives width/opacity/speed,
+   * so length was fully correlated with thickness/opacity/fall-speed (the
+   * "longest streak is also the thickest, most opaque, slowest" scratches
+   * defect). Setting 'y' decorrelates length from those, using a different
+   * independently-seeded field. Only the LIGHT rain + drizzle plans set
+   * this; every other consumer (dark RainStreak, light showers) omits it
+   * and keeps the original node.r-driven, fully-correlated formula
+   * byte-identical.
+   */
+  lengthFrom?: 'r' | 'y';
 }
 
 // Reproduces RainStreak's ORIGINAL hardcoded formula exactly — used for
@@ -1811,17 +1824,35 @@ const LIGHT_LIGHTNING_RGB = '236,242,252';
 // count + wider length/opacity/speed variance so it stops reading as a few
 // long, uniform lines. SHOWERS is intentionally OUT OF SCOPE — restored below
 // to its exact pre-task values.
+//
+// RETUNED 2026-07-28 (device pass — "scratches" defect): LightRainStreak
+// derived length, width, opacity AND duration all from the SAME node.r, so
+// the longest streak was also the thickest/most-opaque/slowest — read as
+// scratches, not rain. Fix: `lengthFrom: 'y'` on RAIN + DRIZZLE only (see
+// StreakParams) makes LENGTH track the independently-seeded node.y field
+// while width/opacity/speed keep tracking node.r — genuinely decorrelated.
+// RAIN: heightBase/heightVar lowered (34–108 → ~30–70, well under the old
+// 108px max) — width/opacity/duration formulas otherwise UNCHANGED. DRIZZLE:
+// thinner (widthBase/widthVar lowered), shorter (heightBase/heightVar
+// lowered well below rain's new max — reads as droplets/dashes, not lines),
+// slower (duration raised), opacityBase lowered slightly so it still sorts
+// below rain's on the `opacityBase` axis. Node count raised 8→10 (still <
+// rain's 11 — see LIGHT_DRIZZLE_STREAKS below); rain's real density
+// advantage is provable via TOTAL PAINTED LENGTH (count × mean height), not
+// just the count gap — see the test file's density test.
 const LIGHT_STREAK_PARAMS_DRIZZLE: StreakParams = {
-  durationBaseMs: 1200, durationVarMs: 900, // slow, fine drizzle
-  widthBase: 0.6, widthVar: 0.4, // thin
-  heightBase: 34, heightVar: 30, // short (34–64), always shorter than rain
-  opacityBase: 0.11, opacityVar: 0.10, // 0.11–0.21 — visible, still < rain
+  durationBaseMs: 1600, durationVarMs: 1100, // slower than rain — gentle, persistent drizzle (was 1200/900)
+  widthBase: 0.4, widthVar: 0.3, // finer than before (was 0.6/0.4) — droplets, not lines
+  heightBase: 14, heightVar: 20, // short dashes (14–34), well below rain's new 30–70 (was 34–64)
+  opacityBase: 0.12, opacityVar: 0.12, // 0.12–0.24 — still < rain's opacityBase (was 0.11/0.10)
+  lengthFrom: 'y', // length decorrelated from width/opacity (which stay on node.r)
 };
 const LIGHT_STREAK_PARAMS_RAIN: StreakParams = {
-  durationBaseMs: 620, durationVarMs: 560, // varied speed (wide spread)
-  widthBase: 1, widthVar: 0.7,
-  heightBase: 34, heightVar: 74, // 34–108 — a MIX of short + medium, not long uniform lines
-  opacityBase: 0.14, opacityVar: 0.14, // 0.14–0.28 — varied
+  durationBaseMs: 620, durationVarMs: 560, // varied speed (wide spread) — UNCHANGED
+  widthBase: 1, widthVar: 0.7, // UNCHANGED
+  heightBase: 30, heightVar: 40, // 30–70 — substantially below the old 34–108 max (was 34/74)
+  opacityBase: 0.14, opacityVar: 0.14, // 0.14–0.28 — UNCHANGED
+  lengthFrom: 'y', // length decorrelated from width/opacity/duration (which stay on node.r)
 };
 // Showers: RESTORED to pre-task values (out of scope for the 2026-07-24 tuning).
 const LIGHT_STREAK_PARAMS_SHOWERS: StreakParams = {
@@ -1832,23 +1863,42 @@ const LIGHT_STREAK_PARAMS_SHOWERS: StreakParams = {
 };
 
 // Brand-new light-only seeds — never mutate/reuse any set above. Node counts
-// carry the density difference (drizzle 8 < rain 11) so it's real, not just an
+// carry the density difference (drizzle < rain) so it's real, not just an
 // opacity illusion. TUNED 2026-07-24 (DRIZZLE + RAIN only): counts raised
 // (drizzle 5→8, rain 8→11). SHOWERS restored to its pre-task 10 (out of scope).
-const LIGHT_DRIZZLE_STREAKS = seededNodes(8, 20260724, 1300);
+// RETUNED 2026-07-28: drizzle raised 8→10 (still strictly < rain's 11) on a
+// NEW seed (20260731, since the count changed the whole node set) — "slightly
+// MORE of them" per the device pass, while the hard density invariant (count
+// AND total painted length) is preserved; see LIGHT_STREAK_PARAMS_DRIZZLE.
+const LIGHT_DRIZZLE_STREAKS = seededNodes(10, 20260731, 1300);
 const LIGHT_RAIN_STREAKS = seededNodes(11, 20260725, 700);
 const LIGHT_SHOWERS_STREAKS = seededNodes(10, 20260726, 640);
 const LIGHT_COOL_VEIL = seededNodes(2, 20260727, 15000);
 const LIGHT_SNOW = seededNodes(9, 20260728, 8000);
 
-// Light fog (2026-07-24 device pass): fog read too close to the sandy base as a
-// feathered FogBank. LIGHT fog now renders as 3 DEDICATED soft horizontal mist
-// banks (LightMistBank) at distinct depths with very slow, INDEPENDENT lateral
-// drift, in cool pearl / blue-grey translucent tones — DARK fog keeps its
-// FogBank cloud form, unchanged. Three alternating tints give per-depth
-// variation; the translucent alpha keeps the sandy base visible.
-const LIGHT_MIST_BANK_RGB: readonly [string, string, string] = ['190,202,218', '176,190,208', '198,208,220'];
-const LIGHT_MIST_BANKS = seededNodes(3, 20260729, 20000);
+// Light fog (2026-07-24, mist rework): the earlier solid-fill mist bands read as
+// flat grey PANELS with hard top/bottom edges. LIGHT fog now renders as 6 soft
+// (RETUNED 2026-07-28, was 4), HEAVILY-FEATHERED translucent mist layers —
+// each an SVG radial-gradient blob (the same edge-fades-to-transparent
+// technique V2Background's glows and the dark FogBank use), so there is NO
+// rectangular/horizontal hard boundary anywhere: it reads as gentle
+// atmospheric HORIZONTAL haze (wide, flat bands) drifting over the sandy
+// base, never blocks or stripes. A more pronounced cool grey/blue-white tone
+// at a raised-but-capped opacity; layers vary in width/height/vertical
+// position and drift slowly sideways at genuinely different speeds (some
+// behind the header, some lower). DARK fog keeps its FogBank cloud form,
+// unchanged.
+// RETUNED 2026-07-28 (device pass — "too close to ordinary clear light
+// mode"): more layers (4→6), wider/FLATTER bands (a ~3.8:1 width:height
+// aspect vs the old ~2.1:1 — reads as layered horizontal haze, not round
+// puffs — see LightMistLayer), a more pronounced cool grey-blue tone (still
+// translucent, never a flat wash), and raised-but-capped opacity (peak
+// 0.14–0.22, up from 0.11–0.16 — the 0.22 ceiling is a deliberate
+// readability cap so text/cards stay legible). The exact-zero-alpha-at-edge
+// radial-gradient technique is UNCHANGED (see LightMistLayer). New seed
+// (20260732) because the node count changed — never mutates the old one.
+const LIGHT_MIST_RGB = '180,196,214'; // more pronounced cool grey-blue (b > g > r) than the old near-neutral 208,216,226
+const LIGHT_MIST_LAYERS = seededNodes(6, 20260732, 22000);
 
 /**
  * Resolves the Light rain-streak node set + params for a rain-family
@@ -1884,7 +1934,13 @@ function LightRainStreak({
   params: StreakParams;
 }) {
   const t = useLoop(animate, params.durationBaseMs + node.r * params.durationVarMs, node.delay % 900, false);
-  const h = params.heightBase + node.r * params.heightVar;
+  // 2026-07-28: length is driven by `params.lengthFrom` (defaults to node.r,
+  // the original fully-correlated formula) — RAIN/DRIZZLE set 'y' so length
+  // is decorrelated from width/opacity/duration below, which still read
+  // node.r. Undefined (showers, and any future consumer) is byte-identical
+  // to the pre-2026-07-28 formula.
+  const lenField = params.lengthFrom === 'y' ? node.y : node.r;
+  const h = params.heightBase + lenField * params.heightVar;
   const style = useAnimatedStyle(() => ({
     transform: [{ translateY: interpolate(t.value, [0, 1], [-h - 40, screenH + 40]) }],
   }));
@@ -2002,41 +2058,49 @@ function LightningGlow({ animate }: { animate: boolean }) {
 }
 
 /**
- * LIGHT fog: a soft, clearly-visible horizontal MIST BANK — full-bleed width,
- * translucent cool pearl/blue-grey, drifting VERY slowly + INDEPENDENTLY
- * sideways (per-index duration + alternating direction). 3 render at distinct
- * depths (top / middle / lower) so fog is immediately recognisable while the
- * sandy base still shows through. Same horizontal-band primitive as
- * HazeBand/CoolVeilBand (no hard edge, no new visual language), tuned for fog.
- * LIGHT-only; DARK fog keeps its FogBank cloud form, unchanged.
+ * LIGHT fog: one soft, HEAVILY-FEATHERED translucent mist layer — an SVG
+ * radial-gradient blob whose alpha fades to EXACTLY 0 at its own edge (no hard
+ * rectangular/horizontal boundary anywhere), drifting slowly sideways. 6 render
+ * (RETUNED 2026-07-28, was 4) at varied widths/heights/vertical positions +
+ * per-layer drift speeds/directions (some behind the header, some lower), in
+ * a more pronounced cool grey/blue-white tone at a raised-but-capped opacity
+ * — gentle atmospheric HORIZONTAL haze (wide, flat bands, not round puffs)
+ * over the sandy base, never blocks or stripes. LIGHT-only; DARK fog keeps
+ * FogBank.
  */
-function LightMistBank({ node, index, animate, screenW }: { node: SeededNode; index: number; animate: boolean; screenW: number }) {
-  // Very slow, per-index-distinct drift so the three banks never move in lock-step.
-  const t = useLoop(animate, 34000 + index * 9000 + node.r * 12000, node.delay);
-  const rgb = LIGHT_MIST_BANK_RGB[index % 3];
-  const opacity = 0.16 + node.r * 0.08; // 0.16–0.24 — clearly visible, base still shows through
-  const dir = index % 2 === 0 ? 1 : -1; // alternating drift direction = independent motion
-  const drift = 0.1 * screenW;
-  const topPct = 22 + index * 24 + node.y * 8; // distinct depths ~22% / 46% / 70% + small jitter
+function LightMistLayer({ node, index, animate, screenW }: { node: SeededNode; index: number; animate: boolean; screenW: number }) {
+  // Slow, per-layer-distinct sideways drift so the layers never move in lock-step.
+  const t = useLoop(animate, 34000 + index * 9000 + node.r * 15000, node.delay);
+  const width = 360 + node.r * 260; // 360–620 wide, soft
+  const height = 95 + node.r * 65; // 95–160 tall — flatter than before (~3.8:1 wide:tall band, was ~2.1:1), reads as a horizontal haze layer, never a round puff
+  const topPct = 2 + index * 15 + node.y * 13; // spread ~2/17/32/47/62/77% (+ up to 13) → 6 layers across the whole screen, some behind header, some lower
+  const leftPct = -12 + node.x * 64; // varied horizontal start (soft edges → off-screen just fades)
+  const dir = index % 2 === 0 ? 1 : -1; // alternating direction = independent motion
+  const drift = 0.14 * screenW;
+  const peak = 0.14 + node.r * 0.08; // raised-but-capped opacity (0.14–0.22, was 0.11–0.16) — obvious atmosphere, still readable
+  const gradId = `v2-light-mist-grad-${index}`;
   const style = useAnimatedStyle(() => ({
     transform: [{ translateX: interpolate(t.value, [0, 1], [-drift * dir, drift * dir]) }],
   }));
   return (
     <Animated.View
-      testID={`v2-light-mist-bank-${index}`}
-      style={[
-        {
-          position: 'absolute',
-          left: '-20%',
-          width: '140%',
-          top: `${topPct}%`,
-          height: 72 + node.r * 44,
-          borderRadius: 999,
-          backgroundColor: `rgba(${rgb},${opacity})`,
-        },
-        style,
-      ]}
-    />
+      testID={`v2-light-mist-layer-${index}`}
+      style={[{ position: 'absolute', left: `${leftPct}%`, top: `${topPct}%`, width, height }, style]}
+    >
+      <Svg width="100%" height="100%">
+        <Defs>
+          {/* 3 stops: a dense-ish core → heavy feather → EXACTLY 0 alpha at the
+              edge (objectBoundingBox r=50% ⇒ offset 1 lands on the box edge), so
+              the blob has no perceptible boundary in any direction. */}
+          <RadialGradient id={gradId} cx="50%" cy="50%" r="50%">
+            <Stop offset={0} stopColor={`rgb(${LIGHT_MIST_RGB})`} stopOpacity={peak} />
+            <Stop offset={0.45} stopColor={`rgb(${LIGHT_MIST_RGB})`} stopOpacity={peak * 0.6} />
+            <Stop offset={1} stopColor={`rgb(${LIGHT_MIST_RGB})`} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradId})`} />
+      </Svg>
+    </Animated.View>
   );
 }
 
@@ -2125,13 +2189,13 @@ export function V2WeatherMotion({ atmosphere, mode, condition }: V2WeatherMotion
             />
           ))}
 
-        {/* Fog — dedicated horizontal mist banks (2026-07-24 device pass): the
-            feathered FogBank read too close to the sandy base, so LIGHT fog now
-            uses 3 clearly-visible cool mist banks at distinct depths. DARK fog
+        {/* Fog — soft, heavily-feathered SVG mist layers (2026-07-24 rework):
+            the earlier solid bands read as flat grey panels, so LIGHT fog is now
+            gentle atmospheric haze (LightMistLayer) with no hard edges. DARK fog
             still uses FogBank (unchanged). */}
         {condition === 'fog' &&
-          LIGHT_MIST_BANKS.map((n, i) => (
-            <LightMistBank key={`mist-bank-${i}`} node={n} index={i} animate={animate} screenW={screenW} />
+          LIGHT_MIST_LAYERS.map((n, i) => (
+            <LightMistLayer key={`mist-layer-${i}`} node={n} index={i} animate={animate} screenW={screenW} />
           ))}
 
         {/* Warm haze — ONLY the non-weather (sunny/clear/mainly_clear) path,

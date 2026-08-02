@@ -24,6 +24,7 @@ import { render, fireEvent, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import HomeScreen from '../index';
 import { pickHeroCollection, getWeatherCta, getHomeContextLine } from '@/lib/homeIntents';
+import { useThemeStore } from '@/store/themeStore';
 import type { Venue } from '@/types';
 
 // ── Mocks (hoisted) ─────────────────────────────────────────────────
@@ -122,6 +123,19 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
 }));
 
+// StatusBar — real expo-status-bar renders nothing observable in the test
+// tree (it imperatively sets native chrome), so capture the `style` prop it
+// was called with instead. Used by the mode-aware StatusBar regression suite
+// below (Phase 2 fix: hardcoded style="light" was invisible on the Light
+// theme's cream background).
+const mockStatusBar = jest.fn();
+jest.mock('expo-status-bar', () => ({
+  StatusBar: (props: { style?: string }) => {
+    mockStatusBar(props);
+    return null;
+  },
+}));
+
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 44, bottom: 34, left: 0, right: 0 }),
   SafeAreaView: 'View',
@@ -194,6 +208,11 @@ beforeEach(() => {
   mockUseLocation.mockReturnValue({ coords: null, hasPermission: false, isLoading: false, error: null });
   mockUseNearbyVenues.mockReturnValue({ data: [], isLoading: false, error: null });
   mockUseWeather.mockReturnValue(null);
+  // useAppTheme() is the REAL hook in this suite (not mocked) — reset its
+  // backing store to 'system' before every test so the new light-fog pill
+  // tests below (which explicitly set 'light'/'dark') can never leak their
+  // preference into an unrelated test.
+  useThemeStore.setState({ preference: 'system' });
 });
 
 describe('Browse (Home) — chrome (renders identically regardless of consent)', () => {
@@ -400,6 +419,99 @@ describe('Browse (Home) — __DEV__-only weather pill long-press → dev weather
   });
 });
 
+describe('Browse (Home) — weather pill colour (2026-07-28: LIGHT fog gets its own cool grey-blue styling; every other branch pinned)', () => {
+  // Pinned to production (non-__DEV__) mode so the accessible label is the
+  // plain `Weather: <label>` string — the pill's STYLE object is shared
+  // byte-for-byte between the __DEV__ Pressable and production View branches
+  // (see weatherPillStyle in app/(tabs)/index.tsx), so this exercises the
+  // exact same style logic either way.
+  const originalDev = (global as { __DEV__?: boolean }).__DEV__;
+  beforeEach(() => {
+    (global as { __DEV__?: boolean }).__DEV__ = false;
+  });
+  afterEach(() => {
+    (global as { __DEV__?: boolean }).__DEV__ = originalDev;
+  });
+
+  it('LIGHT + fog: cool grey-blue background/border tint + readable blue-grey text (never the rain-blue or amber tints)', () => {
+    useThemeStore.setState({ preference: 'light' });
+    mockUseWeather.mockReturnValue({ condition: 'fog', label: 'Foggy', emoji: '🌫️' });
+    const { getByLabelText, getByText } = render(<HomeScreen />);
+    const pill = getByLabelText('Weather: Foggy');
+    expect(pill.props.style.backgroundColor).toBe('rgba(126,142,163,0.16)');
+    expect(pill.props.style.borderColor).toBe('rgba(126,142,163,0.3)');
+    expect(getByText('Foggy').props.style.color).toBe('#4E617A');
+  });
+
+  it('the LIGHT fog pill text meets WCAG AA contrast (>=4.5:1) against the Light cream surface (#F6F1E6) — computed, not assumed', () => {
+    // Real WCAG 2.x relative-luminance + contrast-ratio formulas (same maths
+    // a contrast checker uses), applied to the actual literals shipped above
+    // and in components/ui/V2WeatherMotion.tsx's sandy Light base.
+    function relLuminance(hex: string): number {
+      const n = parseInt(hex.replace('#', ''), 16);
+      // eslint-disable-next-line no-bitwise
+      const channels = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => {
+        const s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    }
+    function contrastRatio(hexA: string, hexB: string): number {
+      const [l1, l2] = [relLuminance(hexA), relLuminance(hexB)].sort((a, b) => b - a);
+      return (l1 + 0.05) / (l2 + 0.05);
+    }
+    const ratio = contrastRatio('#4E617A', '#F6F1E6');
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('LIGHT + sunny stays the warm amber treatment (unchanged by the new fog branch)', () => {
+    useThemeStore.setState({ preference: 'light' });
+    mockUseWeather.mockReturnValue({ condition: 'clear', label: 'Sunny', emoji: '☀️' });
+    const { getByLabelText, getByText } = render(<HomeScreen />);
+    const pill = getByLabelText('Weather: Sunny');
+    expect(pill.props.style.backgroundColor).toBe('rgba(255,178,62,0.16)');
+    expect(getByText('Sunny').props.style.color).toBe('#FFC976');
+  });
+
+  it('LIGHT + rain stays the existing blue rain treatment (unchanged by the new fog branch)', () => {
+    useThemeStore.setState({ preference: 'light' });
+    mockUseWeather.mockReturnValue({ condition: 'rain', label: 'Rainy', emoji: '🌧' });
+    const { getByLabelText, getByText } = render(<HomeScreen />);
+    const pill = getByLabelText('Weather: Rainy');
+    expect(pill.props.style.backgroundColor).toBe('rgba(91,155,213,0.16)');
+    expect(getByText('Rainy').props.style.color).toBe('#8FBEE8');
+  });
+
+  it('DARK + fog is PROVABLY UNTOUCHED: falls through to the exact same amber treatment as before this change (the new branch is strictly gated on mode === "light")', () => {
+    useThemeStore.setState({ preference: 'dark' });
+    mockUseWeather.mockReturnValue({ condition: 'fog', label: 'Foggy', emoji: '🌫️' });
+    const { getByLabelText, getByText } = render(<HomeScreen />);
+    const pill = getByLabelText('Weather: Foggy');
+    expect(pill.props.style.backgroundColor).toBe('rgba(255,178,62,0.16)');
+    expect(pill.props.style.borderColor).toBe('rgba(255,178,62,0.3)');
+    expect(getByText('Foggy').props.style.color).toBe('#FFC976');
+  });
+});
+
+describe('Browse (Home) — StatusBar follows the resolved theme mode (Phase 2 light-theme fix)', () => {
+  // Regression guard: `<StatusBar style="light"/>` used to be hardcoded,
+  // which is correct on the dark atmosphere (light glyphs on a dark
+  // background) but renders invisible light-on-cream glyphs once the Light
+  // theme is selected. Must follow `mode` like every other v2 screen
+  // (Map, Results, Discover collection).
+  it('LIGHT mode: requests dark status-bar glyphs (legible on the cream background)', () => {
+    useThemeStore.setState({ preference: 'light' });
+    render(<HomeScreen />);
+    expect(mockStatusBar).toHaveBeenCalledWith(expect.objectContaining({ style: 'dark' }));
+  });
+
+  it('DARK mode: requests light status-bar glyphs, unchanged from before this fix', () => {
+    useThemeStore.setState({ preference: 'dark' });
+    render(<HomeScreen />);
+    expect(mockStatusBar).toHaveBeenCalledWith(expect.objectContaining({ style: 'light' }));
+  });
+});
+
 describe('pickHeroCollection — real-collection mapping (pure)', () => {
   // Args: (condition, intent, month, hour). Midday July unless stated.
   it('maps rain-family weather to the rainy-day collection', () => {
@@ -447,6 +559,45 @@ describe('getWeatherCta / getHomeContextLine — mainly_clear sweep (pure)', () 
   it('getHomeContextLine gives mainly_clear the SAME sunny copy as clear', () => {
     const noon = new Date(2026, 6, 15, 12, 0);
     expect(getHomeContextLine('mainly_clear', noon)).toBe(getHomeContextLine('clear', noon));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Weather Atmosphere and Content Consistency checkpoint — Foggy must never
+// resolve rain-branded hero/CTA content ("Rainy Day"). toProtoKey() already
+// maps 'fog' to its OWN distinct proto key (never collapsed into 'rain'),
+// so this is a regression guard on that existing, already-correct mapping —
+// not a fix, a pin, so a future edit can't accidentally re-collapse it.
+// ─────────────────────────────────────────────────────────────────────────
+describe('Foggy weather content never resolves rain-branded copy (regression guard)', () => {
+  it('pickHeroCollection never returns the Rainy Day hero for fog', () => {
+    const hero = pickHeroCollection('fog', null, 6, 12);
+    expect(hero.key).not.toBe('rainy-day');
+    expect(hero.title).not.toBe('Rainy Day Picks');
+  });
+
+  it('getWeatherCta gives fog its own dedicated CTA, distinct from rain', () => {
+    const fogCta = getWeatherCta('fog');
+    const rainCta = getWeatherCta('rain');
+    expect(fogCta).not.toBeNull();
+    expect(fogCta!.cta).not.toBe(rainCta!.cta);
+    expect(fogCta!.line).not.toBe(rainCta!.line);
+    // Fog copy should read as a low-visibility/cosy-local suggestion, not a
+    // rain-specific "stay dry"/"indoor" framing.
+    expect(fogCta!.line.toLowerCase()).toContain('foggy');
+  });
+
+  it('rain, drizzle and fog each resolve a distinct, non-null CTA (coherent per-condition content)', () => {
+    const rain = getWeatherCta('rain');
+    const drizzle = getWeatherCta('drizzle');
+    const fog = getWeatherCta('fog');
+    expect(rain).not.toBeNull();
+    expect(drizzle).not.toBeNull();
+    expect(fog).not.toBeNull();
+    // Rain and drizzle currently share the same "rain family" CTA by design
+    // (see toProtoKey) — fog must still be distinct from both.
+    expect(fog).not.toEqual(rain);
+    expect(fog).not.toEqual(drizzle);
   });
 });
 
