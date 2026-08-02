@@ -29,6 +29,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Icon } from '@/components/ui';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { FontFamily, type ThemeTokens, type AccentPalette } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 
@@ -97,15 +98,12 @@ export default function WelcomeScreen() {
           {/* ── CTAs ─────────────────────────────────────────────────────── */}
           {/* Both buttons are equal-prominence — no nudge technique (ICO Standard 7) */}
           <View style={styles.ctaBlock}>
-            <TouchableOpacity
-              style={styles.primaryBtn}
+            <GlassButton
               onPress={() => router.push('/(auth)/register')}
-              activeOpacity={0.85}
-              accessibilityRole="button"
               accessibilityLabel="Create a free account"
-            >
-              <Text style={styles.primaryBtnText}>Create free account</Text>
-            </TouchableOpacity>
+              label="Create free account"
+              style={styles.primaryBtnLayout}
+            />
 
             <TouchableOpacity
               style={styles.secondaryBtn}
@@ -280,17 +278,12 @@ function createStyles(T: ThemeTokens, ACCENT: AccentPalette) {
       marginTop: 20,
       gap: 12,
     },
-    primaryBtn: {
+    // Phase 3 (glass button system): "Create free account" is now a
+    // <GlassButton/> — layout only survives here, colour comes from its own
+    // variant/active resolution (never a style override).
+    primaryBtnLayout: {
       height: 54,
-      backgroundColor: ACCENT.accent,
       borderRadius: 16,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    primaryBtnText: {
-      fontFamily: FontFamily.bodyStrong,
-      fontSize: 16,
-      color: '#FFFFFF',
     },
     secondaryBtn: {
       height: 54,

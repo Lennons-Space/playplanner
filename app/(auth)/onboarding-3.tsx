@@ -19,6 +19,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 import { Icon, IconName } from '@/components/ui';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { FontFamily, ocean } from '@/constants/theme';
 import { ONBOARDING_KEY } from '.';
@@ -116,15 +117,12 @@ export default function Onboarding3() {
             <Text style={[styles.backBtnText, { color: T.label }]}>Back</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.getStartedBtn}
+          <GlassButton
             onPress={async () => { await markOnboardingSeen(); router.replace('/(auth)/welcome'); }}
-            activeOpacity={0.85}
-            accessibilityRole="button"
             accessibilityLabel="Get started with PlayPlanner"
-          >
-            <Text style={styles.getStartedText}>Get Started</Text>
-          </TouchableOpacity>
+            label="Get Started"
+            style={styles.getStartedBtnLayout}
+          />
         </View>
 
       </SafeAreaView>
@@ -239,16 +237,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     // color: mode-aware, applied inline (T.label).
   },
-  getStartedBtn: {
+  // Phase 3 (glass button system): "Get Started" is now a <GlassButton/>;
+  // only layout survives here ("Back" stays a plain TouchableOpacity — see
+  // the same note in onboarding-2.tsx).
+  getStartedBtnLayout: {
     flex: 2,
-    backgroundColor: ACCENT.accent,
     borderRadius: 16,
     paddingVertical: 16,
-    alignItems: 'center',
-  },
-  getStartedText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 16,
-    color: '#FFFFFF',
   },
 });

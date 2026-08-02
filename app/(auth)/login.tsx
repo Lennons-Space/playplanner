@@ -29,7 +29,6 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -44,6 +43,7 @@ import { useUser } from '@/hooks/useAuth';
 import { Icon } from '@/components/ui/Icon';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 
@@ -259,19 +259,15 @@ export default function LoginScreen() {
             </View>
 
             {/* ── Primary CTA ───────────────────────────────────────────── */}
-            <TouchableOpacity
-              style={styles.primaryBtn}
+            <GlassButton
               onPress={handleLogin}
               disabled={loading}
-              accessibilityRole="button"
+              loading={loading}
               accessibilityLabel="Sign in to your account"
               accessibilityState={{ disabled: loading }}
-            >
-              {loading
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.primaryBtnText}>Sign in</Text>
-              }
-            </TouchableOpacity>
+              label="Sign in"
+              style={styles.primaryBtnLayout}
+            />
 
             {/* ── Switch to register ────────────────────────────────────── */}
             <TouchableOpacity
@@ -400,18 +396,13 @@ function createStyles(T: ThemeTokens) {
     color: ACCENT.accent,
   },
 
-  primaryBtn: {
+  // Phase 3 (glass button system): "Sign in" is now a <GlassButton/> —
+  // colour/disabled-dimming come from its own resolution; only layout
+  // survives here.
+  primaryBtnLayout: {
     height: 54,
-    backgroundColor: ACCENT.accent,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginTop: 24,
-  },
-  primaryBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 17,
-    color: '#FFFFFF',
   },
 
   switchBtn: {

@@ -36,9 +36,15 @@ const mockRedirectHref = jest.fn();
 
 // Tabs: needs to expose a Tabs.Screen sub-component so the layout's JSX
 // doesn't crash. We give it a no-op Screen that just returns null.
+// screenOptions is captured (not just discarded) so tests can assert on the
+// resolved tabBarActiveTintColor/tabBarInactiveTintColor — that's the only
+// place TabsLayout ever passes them, since MockTabs itself renders nothing
+// from those props.
+const mockTabsScreenOptions = jest.fn();
 function MockTabsScreen() { return null; }
-function MockTabs({ children }: { children?: React.ReactNode }) {
+function MockTabs({ children, screenOptions }: { children?: React.ReactNode; screenOptions?: unknown }) {
   const { View } = require('react-native');
+  mockTabsScreenOptions(screenOptions);
   return <View testID="tabs-navigator">{children}</View>;
 }
 MockTabs.Screen = MockTabsScreen;
@@ -299,5 +305,67 @@ describe('TabsLayout — shared <StatusBar/> default follows resolved mode', () 
     mockStore({ session: { access_token: 'tok', user: { id: 'user-1' } }, isLoading: false });
     render(<TabsLayout />);
     expect(mockStatusBarStyle).toHaveBeenCalledWith('dark');
+  });
+});
+
+// =============================================================================
+// Cross-Screen Visual Consistency checkpoint — theme-aware bottom-tab colours.
+//
+// Root cause fixed: INACTIVE_TINT used to be a single constant shared by both
+// themes (rgba(235,235,245,0.4) — near-white). That reads fine on the dark
+// glass tab bar but is nearly invisible against the Light theme's own
+// near-opaque WHITE glass tab bar (TabBarBackground's light gradient bottom
+// stop is 0.94-opacity white) — a near-white-on-near-white inactive icon.
+// INACTIVE_TINT is now keyed by mode: dark keeps its original value
+// byte-for-byte; light uses a moderate-opacity dark ink instead.
+// =============================================================================
+describe('TabsLayout — bottom tab colours are theme-aware and readable', () => {
+  const authedStore = { session: { access_token: 'tok', user: { id: 'user-1' } }, isLoading: false };
+
+  it('Light mode: inactive tab tint is dark/readable — not the dark-mode near-white value', () => {
+    mockUseAppTheme.mockReturnValue(LIGHT_APP_THEME);
+    mockStore(authedStore);
+    render(<TabsLayout />);
+
+    const screenOptions = mockTabsScreenOptions.mock.calls[0][0] as Record<string, unknown>;
+    expect(screenOptions.tabBarInactiveTintColor).toBe('rgba(20,18,28,0.6)');
+    expect(screenOptions.tabBarInactiveTintColor).not.toBe('rgba(235,235,245,0.4)');
+  });
+
+  it('Dark mode: inactive tab tint keeps its existing readable light-on-dark value, unchanged', () => {
+    mockUseAppTheme.mockReturnValue(DARK_APP_THEME);
+    mockStore(authedStore);
+    render(<TabsLayout />);
+
+    const screenOptions = mockTabsScreenOptions.mock.calls[0][0] as Record<string, unknown>;
+    expect(screenOptions.tabBarInactiveTintColor).toBe('rgba(235,235,245,0.4)');
+  });
+
+  it('active tab tint is the accent colour in both themes and always distinguishable from the inactive tint', () => {
+    for (const theme of [LIGHT_APP_THEME, DARK_APP_THEME]) {
+      mockTabsScreenOptions.mockClear();
+      mockUseAppTheme.mockReturnValue(theme);
+      mockStore(authedStore);
+      render(<TabsLayout />);
+
+      const screenOptions = mockTabsScreenOptions.mock.calls[0][0] as Record<string, unknown>;
+      expect(screenOptions.tabBarActiveTintColor).toBe(theme.accent.accent);
+      expect(screenOptions.tabBarActiveTintColor).not.toBe(screenOptions.tabBarInactiveTintColor);
+    }
+  });
+
+  it('Light and Dark inactive tints are genuinely different values — theme-aware, not one shared constant', () => {
+    mockUseAppTheme.mockReturnValue(LIGHT_APP_THEME);
+    mockStore(authedStore);
+    render(<TabsLayout />);
+    const lightTint = (mockTabsScreenOptions.mock.calls[0][0] as Record<string, unknown>).tabBarInactiveTintColor;
+
+    mockTabsScreenOptions.mockClear();
+    mockUseAppTheme.mockReturnValue(DARK_APP_THEME);
+    mockStore(authedStore);
+    render(<TabsLayout />);
+    const darkTint = (mockTabsScreenOptions.mock.calls[0][0] as Record<string, unknown>).tabBarInactiveTintColor;
+
+    expect(lightTint).not.toBe(darkTint);
   });
 });

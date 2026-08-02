@@ -3,8 +3,10 @@
 //
 // v2 spec: dark glass tab bar — translucent background rgba(14,14,20,0.82),
 // 0.5px top border, active icon tinted the Ocean accent, inactive icons
-// rgba(235,235,245,0.4), label 10px (600 weight active / 400 inactive),
-// 22px bottom cushion on top of the device safe area.
+// rgba(235,235,245,0.4) in dark mode (light mode has its own value — see
+// INACTIVE_TINT below, Phase 3 light-mode contrast fix), label 10px (600
+// weight active / 400 inactive), 22px bottom cushion on top of the device
+// safe area.
 //
 // CRASH FIX (2026-07-08): the tab bar background used to render a real
 // expo-blur BlurView. The on-device Android dev build predates expo-blur
@@ -58,8 +60,22 @@ const TAB_BAR_CONTENT_HEIGHT = 46;
 const TAB_BAR_BOTTOM_CUSHION = Platform.select({ ios: 22, default: 6 });
 // Exact v2 glass spec — deliberately literal values, not theme tokens (the
 // design calls out numbers slightly different from the nearest token, e.g.
-// 0.4 alpha vs tokens.label3's 0.44).
-const INACTIVE_TINT = 'rgba(235,235,245,0.4)';
+// 0.4 alpha vs tokens.label3's 0.44). `dark` is UNCHANGED — this was
+// previously a single constant shared by both themes, which read almost
+// invisibly light against light mode's near-opaque white glass tab bar
+// (GLASS.light.gradient bottom stop is 0.94-opacity white, so a
+// near-white-on-near-white inactive icon had almost no contrast). Phase 3
+// (light-mode tab bar contrast fix): mode-keyed instead, matching the
+// GLASS map right below. `light` uses dark ink at moderate opacity — not
+// solid black (too heavy next to the accent-tinted active icon) and not the
+// accent blue (would read as two active tabs) — computed for ~5:1 contrast
+// against that same 0.94-opacity white, consistent with how every other
+// light-theme text token (Themes.light.label/label2/label3) is built from
+// the same (20,18,28) ink base at varying alpha.
+const INACTIVE_TINT: Record<'dark' | 'light', string> = {
+  dark: 'rgba(235,235,245,0.4)',
+  light: 'rgba(20,18,28,0.6)',
+};
 // Vertical fade replacing the previous FLAT rgba(14,14,20,0.82) fill
 // (2026-07-09 visual review): without real blur (BlurView is banned — native
 // module missing from the dev build) a flat 0.82 tint chopped scrolling
@@ -136,7 +152,7 @@ export default function TabsLayout() {
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: accent.accent,
-          tabBarInactiveTintColor: INACTIVE_TINT,
+          tabBarInactiveTintColor: INACTIVE_TINT[mode],
           // Let each screen's own <V2Background/> show through — every tab
           // screen (Home, Map, Saved, Profile, Search) now mounts its own,
           // so this stays transparent for all of them.

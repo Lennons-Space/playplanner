@@ -15,6 +15,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 import { Icon } from '@/components/ui';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { FontFamily, ocean } from '@/constants/theme';
 import { ONBOARDING_KEY } from '.';
@@ -113,15 +114,12 @@ export default function Onboarding2() {
             <Text style={[styles.backBtnText, { color: T.label }]}>Back</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.nextBtn}
+          <GlassButton
             onPress={() => router.push('/(auth)/onboarding-3')}
-            activeOpacity={0.85}
-            accessibilityRole="button"
             accessibilityLabel="Next onboarding screen"
-          >
-            <Text style={styles.nextBtnText}>Next</Text>
-          </TouchableOpacity>
+            label="Next"
+            style={styles.nextBtnLayout}
+          />
         </View>
 
       </SafeAreaView>
@@ -239,16 +237,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     // color: mode-aware, applied inline (T.label).
   },
-  nextBtn: {
+  // Phase 3 (glass button system): "Next" is now a <GlassButton/>; only
+  // layout survives here ("Back" stays a plain TouchableOpacity — it was
+  // already a bordered/transparent resting style, not a solid accent fill,
+  // so it's out of scope).
+  nextBtnLayout: {
     flex: 2,
-    backgroundColor: ACCENT.accent,
     borderRadius: 16,
     paddingVertical: 16,
-    alignItems: 'center',
-  },
-  nextBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 16,
-    color: '#FFFFFF',
   },
 });

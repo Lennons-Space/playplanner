@@ -482,3 +482,48 @@ describe('Auth ecosystem — legacy background/design-language fully removed', (
     expect(src).not.toMatch(/bg-white|text-sky/);
   });
 });
+
+// -----------------------------------------------------------------------
+// Cross-Screen Visual Consistency checkpoint — primary CTAs use GlassButton,
+// never a heavy solid-blue TouchableOpacity fill. Scoped to the 6 files
+// converted this checkpoint (Login/Register/Welcome/Onboarding 1-3) — not
+// privacy.tsx/terms.tsx, which weren't part of this pass.
+// -----------------------------------------------------------------------
+const GLASS_BUTTON_ROLLOUT_FILES = [
+  'app/(auth)/login.tsx',
+  'app/(auth)/register.tsx',
+  'app/(auth)/welcome.tsx',
+  'app/(auth)/onboarding-1.tsx',
+  'app/(auth)/onboarding-2.tsx',
+  'app/(auth)/onboarding-3.tsx',
+];
+
+describe('Auth ecosystem — primary CTAs use the shared GlassButton, not a solid-blue fill', () => {
+  it.each(GLASS_BUTTON_ROLLOUT_FILES)('%s imports GlassButton', (file) => {
+    const src = readScreen(file);
+    expect(src).toMatch(/import\s*{\s*GlassButton\s*}\s*from\s*'@\/components\/ui\/GlassButton'/);
+  });
+
+  it.each(GLASS_BUTTON_ROLLOUT_FILES)('%s has no leftover solid ACCENT.accent button-background style', (file) => {
+    const src = readScreen(file);
+    // Decorative, non-button accent fills (map-pin illustrations, active
+    // pagination dots) are untouched by this checkpoint and legitimately
+    // keep backgroundColor: ACCENT.accent — this guard only checks that no
+    // *button*-shaped style object (one with alignItems/justifyContent
+    // centering, i.e. a tappable CTA container) still hardcodes it.
+    const buttonShapedAccentFill =
+      /(?:Btn|[Bb]utton)[a-zA-Z]*:\s*{[^}]*backgroundColor:\s*ACCENT\.accent/s;
+    expect(src).not.toMatch(buttonShapedAccentFill);
+  });
+
+  it('LoginScreen renders "Sign in" via GlassButton, not a raw TouchableOpacity', () => {
+    render(<LoginScreen />);
+    const signInBtn = screen.getByLabelText('Sign in to your account');
+    // GlassButton is a Pressable under the hood — its minHeight/minWidth 44
+    // floor is a reliable fingerprint distinguishing it from the old
+    // TouchableOpacity, which had no such floor set.
+    const { StyleSheet } = require('react-native');
+    const style = StyleSheet.flatten(signInBtn.props.style);
+    expect(style.minHeight).toBe(44);
+  });
+});

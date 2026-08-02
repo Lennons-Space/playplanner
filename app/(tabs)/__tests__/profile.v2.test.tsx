@@ -436,6 +436,32 @@ describe('Profile v2 — sign-out and delete-account stay guarded', () => {
   });
 });
 
+// ── Appearance row stays single-line (polish fix) ──────────────────────────
+// The "Appearance" label must never wrap; the long secondary value ("System,
+// light or dark") truncates with an ellipsis instead, and the label keeps the
+// same font size as every other row.
+describe('Profile v2 — Appearance row: label single-line, detail truncates', () => {
+  it('the "Appearance" label is single-line (numberOfLines=1) so it cannot wrap', () => {
+    const { getByText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    expect(getByText('Appearance').props.numberOfLines).toBe(1);
+  });
+
+  it('the "System, light or dark" secondary value truncates with a tail ellipsis (gives way before the label)', () => {
+    const { getByText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    const detail = getByText('System, light or dark');
+    expect(detail.props.numberOfLines).toBe(1);
+    expect(detail.props.ellipsizeMode).toBe('tail');
+  });
+
+  it('the label keeps the same font size as sibling rows and never shrinks (flexShrink 0)', () => {
+    const { getByText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    const appearance = StyleSheet.flatten(getByText('Appearance').props.style) as Record<string, unknown>;
+    const sibling = StyleSheet.flatten(getByText('Personal details').props.style) as Record<string, unknown>;
+    expect(appearance.fontSize).toBe(sibling.fontSize); // not visibly smaller than other rows
+    expect(appearance.flexShrink).toBe(0); // label can't be squeezed into wrapping
+  });
+});
+
 // ── Tab-safe bottom padding ─────────────────────────────────────────────────
 describe('Profile v2 — tab-safe bottom padding', () => {
   it('applies a marginBottom derived from tab bar height / safe-area insets so content clears the floating tab bar', () => {

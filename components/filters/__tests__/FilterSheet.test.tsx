@@ -24,6 +24,8 @@
  *    minAge down to match; without the fix minAge > maxAge was possible.
  */
 
+import fs from 'fs';
+import path from 'path';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -350,5 +352,20 @@ describe('FilterSheet', () => {
     // minAge (was 8) must have been pulled down to match maxAge (7).
     expect(committed.maxAge).toBe(7);
     expect(committed.minAge).toBe(7); // clamped down from 8
+  });
+});
+
+// -----------------------------------------------------------------------
+// Cross-Screen Visual Consistency checkpoint — the age-stepper "+" and
+// "Apply filters" use the shared GlassButton instead of a solid-ACCENT fill.
+// -----------------------------------------------------------------------
+describe('FilterSheet — "+" stepper and "Apply filters" use GlassButton, not a solid fill', () => {
+  it('imports GlassButton and no longer hardcodes a solid ACCENT background on the "+" stepper or Apply CTA', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../FilterSheet.tsx'), 'utf8');
+    expect(src).toMatch(/import\s*{\s*GlassButton\s*}\s*from\s*'@\/components\/ui\/GlassButton'/);
+    // The old inline style objects both used `backgroundColor: ACCENT` as a
+    // solid fill directly on a TouchableOpacity — neither call site should
+    // do that anymore (GlassButton resolves its own colour internally).
+    expect(src).not.toMatch(/<TouchableOpacity[^>]*\n?\s*style=\{\{[^}]*backgroundColor:\s*ACCENT,/s);
   });
 });

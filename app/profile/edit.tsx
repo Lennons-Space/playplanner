@@ -34,6 +34,7 @@ import { useProfile, useUser } from '@/hooks/useAuth';
 import { useUpdateProfile, useUploadAvatar } from '@/hooks/useProfile';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
 import { useAppTheme } from '@/hooks/useAppTheme';
@@ -41,6 +42,18 @@ import { FontFamily, ocean } from '@/constants/theme';
 
 const ACCENT = ocean;
 const MAX_BIO_LENGTH = 300;
+
+// Sticky save-bar sizing (Phase 5C, UI repair sprint) — kept as named
+// constants so the ScrollView's bottom clearance always matches the bar's
+// real rendered height. Previously the ScrollView reserved a flat, guessed
+// 140px while the bar itself only ever needed ~82px (+ safe-area inset),
+// producing a ~60px dead gap above a near-opaque footer (light mode reads as
+// solid white) — together those read as one oversized white block. Deriving
+// both from the same numbers removes the mismatch instead of re-guessing it.
+const SAVE_BUTTON_HEIGHT      = 54; // must match styles.saveBtnLayout.height
+const SAVE_BAR_PADDING_TOP    = 12;
+const SAVE_BAR_PADDING_BOTTOM = 12; // + insets.bottom, added where used
+const SAVE_BAR_SCROLL_GAP     = 16; // breathing room between last card and the bar
 
 export default function EditProfileScreen() {
   const { tokens: T, mode } = useAppTheme();
@@ -54,6 +67,10 @@ export default function EditProfileScreen() {
   const { mutateAsync, isPending }           = useUpdateProfile();
   const { mutateAsync: uploadAvatar, isPending: isUploading } = useUploadAvatar();
   const insets = useSafeAreaInsets();
+  // Real rendered height of the sticky save bar (padding + button + safe
+  // area) — the ScrollView clears exactly this much, plus a small visual
+  // gap, instead of an unrelated flat guess. See constants above.
+  const saveBarHeight = SAVE_BAR_PADDING_TOP + SAVE_BUTTON_HEIGHT + SAVE_BAR_PADDING_BOTTOM + insets.bottom;
 
   // All hooks must be called unconditionally (React rules of hooks).
   // Initial values are empty strings; useEffect syncs them once profile loads.
@@ -137,7 +154,7 @@ export default function EditProfileScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <ScrollView
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: 140 + insets.bottom }]}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: saveBarHeight + SAVE_BAR_SCROLL_GAP }]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -296,25 +313,27 @@ export default function EditProfileScreen() {
 
           </ScrollView>
 
-          {/* Save button — sticky, safe-area aware above Android nav */}
+          {/* Save button — sticky, safe-area aware above Android nav.
+              Phase 5C: paddingTop/paddingBottom now come from the same
+              SAVE_BAR_* constants the ScrollView clearance above uses, so
+              the bar is exactly as tall as its content (button + minimal
+              padding + real safe-area inset) and never a large guessed block. */}
           <GlassSurface
-            style={[styles.stickyBar, { paddingBottom: insets.bottom + 14 }]}
+            style={[
+              styles.stickyBar,
+              { paddingTop: SAVE_BAR_PADDING_TOP, paddingBottom: SAVE_BAR_PADDING_BOTTOM + insets.bottom },
+            ]}
             tintColor={stickyBarTint}
           >
-            <TouchableOpacity
-              style={[styles.saveBtn, isPending && styles.saveBtnDisabled]}
+            <GlassButton
               onPress={handleSave}
               disabled={isPending}
-              accessibilityRole="button"
+              loading={isPending}
               accessibilityLabel="Save profile changes"
               accessibilityState={{ disabled: isPending }}
-            >
-              {isPending ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.saveBtnText}>Save changes</Text>
-              )}
-            </TouchableOpacity>
+              label="Save changes"
+              style={styles.saveBtnLayout}
+            />
           </GlassSurface>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -468,29 +487,22 @@ const styles = StyleSheet.create({
   },
 
   // Sticky save bar
+  // paddingTop/paddingBottom are set inline from the SAVE_BAR_* constants
+  // (Phase 5C) so this container is only ever as tall as button + minimal
+  // padding + real safe-area inset — never a guessed/oversized block.
   stickyBar: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     paddingHorizontal: 20,
-    paddingTop: 14,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
-  saveBtn: {
-    height: 54,
+  // Phase 3 (glass button system): "Save changes" is now a <GlassButton/>;
+  // only layout survives here. Height must match SAVE_BUTTON_HEIGHT above.
+  saveBtnLayout: {
+    height: SAVE_BUTTON_HEIGHT,
     borderRadius: 16,
-    backgroundColor: ACCENT.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveBtnDisabled: {
-    opacity: 0.6,
-  },
-  saveBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 16,
-    color: '#FFFFFF',
   },
 });

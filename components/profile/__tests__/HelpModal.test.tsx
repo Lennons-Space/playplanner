@@ -8,6 +8,8 @@
  * from useAppTheme() instead of a hard-coded `Themes.dark`, so it must
  * render correctly (no crash, tokens applied) in both light and dark.
  */
+import fs from 'fs';
+import path from 'path';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { useColorScheme } from 'react-native';
@@ -51,5 +53,23 @@ describe('HelpModal — renders in both light and dark (Step 10A Part 2 proof se
     mockUseColorScheme.mockReturnValue('light');
     render(<HelpModal visible={false} onClose={jest.fn()} />);
     expect(screen.queryByTestId('help-modal')).toBeNull();
+  });
+});
+
+// -----------------------------------------------------------------------
+// Cross-Screen Visual Consistency checkpoint — "Contact us" uses the shared
+// GlassButton instead of a solid-ACCENT-fill TouchableOpacity.
+// -----------------------------------------------------------------------
+describe('HelpModal — "Contact us" uses GlassButton, still opens mailto', () => {
+  it('imports GlassButton and no longer has a solid ACCENT.accent primary-button fill', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../HelpModal.tsx'), 'utf8');
+    expect(src).toMatch(/import\s*{\s*GlassButton\s*}\s*from\s*'@\/components\/ui\/GlassButton'/);
+    expect(src).not.toMatch(/primaryBtn:\s*{[^}]*backgroundColor:\s*ACCENT\.accent/s);
+  });
+
+  it('"Contact us" is a real accessible button that is still present and labelled correctly', () => {
+    mockUseColorScheme.mockReturnValue('light');
+    render(<HelpModal visible onClose={jest.fn()} />);
+    expect(screen.getByLabelText(/Email support at/)).toBeTruthy();
   });
 });

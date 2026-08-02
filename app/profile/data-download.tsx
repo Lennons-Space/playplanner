@@ -21,9 +21,7 @@ import { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,6 +40,7 @@ import { useAuthStore } from '@/store/authStore';
 import { buildDataExport } from '@/hooks/useDataRights';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
 import { useAppTheme } from '@/hooks/useAppTheme';
@@ -179,23 +178,15 @@ export default function DataDownloadScreen() {
           )}
 
           {/* Request download button */}
-          <TouchableOpacity
-            style={[
-              styles.button,
-              buttonDisabled && styles.buttonDisabled,
-            ]}
+          <GlassButton
             onPress={handleExport}
             disabled={buttonDisabled}
-            accessibilityRole="button"
+            loading={isLoading}
             accessibilityLabel="Request data download"
             accessibilityState={{ disabled: buttonDisabled, busy: isLoading }}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.buttonText}>Request download</Text>
-            )}
-          </TouchableOpacity>
+            label="Request download"
+            style={styles.buttonLayout}
+          />
 
           {/* Success message */}
           {success && (
@@ -264,20 +255,12 @@ const styles = StyleSheet.create({
     color: '#FFC976',
     lineHeight: 20,
   },
-  button: {
-    backgroundColor: ACCENT.accent,
+  // Phase 3 (glass button system): "Request download" is now a
+  // <GlassButton/>; only layout survives here.
+  buttonLayout: {
     borderRadius: 16,
     paddingVertical: 16,
-    alignItems: 'center',
     marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 16,
-    color: '#FFFFFF',
   },
   successBox: {
     borderRadius: 12,

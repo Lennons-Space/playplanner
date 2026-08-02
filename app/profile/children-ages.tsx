@@ -27,7 +27,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -37,6 +36,7 @@ import { useProfile, useUser } from '@/hooks/useAuth';
 import { useUpdateChildrenAges } from '@/hooks/useProfile';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
 import { useAppTheme } from '@/hooks/useAppTheme';
@@ -134,24 +134,16 @@ export default function ChildrenAgesScreen() {
             {AGE_RANGES.map((range) => {
               const isSelected = selected.includes(range);
               return (
-                <TouchableOpacity
+                <GlassButton
                   key={range}
-                  style={[
-                    styles.chip,
-                    isSelected
-                      ? styles.chipSelected
-                      : [styles.chipUnselected, { backgroundColor: T.surface, borderColor: T.separator }],
-                  ]}
+                  active={isSelected}
                   onPress={() => toggleRange(range)}
-                  activeOpacity={0.8}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: isSelected }}
                   accessibilityLabel={`Age range ${range} years`}
-                >
-                  <Text style={[styles.chipText, { color: T.label }, isSelected && styles.chipTextSelected]}>
-                    {range} yrs
-                  </Text>
-                </TouchableOpacity>
+                  label={`${range} yrs`}
+                  style={styles.chipLayout}
+                />
               );
             })}
           </View>
@@ -175,20 +167,15 @@ export default function ChildrenAgesScreen() {
           style={[styles.stickyBar, { paddingBottom: insets.bottom + 14 }]}
           tintColor={stickyBarTint}
         >
-          <TouchableOpacity
-            style={[styles.saveBtn, isPending && styles.saveBtnDisabled]}
+          <GlassButton
             onPress={handleSave}
             disabled={isPending}
-            accessibilityRole="button"
+            loading={isPending}
             accessibilityLabel="Save age range selections"
             accessibilityState={{ disabled: isPending }}
-          >
-            {isPending ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.saveBtnText}>Save</Text>
-            )}
-          </TouchableOpacity>
+            label="Save"
+            style={styles.saveBtnLayout}
+          />
         </GlassSurface>
       </SafeAreaView>
     </View>
@@ -245,26 +232,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
   },
-  chip: {
+  // Phase 3 (glass button system): each age-range chip is now a
+  // <GlassButton active={isSelected}/> — resting vs selected colour/border/
+  // text all come from its own active resolution; only layout survives here.
+  chipLayout: {
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 999,
-    borderWidth: 1.5,
-  },
-  chipSelected: {
-    backgroundColor: ACCENT.accent,
-    borderColor: ACCENT.accent,
-  },
-  chipUnselected: {
-    // backgroundColor / borderColor: mode-aware, applied inline.
-  },
-  chipText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 15,
-    // color: mode-aware base (T.label), applied inline; overridden white when selected.
-  },
-  chipTextSelected: {
-    color: '#FFFFFF',
   },
 
   clearBtn: {
@@ -288,19 +262,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
-  saveBtn: {
+  // Phase 3 (glass button system): "Save" is now a <GlassButton/>; only
+  // layout survives here.
+  saveBtnLayout: {
     height: 54,
     borderRadius: 16,
-    backgroundColor: ACCENT.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveBtnDisabled: {
-    opacity: 0.6,
-  },
-  saveBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 16,
-    color: '#FFFFFF',
   },
 });

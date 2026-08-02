@@ -43,6 +43,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
 import { Icon, CategoryPlaceholder } from '@/components/ui';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { SavedEmptyState } from '@/components/favourites/SavedEmptyState';
 import { getCategoryMeta } from '@/constants/categories';
@@ -311,15 +312,19 @@ export default function FavouritesScreen() {
             <Text style={[styles.stateSub, { color: T.label3 }]}>
               Sign in to keep a personal list of venues your family loves.
             </Text>
-            <Pressable
-              style={styles.primaryBtn}
-              android_ripple={{ color: 'rgba(255,255,255,0.18)' }}
+            {/* Layout-only inline style (not styles.primaryBtn) — that style
+                object's backgroundColor: ACCENT.accent must NOT reach
+                GlassButton via `style`, colour only ever comes from its own
+                variant/active resolution (see GlassButton's own header
+                comment for why). styles.primaryBtn/primaryBtnText are now
+                unused but left in place — out of scope for this file per
+                the Bucket B constraint (favourites.tsx button-only edit). */}
+            <GlassButton
               onPress={() => router.push('/(auth)/login')}
-              accessibilityRole="button"
               accessibilityLabel="Sign in to save favourites"
-            >
-              <Text style={styles.primaryBtnText}>Sign in</Text>
-            </Pressable>
+              label="Sign in"
+              style={{ borderRadius: 14, paddingVertical: 14, paddingHorizontal: 36, marginTop: 26 }}
+            />
             <Pressable
               style={styles.secondaryBtnWrap}
               android_ripple={{ color: 'rgba(255,255,255,0.12)' }}

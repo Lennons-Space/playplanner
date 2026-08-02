@@ -22,6 +22,7 @@
 import { useMemo } from 'react';
 import { Linking, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { FontFamily, type ThemeTokens, type AccentPalette } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 
@@ -74,15 +75,12 @@ export function HelpModal({ visible, onClose }: HelpModalProps) {
           </Text>
           <Text style={styles.email}>{SUPPORT_EMAIL}</Text>
 
-          <TouchableOpacity
-            style={styles.primaryBtn}
+          <GlassButton
             onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
-            activeOpacity={0.85}
-            accessibilityRole="button"
             accessibilityLabel={`Email support at ${SUPPORT_EMAIL}`}
-          >
-            <Text style={styles.primaryBtnText}>Contact us</Text>
-          </TouchableOpacity>
+            label="Contact us"
+            style={styles.primaryBtnLayout}
+          />
 
           <TouchableOpacity
             style={styles.closeBtn}
@@ -155,18 +153,13 @@ function createStyles(T: ThemeTokens, ACCENT: AccentPalette) {
       color: ACCENT.accent,
       marginBottom: 20,
     },
-    primaryBtn: {
+    // Phase 3 (glass button system): "Contact us" is now a <GlassButton/>;
+    // only layout survives here.
+    primaryBtnLayout: {
       width: '100%',
-      backgroundColor: ACCENT.accent,
       borderRadius: 14,
       paddingVertical: 15,
-      alignItems: 'center',
       marginBottom: 10,
-    },
-    primaryBtnText: {
-      fontFamily: FontFamily.bodyStrong,
-      fontSize: 16,
-      color: '#FFFFFF',
     },
     closeBtn: {
       width: '100%',

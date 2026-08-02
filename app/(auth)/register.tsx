@@ -41,7 +41,6 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
@@ -58,6 +57,7 @@ import { migratePendingLocationConsent } from '@/services/consent/locationConsen
 import { Icon } from '@/components/ui/Icon';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 
@@ -470,19 +470,15 @@ export default function RegisterScreen() {
               This enforces the ICO requirement at the UI level — the user cannot
               submit without actively affirming both. Opacity communicates state.
             */}
-            <TouchableOpacity
-              style={[styles.primaryBtn, !canSubmit && styles.primaryBtnDisabled]}
+            <GlassButton
               onPress={handleRegister}
-              disabled={!termsAccepted || !ageAffirmed || loading}
-              accessibilityRole="button"
+              disabled={!canSubmit}
+              loading={loading}
               accessibilityLabel="Create your Play Planner account"
-              accessibilityState={{ disabled: !termsAccepted || !ageAffirmed || loading }}
-            >
-              {loading
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.primaryBtnText}>Create account</Text>
-              }
-            </TouchableOpacity>
+              accessibilityState={{ disabled: !canSubmit }}
+              label="Create account"
+              style={styles.primaryBtnLayout}
+            />
 
             {/* ── Switch to login ───────────────────────────────────────── */}
             <TouchableOpacity
@@ -622,21 +618,13 @@ function createStyles(T: ThemeTokens) {
     borderTopColor: T.separator,
   },
 
-  primaryBtn: {
+  // Phase 3 (glass button system): "Create account" is now a
+  // <GlassButton/> — colour/disabled-dimming come from its own resolution;
+  // only layout survives here.
+  primaryBtnLayout: {
     height: 54,
-    backgroundColor: ACCENT.accent,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginTop: 24,
-  },
-  primaryBtnDisabled: {
-    opacity: 0.45,
-  },
-  primaryBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 17,
-    color: '#FFFFFF',
   },
 
   switchBtn: {

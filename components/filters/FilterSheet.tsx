@@ -59,6 +59,7 @@ import { supabase } from '@/lib/supabase';
 import { useFilterStore } from '@/store/filterStore';
 import { ocean, FontFamily } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
+import { GlassButton } from '@/components/ui/GlassButton';
 import type { Category, Facility, PriceRange, VenueFilters } from '@/types';
 import { DEFAULT_FILTERS } from '@/types';
 
@@ -255,21 +256,20 @@ const AgeStepper = memo(function AgeStepper({
           )}
         </View>
 
-        <TouchableOpacity
+        <GlassButton
           onPress={increment}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            backgroundColor: ACCENT,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
           accessibilityLabel={`Increase ${label}`}
-          accessibilityRole="button"
+          // Icon-only 36x36 square — below the 44dp touch-target floor, but
+          // that is the PRE-EXISTING size (matching the "−" stepper beside
+          // it pixel-for-pixel); explicitly zeroed out here rather than
+          // silently grown or shrunk. Flagged in the Phase 3 report.
+          style={{ width: 36, height: 36, minHeight: 0, minWidth: 0, borderRadius: 18, paddingHorizontal: 0, paddingVertical: 0 }}
         >
-          <Text style={{ fontSize: 20, color: '#FFFFFF', lineHeight: 24 }}>+</Text>
-        </TouchableOpacity>
+          {/* Custom children so the glyph keeps its exact size/colour —
+              GlassButton's resolved accent text colour on a low-alpha tint,
+              same reasoning as every other converted site in this file. */}
+          <Text style={{ fontSize: 20, color: ACCENT, lineHeight: 24 }}>+</Text>
+        </GlassButton>
       </View>
     </View>
   );
@@ -841,22 +841,19 @@ export default function FilterSheet({ visible, onClose }: FilterSheetProps) {
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
+              <GlassButton
                 onPress={handleApply}
-                style={{
-                  flex: 2,
-                  paddingVertical: 14,
-                  borderRadius: 999,
-                  alignItems: 'center',
-                  backgroundColor: ACCENT,
-                }}
                 accessibilityLabel="Apply filters"
-                accessibilityRole="button"
+                style={{ flex: 2, paddingVertical: 14, borderRadius: 999 }}
               >
-                <Text style={{ fontFamily: FontFamily.display, fontSize: 15, color: '#FFFFFF' }}>
+                {/* Custom children to keep the exact FontFamily.display weight
+                    used here (GlassButton's own `label` prop is bodyStrong) —
+                    colour still comes from the same accent-on-tint resolution
+                    GlassButton uses internally, not a raw white. */}
+                <Text style={{ fontFamily: FontFamily.display, fontSize: 15, color: ACCENT }}>
                   Apply filters
                 </Text>
-              </TouchableOpacity>
+              </GlassButton>
             </View>
           </Animated.View>
         </View>

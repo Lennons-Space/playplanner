@@ -73,7 +73,7 @@ export default function AppearanceScreen() {
             light/dark setting automatically.
           </Text>
 
-          <GlassSurface style={styles.optionGroup} tintColor="rgba(14,14,20,0.55)">
+          <GlassSurface style={styles.optionGroup}>
             {OPTIONS.map((option, index) => {
               const selected = preference === option.value;
               return (
@@ -81,6 +81,7 @@ export default function AppearanceScreen() {
                   key={option.value}
                   style={[
                     styles.optionRow,
+                    selected && styles.optionRowSelected,
                     index < OPTIONS.length - 1 ? styles.optionRowBorder : styles.optionRowLast,
                   ]}
                   onPress={() => setPreference(option.value)}
@@ -95,7 +96,7 @@ export default function AppearanceScreen() {
                   </View>
                   {selected && (
                     <View style={styles.checkBox}>
-                      <Icon name="check" size={16} color={ACCENT.accent} />
+                      <Icon name="check" size={16} color="#FFFFFF" />
                     </View>
                   )}
                 </TouchableOpacity>
@@ -162,8 +163,11 @@ function createStyles(T: ThemeTokens, ACCENT: AccentPalette) {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 16,
-      paddingVertical: 14,
+      paddingVertical: 15,
       gap: 12,
+    },
+    optionRowSelected: {
+      backgroundColor: ACCENT.light,
     },
     optionRowBorder: {
       borderBottomWidth: StyleSheet.hairlineWidth,
@@ -187,10 +191,10 @@ function createStyles(T: ThemeTokens, ACCENT: AccentPalette) {
       marginTop: 2,
     },
     checkBox: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: ACCENT.light,
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: ACCENT.accent,
       alignItems: 'center',
       justifyContent: 'center',
     },

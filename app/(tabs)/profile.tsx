@@ -108,10 +108,10 @@ function MenuItem({
         <Icon name={icon} size={18} color={iconColor} />
       </View>
 
-      <Text style={styles.menuLabel}>{label}</Text>
+      <Text style={styles.menuLabel} numberOfLines={1}>{label}</Text>
 
       {detail && !badge && (
-        <Text style={styles.menuDetail}>{detail}</Text>
+        <Text style={styles.menuDetail} numberOfLines={1} ellipsizeMode="tail">{detail}</Text>
       )}
 
       {badge && (
@@ -636,7 +636,11 @@ function createStyles(T: ThemeTokens) {
       marginHorizontal: 20,
       marginTop: 16,
       marginBottom: 8,
-      padding: 18,
+      // Vertical padding trimmed 18→16 to reduce the empty space in the header
+      // card without cramping it (avatar/name/settings + hierarchy preserved).
+      paddingHorizontal: 18,
+      paddingTop: 16,
+      paddingBottom: 16,
     },
     heroTopRow: {
       flexDirection: 'row',
@@ -672,7 +676,9 @@ function createStyles(T: ThemeTokens) {
       fontSize: 20,
       color: T.label,
       letterSpacing: -0.3,
-      marginTop: 14,
+      // Tightened 14→10 so the name sits closer to the avatar row (less empty
+      // vertical gap) while staying comfortably uncramped.
+      marginTop: 10,
     },
     heroUsername: {
       fontFamily: FontFamily.body,
@@ -721,12 +727,20 @@ function createStyles(T: ThemeTokens) {
       justifyContent: 'center',
     },
     menuLabel: {
-      flex: 1,
+      // flexGrow fills the row (pushing detail/chevron right) but flexShrink:0
+      // means the LABEL never gives way — so "Appearance" (and every other row
+      // label) always stays on one line. When the row is tight, the secondary
+      // `menuDetail` (flexShrink:1 + numberOfLines/ellipsis) truncates instead.
+      flexGrow: 1,
+      flexShrink: 0,
       fontFamily: FontFamily.heading,
       fontSize: 15,
       color: T.label,
     },
     menuDetail: {
+      // Shrinks + ellipsises (see the Text's numberOfLines/ellipsizeMode) so a
+      // long value like "System, light or dark" gives way before the label does.
+      flexShrink: 1,
       fontFamily: FontFamily.body,
       fontSize: 12,
       color: T.label3,

@@ -123,3 +123,44 @@ describe('AppearanceScreen — signed-out / no auth, consent, or admin coupling'
     }
   });
 });
+
+// -----------------------------------------------------------------------
+// Cross-Screen Visual Consistency checkpoint — theme-aware selected state.
+//
+// Root cause fixed: the options GlassSurface used to hardcode
+// tintColor="rgba(14,14,20,0.55)" — a fixed DARK tint applied regardless of
+// the resolved theme, which read as a heavy dark block sitting on the Light
+// theme's warm cream background. Removing the override lets GlassSurface
+// fall back to its own theme-aware default tint, and the selected row now
+// gets an explicit accent-tinted highlight instead of relying solely on the
+// checkmark to signal selection.
+// -----------------------------------------------------------------------
+describe('AppearanceScreen — theme-aware selected-state styling', () => {
+  it('the options GlassSurface no longer hardcodes a dark-only tintColor', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../appearance.tsx'), 'utf8');
+    expect(src).not.toMatch(/tintColor=["']rgba\(14,\s*14,\s*20/);
+  });
+
+  it('the selected option row has a distinct background from an unselected sibling row', () => {
+    const { StyleSheet } = require('react-native');
+    useThemeStore.setState({ preference: 'light' });
+    render(<AppearanceScreen />);
+
+    const selectedStyle = StyleSheet.flatten(screen.getByLabelText('Light').props.style);
+    const unselectedStyle = StyleSheet.flatten(screen.getByLabelText('Dark').props.style);
+
+    expect(selectedStyle.backgroundColor).toBeTruthy();
+    expect(selectedStyle.backgroundColor).not.toBe(unselectedStyle.backgroundColor);
+  });
+
+  it('the selected-state highlight follows the resolved theme (Light vs Dark selection produce readable, non-crashing styles)', () => {
+    const { StyleSheet } = require('react-native');
+    for (const preference of ['light', 'dark'] as const) {
+      useThemeStore.setState({ preference });
+      const { unmount } = render(<AppearanceScreen />);
+      const selectedStyle = StyleSheet.flatten(screen.getByLabelText(preference === 'light' ? 'Light' : 'Dark').props.style);
+      expect(selectedStyle.backgroundColor).toBeTruthy();
+      unmount();
+    }
+  });
+});

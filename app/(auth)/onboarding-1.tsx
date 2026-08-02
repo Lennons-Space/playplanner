@@ -19,6 +19,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 import { Icon } from '@/components/ui';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { FontFamily, ocean } from '@/constants/theme';
 import { ONBOARDING_KEY } from '.';
@@ -93,15 +94,12 @@ export default function Onboarding1() {
 
         <Dots active={0} />
 
-        <TouchableOpacity
-          style={styles.nextBtn}
+        <GlassButton
           onPress={() => router.push('/(auth)/onboarding-2')}
-          activeOpacity={0.85}
-          accessibilityRole="button"
           accessibilityLabel="Next onboarding screen"
-        >
-          <Text style={styles.nextBtnText}>Next</Text>
-        </TouchableOpacity>
+          label="Next"
+          style={styles.nextBtnLayout}
+        />
 
       </SafeAreaView>
     </View>
@@ -195,16 +193,10 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 
-  // CTA
-  nextBtn: {
-    backgroundColor: ACCENT.accent,
+  // CTA — Phase 3 (glass button system): "Next" is now a <GlassButton/>;
+  // only layout survives here.
+  nextBtnLayout: {
     borderRadius: 16,
     paddingVertical: 16,
-    alignItems: 'center',
-  },
-  nextBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 16,
-    color: '#FFFFFF',
   },
 });
