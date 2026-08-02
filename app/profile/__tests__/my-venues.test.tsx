@@ -4,7 +4,7 @@
  * Covers: loading state, empty state, venue list rendering, error state.
  */
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { render, screen, fireEvent } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useMyVenues } from '@/hooks/useDataRights';
 import MyVenuesScreen from '../my-venues';
@@ -111,5 +111,19 @@ describe('MyVenuesScreen', () => {
     render(<MyVenuesScreen />, { wrapper: Wrapper });
 
     expect(screen.getByText(/Could not load your submitted venues/)).toBeTruthy();
+  });
+
+  it('error state offers a "Try again" retry action that calls refetch', () => {
+    const refetch = jest.fn();
+    mockUseMyVenues.mockReturnValue({
+      data: undefined, isLoading: false, isError: true, refetch,
+    } as any);
+
+    render(<MyVenuesScreen />, { wrapper: Wrapper });
+
+    const retryButton = screen.getByLabelText('Try again');
+    expect(retryButton).toBeTruthy();
+    fireEvent.press(retryButton);
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });

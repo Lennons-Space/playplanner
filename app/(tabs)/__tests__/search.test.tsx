@@ -88,17 +88,27 @@ const MOCK_CATEGORIES = [
 // Track which venues are returned by useNearbyVenues so tests can control the list.
 let mockNearbyVenues: object[] = [];
 let mockSearchResults: object[] = [];
+// Loading/error overrides — most tests want the settled/empty defaults, but
+// the Phase 5A loading-skeleton and error-retry tests below flip these.
+let mockNearbyLoading = false;
+let mockNearbyError: Error | null = null;
+let mockSearchLoading = false;
+let mockSearchError: Error | null = null;
+const mockRefetchNearby = jest.fn();
+const mockRefetchSearch = jest.fn();
 
 jest.mock('@/hooks/useVenues', () => ({
   useNearbyVenues: jest.fn(() => ({
     data: mockNearbyVenues,
-    isLoading: false,
-    error: null,
+    isLoading: mockNearbyLoading,
+    error: mockNearbyError,
+    refetch: mockRefetchNearby,
   })),
   useVenueSearch: jest.fn(() => ({
     data: mockSearchResults,
-    isLoading: false,
-    error: null,
+    isLoading: mockSearchLoading,
+    error: mockSearchError,
+    refetch: mockRefetchSearch,
   })),
   useCategories: jest.fn(() => ({
     data: MOCK_CATEGORIES,
@@ -257,8 +267,26 @@ async function renderSearch() {
 // ─── Setup / teardown ─────────────────────────────────────────────────────────
 beforeEach(() => {
   jest.clearAllMocks();
+  // jest.clearAllMocks() only clears call history — it does NOT undo a
+  // `mockReturnValue()` override set by an earlier test (that needs
+  // mockReset(), which would also wipe the factory's default implementation
+  // shape). The "consent gate unchanged" tests below override
+  // useLocationConsent to `{ status: 'undecided' }`; without restoring the
+  // granted default here, every test that runs AFTER those in file order
+  // would silently inherit 'undecided' and see the location nudge instead of
+  // the nearby-venues content. Restore the default explicitly every test.
+  const { useLocationConsent } = jest.requireMock('@/hooks/useLocationConsent');
+  (useLocationConsent as jest.Mock).mockReturnValue({
+    status: 'granted',
+    grant: jest.fn(),
+    decline: jest.fn(),
+  });
   mockNearbyVenues = [];
   mockSearchResults = [];
+  mockNearbyLoading = false;
+  mockNearbyError = null;
+  mockSearchLoading = false;
+  mockSearchError = null;
   // Reset the filter store to defaults.
   mockFilters = {
     categoryIds: [],
@@ -612,5 +640,69 @@ describe('Search screen — consent gate unchanged', () => {
     const { getByLabelText } = await renderSearch();
     fireEvent.press(getByLabelText('Turn on location to see venues near you'));
     expect(router.push).toHaveBeenCalledWith('/explore/results?mood=auto');
+  });
+});
+
+// =============================================================================
+// 12. Phase 5A — nearby-venues loading/error states (no more "tiny spinner in
+// a large blank page"; a failed request must be distinguishable from a
+// genuine zero-results empty state, with a way to retry).
+// =============================================================================
+describe('Search screen — nearby venues loading state', () => {
+  it('does not show the generic "No venues nearby" copy while the nearby query is loading', async () => {
+    mockNearbyLoading = true;
+    const { queryByText } = await renderSearch();
+    // While loading, neither the empty-state nor any result should render —
+    // the skeleton rows are what's shown instead.
+    expect(queryByText('No venues nearby')).toBeNull();
+  });
+});
+
+describe('Search screen — nearby venues error state', () => {
+  it('shows a distinct error message (not the generic empty state) when the nearby query fails', async () => {
+    mockNearbyError = new Error('network error');
+    const { getByText, queryByText } = await renderSearch();
+    await waitFor(() => {
+      expect(getByText("Couldn't load nearby venues")).toBeTruthy();
+    });
+    // Must not be confused with the "no results" empty state.
+    expect(queryByText('No venues nearby')).toBeNull();
+  });
+
+  it('calls refetch() when "Try again" is pressed on the nearby error state', async () => {
+    mockNearbyError = new Error('network error');
+    const { getByLabelText } = await renderSearch();
+    await waitFor(() => {
+      expect(getByLabelText('Try loading nearby venues again')).toBeTruthy();
+    });
+    await act(async () => {
+      fireEvent.press(getByLabelText('Try loading nearby venues again'));
+    });
+    expect(mockRefetchNearby).toHaveBeenCalled();
+  });
+});
+
+describe('Search screen — search results error state', () => {
+  it('shows a distinct error message (not the generic "no results" copy) when the search query fails', async () => {
+    mockSearchError = new Error('network error');
+    const { getByText, getByLabelText, queryByText } = await renderSearch();
+    fireEvent.changeText(getByLabelText('Search for venues'), 'soft play');
+    await waitFor(() => {
+      expect(getByText("Couldn't load search results")).toBeTruthy();
+    });
+    expect(queryByText(/No venues found for/)).toBeNull();
+  });
+
+  it('calls refetch() when "Try again" is pressed on the search error state', async () => {
+    mockSearchError = new Error('network error');
+    const { getByLabelText } = await renderSearch();
+    fireEvent.changeText(getByLabelText('Search for venues'), 'soft play');
+    await waitFor(() => {
+      expect(getByLabelText('Try search again')).toBeTruthy();
+    });
+    await act(async () => {
+      fireEvent.press(getByLabelText('Try search again'));
+    });
+    expect(mockRefetchSearch).toHaveBeenCalled();
   });
 });

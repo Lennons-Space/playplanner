@@ -59,7 +59,6 @@ import {
   FlatList,
   TouchableOpacity,
   Pressable,
-  ActivityIndicator,
   ScrollView,
 } from 'react-native';
 import { useEffect } from 'react';
@@ -76,8 +75,10 @@ import { useFilterStore } from '@/store/filterStore';
 import { useMapStore } from '@/store/mapStore';
 import FilterSheet from '@/components/filters/FilterSheet';
 import { Icon } from '@/components/ui';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { VenueCard2 } from '@/components/home/VenueCard2';
+import { VenueRowSkeleton } from '@/components/ui/SkeletonLoader';
 import { ocean, FontFamily } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { MAX_SEARCH_RADIUS_KM } from '@/constants/location';
@@ -290,28 +291,15 @@ function DarkIconBtn({
 // `Colors`). Keeps the same testID/accessibilityLabel/accessibilityState shape
 // so existing chip-press tests keep working unchanged.
 function SearchChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const { tokens: T } = useAppTheme();
   return (
-    <Pressable
+    <GlassButton
+      active={active}
       onPress={onPress}
-      accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ selected: active }}
       testID={`chip-${label}`}
-      android_ripple={{ color: 'rgba(255,255,255,0.14)' }}
-      style={{
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 999,
-        backgroundColor: active ? ACCENT : T.surface,
-        borderWidth: active ? 0 : 1,
-        borderColor: active ? 'transparent' : T.separator,
-      }}
-    >
-      <Text style={{ fontFamily: FontFamily.caption, fontSize: 13, color: active ? '#FFFFFF' : T.label2 }}>
-        {label}
-      </Text>
-    </Pressable>
+      label={label}
+      style={{ paddingHorizontal: 14, paddingVertical: 8, minHeight: 0, minWidth: 0 }}
+    />
   );
 }
 
@@ -365,6 +353,8 @@ function SearchNearbyResults({
   const {
     data: recentVenues = [],
     isLoading: recentLoading,
+    error: recentError,
+    refetch: refetchNearby,
   } = useNearbyVenues(
     coords ?? { latitude: 0, longitude: 0 },
     searchFilters,
@@ -377,10 +367,42 @@ function SearchNearbyResults({
 
   return (
     <>
-      {/* Nearby venues list (idle state, location granted) */}
+      {/* Nearby venues list (idle state, location granted).
+          Loading: a layout-matched row-skeleton (VenueRowSkeleton, from
+          components/ui/SkeletonLoader) instead of a single small
+          ActivityIndicator — the old spinner sat centred in an otherwise
+          empty section beneath the "Nearby venues" header, which read as a
+          "tiny spinner in a large blank page" stuck state, especially on
+          slower connections. ListPageSkeleton (also available in that file)
+          renders its own header placeholder too, which would duplicate the
+          real "Nearby venues" / "Sort: Nearest" header already rendered by
+          the parent above this component — so we reuse just the row skeleton
+          here, matching real VenueCard2 row layout without the duplicate. */}
       {(locLoading || recentLoading) ? (
-        <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-          <ActivityIndicator color={ACCENT} size="large" />
+        <View style={{ paddingHorizontal: 20, paddingTop: 4 }}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <VenueRowSkeleton key={i} />
+          ))}
+        </View>
+      ) : recentError ? (
+        // Error state — previously any RPC failure here silently resolved to
+        // the same "No venues nearby" empty copy (data defaults to [] on
+        // error), which misleads parents into thinking there are genuinely
+        // no venues rather than a failed request. Surface it distinctly with
+        // a retry action wired to refetch().
+        <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
+          <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: T.label, textAlign: 'center', marginBottom: 6 }}>
+            Couldn't load nearby venues
+          </Text>
+          <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3, textAlign: 'center', marginBottom: 16 }}>
+            Check your connection and try again.
+          </Text>
+          <GlassButton
+            onPress={() => { refetchNearby(); }}
+            accessibilityLabel="Try loading nearby venues again"
+            label="Try again"
+            style={{ borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
+          />
         </View>
       ) : displayedVenues.length === 0 ? (
         <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
@@ -392,14 +414,12 @@ function SearchNearbyResults({
               <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3, textAlign: 'center', marginBottom: 16 }}>
                 {emptyStateContent.subtitle}
               </Text>
-              <TouchableOpacity
+              <GlassButton
                 onPress={onResetFilters}
-                style={{ backgroundColor: ACCENT, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
-                accessibilityRole="button"
                 accessibilityLabel="Clear all filters"
-              >
-                <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>Clear filters</Text>
-              </TouchableOpacity>
+                label="Clear filters"
+                style={{ borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
+              />
             </>
           ) : (
             <>
@@ -503,6 +523,8 @@ export default function SearchScreen() {
   const {
     data: searchResults = [],
     isLoading: searchLoading,
+    error: searchError,
+    refetch: refetchSearch,
   } = useVenueSearch(debouncedQuery, { latitude: 0, longitude: 0 });
 
   const handleFiltersPress      = useCallback(() => setFilterSheetVisible(true), []);
@@ -1011,8 +1033,32 @@ export default function SearchScreen() {
           </View>
 
           {searchLoading ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator color={ACCENT} size="large" />
+            // Layout-matched row-skeleton instead of a single centred
+            // spinner in an otherwise blank flex:1 area — same "tiny spinner,
+            // large blank page" fix as the idle nearby-venues section above.
+            <View style={{ paddingHorizontal: 20, paddingTop: 4 }}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <VenueRowSkeleton key={i} />
+              ))}
+            </View>
+          ) : searchError ? (
+            // Error state — previously a failed search request silently
+            // resolved to the generic "No venues found" empty copy (data
+            // defaults to [] on error) with no indication anything had gone
+            // wrong and no way to retry.
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 }}>
+              <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 16, color: T.label, textAlign: 'center', marginBottom: 6 }}>
+                Couldn't load search results
+              </Text>
+              <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3, textAlign: 'center', marginBottom: 16 }}>
+                Check your connection and try again.
+              </Text>
+              <GlassButton
+                onPress={() => { refetchSearch(); }}
+                accessibilityLabel="Try search again"
+                label="Try again"
+                style={{ borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
+              />
             </View>
           ) : (
             <FlatList
@@ -1034,14 +1080,12 @@ export default function SearchScreen() {
                       <Text style={{ fontFamily: FontFamily.body, fontSize: 14, color: T.label3, textAlign: 'center', marginBottom: 16 }}>
                         {emptyStateContent.subtitle}
                       </Text>
-                      <TouchableOpacity
+                      <GlassButton
                         onPress={() => { resetFilters(); setIsRainyDay(false); }}
-                        style={{ backgroundColor: ACCENT, borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
-                        accessibilityRole="button"
                         accessibilityLabel="Clear all filters"
-                      >
-                        <Text style={{ fontFamily: FontFamily.bodyStrong, fontSize: 14, color: '#FFFFFF' }}>Clear filters</Text>
-                      </TouchableOpacity>
+                        label="Clear filters"
+                        style={{ borderRadius: 9999, paddingHorizontal: 20, paddingVertical: 10 }}
+                      />
                     </>
                   ) : (
                     <>

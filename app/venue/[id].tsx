@@ -66,6 +66,7 @@ import { Stars } from '@/components/ui/Stars';
 import { CategoryPlaceholder } from '@/components/ui/CategoryPlaceholder';
 import { RecommendationExplanation } from '@/components/venues/RecommendationExplanation';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { ocean, FontFamily, BorderRadius, type ThemeTokens } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 
@@ -748,9 +749,11 @@ export default function VenueDetailScreen() {
             <Text style={styles.directionsBtnText}>Directions</Text>
           </TouchableOpacity>
 
-          {/* Plan a visit button */}
-          <TouchableOpacity
-            style={styles.planBtn}
+          {/* Plan a visit button — the confirmed "primary CTA" glass-button
+              site on this screen (not the small "Write a review" pill above,
+              which already uses ACCENT.light/ACCENT.accent — an existing
+              tint, out of scope). */}
+          <GlassButton
             onPress={() => router.push({
               pathname: '/venue/plan-visit',
               params: {
@@ -758,11 +761,13 @@ export default function VenueDetailScreen() {
                 distance_km: venue.distance_km != null ? String(venue.distance_km) : '',
               },
             })}
-            accessibilityRole="button"
             accessibilityLabel="Plan a visit to this venue"
+            style={{ flex: 1, borderRadius: 14, paddingVertical: 15 }}
           >
-            <Text style={styles.planBtnText}>Plan a visit</Text>
-          </TouchableOpacity>
+            <Text style={{ fontFamily: FontFamily.caption, fontSize: 16, color: ACCENT.accent, letterSpacing: -0.2 }}>
+              Plan a visit
+            </Text>
+          </GlassButton>
         </View>
       </View>
 

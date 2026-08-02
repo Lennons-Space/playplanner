@@ -18,7 +18,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -31,11 +30,39 @@ import { ModerationBadge } from '@/components/profile/ModerationBadge';
 import { GlassSurface } from '@/components/ui/GlassSurface';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { V2Header } from '@/components/ui/V2Header';
+import { Skeleton } from '@/components/ui/SkeletonLoader';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { FontFamily, ocean } from '@/constants/theme';
 import type { ModerationStatus } from '@/types';
 
 const ACCENT = ocean;
+
+// ---------------------------------------------------------------------------
+// VenueRowSkeleton — loading placeholder matching this screen's real card
+// row layout (name/city/date on the left, a status badge on the right).
+// Deliberately screen-local (and separately named) from the shared
+// `VenueRowSkeleton` exported by components/ui/SkeletonLoader.tsx — that
+// shared one models Home's avatar+2-line row, a different shape from this
+// screen's own card. Reuses the shared `Skeleton` shimmer primitive and the
+// same `GlassSurface` card shell as the real rows — no new shimmer mechanism
+// invented.
+// ---------------------------------------------------------------------------
+
+function MyVenueRowSkeleton({ cardTint }: { cardTint: string }) {
+  return (
+    <GlassSurface style={styles.card} tintColor={cardTint}>
+      <View style={styles.cardRow}>
+        <View style={styles.cardLeft}>
+          <Skeleton width="60%" height={15} style={{ marginBottom: 4 }} />
+          <Skeleton width="35%" height={12} style={{ marginBottom: 4 }} />
+          <Skeleton width="30%" height={12} />
+        </View>
+        <Skeleton width={72} height={22} borderRadius={999} />
+      </View>
+    </GlassSurface>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -50,7 +77,7 @@ export default function MyVenuesScreen() {
   // dark-only 0.55 tint — now resolved per mode).
   const cardTint = mode === 'dark' ? 'rgba(14,14,20,0.55)' : 'rgba(255,255,255,0.55)';
   const userId = useAuthStore((s) => s.user?.id);
-  const { data: venues, isLoading, isError } = useMyVenues(userId);
+  const { data: venues, isLoading, isError, refetch } = useMyVenues(userId);
 
   function handleVenuePress(id: string, status: ModerationStatus) {
     if (status === 'approved') {
@@ -72,19 +99,32 @@ export default function MyVenuesScreen() {
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <V2Header title="My Submitted Venues" />
 
-        {/* Loading */}
+        {/* Loading — a few stacked venue-row placeholders, not a lone centred
+            spinner, so the page keeps its real layout while data arrives
+            (Phase 4, loading-state design system). */}
         {isLoading && (
-          <View style={styles.centred}>
-            <ActivityIndicator color={ACCENT.accent} size="large" />
-          </View>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {[0, 1, 2].map((i) => (
+              <MyVenueRowSkeleton key={i} cardTint={cardTint} />
+            ))}
+          </ScrollView>
         )}
 
-        {/* Error */}
+        {/* Error — real retry action so the user isn't stuck at a dead end. */}
         {isError && !isLoading && (
           <View style={styles.centred}>
             <Text style={[styles.errorText, { color: T.label2 }]}>
               Could not load your submitted venues. Please check your connection and try again.
             </Text>
+            <GlassButton
+              label="Try again"
+              onPress={() => refetch()}
+              accessibilityLabel="Try again"
+              style={{ marginTop: 16 }}
+            />
           </View>
         )}
 
