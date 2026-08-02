@@ -563,6 +563,89 @@ describe('getWeatherCta / getHomeContextLine — mainly_clear sweep (pure)', () 
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// Rain / Drizzle Home-Content Differentiation checkpoint.
+//
+// Previous duplication: toProtoKey() collapsed 'rain'/'drizzle'/'showers'
+// into a single 'rain' proto key, so pickHeroCollection/getWeatherCta/
+// getHomeContextLine were byte-identical for a full downpour and a light
+// drizzle. Drizzle now resolves its own proto key and its own copy — still
+// routed to the SAME real 'rainy-day' Discover collection (there is no
+// separate collection for "lightly damp"; that destination genuinely is
+// indoor-only per lib/collections.ts, so the copy stays honest about that)
+// but framed as a lighter backup rather than "the plan for today". Showers
+// stays grouped with rain — unchanged, out of scope for this pass.
+// ─────────────────────────────────────────────────────────────────────────
+describe('Rain vs Drizzle — genuinely distinct Home content, not shared copy', () => {
+  it('hero title/desc differ between rain and drizzle', () => {
+    const rain = pickHeroCollection('rain', null, 6, 12);
+    const drizzle = pickHeroCollection('drizzle', null, 6, 12);
+    expect(drizzle.title).not.toBe(rain.title);
+    expect(drizzle.desc).not.toBe(rain.desc);
+  });
+
+  it('both still route to the SAME real rainy-day collection (only real weather-adjacent destination — no fabricated new collection)', () => {
+    expect(pickHeroCollection('rain', null, 6, 12).key).toBe('rainy-day');
+    expect(pickHeroCollection('drizzle', null, 6, 12).key).toBe('rainy-day');
+  });
+
+  it('CTA line/label differ between rain and drizzle', () => {
+    const rain = getWeatherCta('rain')!;
+    const drizzle = getWeatherCta('drizzle')!;
+    expect(drizzle.cta).not.toBe(rain.cta);
+    expect(drizzle.line).not.toBe(rain.line);
+  });
+
+  it('context line differs between rain and drizzle at every time of day', () => {
+    const times = [
+      new Date(2026, 6, 15, 9, 0),  // am
+      new Date(2026, 6, 15, 14, 0), // pm
+      new Date(2026, 6, 15, 19, 0), // eve
+      new Date(2026, 6, 15, 23, 0), // night
+    ];
+    for (const t of times) {
+      expect(getHomeContextLine('drizzle', t)).not.toBe(getHomeContextLine('rain', t));
+    }
+  });
+
+  it('drizzle copy reads lighter/more flexible — never claims a specific amenity (café/outdoor) the real destination does not curate for', () => {
+    const hero = pickHeroCollection('drizzle', null, 6, 12);
+    const cta = getWeatherCta('drizzle')!;
+    const allCopy = `${hero.title} ${hero.desc} ${cta.line} ${cta.cta}`.toLowerCase();
+    // The 'rainy-day' collection is genuinely indoor-only (soft-play/
+    // bowling/indoor-play) — copy must not promise cafés or "outdoor spots"
+    // it doesn't actually curate for.
+    expect(allCopy).not.toContain('café');
+    expect(allCopy).not.toContain('cafe');
+    expect(allCopy).not.toContain('outdoor');
+    // Must not claim certainty ("guaranteed dry") the app cannot verify.
+    expect(allCopy).not.toContain('guaranteed');
+  });
+
+  it('drizzle does not use rain\'s "stay dry" framing (genuinely lighter tone)', () => {
+    const hero = pickHeroCollection('drizzle', null, 6, 12);
+    expect(hero.desc.toLowerCase()).not.toContain('stay dry');
+  });
+
+  it('showers stays grouped with rain, unchanged (out of scope for this pass)', () => {
+    expect(pickHeroCollection('showers', null, 6, 12)).toEqual(pickHeroCollection('rain', null, 6, 12));
+    expect(getWeatherCta('showers')).toEqual(getWeatherCta('rain'));
+  });
+
+  it('clear/sunny hero and CTA are unaffected by the rain/drizzle change', () => {
+    expect(pickHeroCollection('clear', null, 7, 12).title).toBe('Summer Adventures');
+    expect(getWeatherCta('clear')).toEqual({
+      icon: '☀️', line: 'Perfect weather for a day out.', cta: 'Find outdoor spots', color: '#E8A828',
+    });
+  });
+
+  it('unknown/null weather falls back safely to the sunny treatment (unchanged)', () => {
+    expect(() => pickHeroCollection(null, null, 6, 12)).not.toThrow();
+    expect(getWeatherCta(null)).toBeNull(); // getWeatherCta's own documented null-condition contract
+    expect(getHomeContextLine(null, new Date(2026, 6, 15, 12, 0))).toBe(getHomeContextLine('clear', new Date(2026, 6, 15, 12, 0)));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // Weather Atmosphere and Content Consistency checkpoint — Foggy must never
 // resolve rain-branded hero/CTA content ("Rainy Day"). toProtoKey() already
 // maps 'fog' to its OWN distinct proto key (never collapsed into 'rain'),
@@ -594,10 +677,13 @@ describe('Foggy weather content never resolves rain-branded copy (regression gua
     expect(rain).not.toBeNull();
     expect(drizzle).not.toBeNull();
     expect(fog).not.toBeNull();
-    // Rain and drizzle currently share the same "rain family" CTA by design
-    // (see toProtoKey) — fog must still be distinct from both.
+    // Rain / Drizzle differentiation checkpoint: drizzle now has its own
+    // proto key and copy (see lib/homeIntents.ts), so all three must be
+    // mutually distinct — not just fog standing apart from a shared
+    // rain/drizzle pair.
     expect(fog).not.toEqual(rain);
     expect(fog).not.toEqual(drizzle);
+    expect(drizzle).not.toEqual(rain);
   });
 });
 

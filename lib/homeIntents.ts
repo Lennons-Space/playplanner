@@ -223,13 +223,22 @@ export function getContextTag(
 // the prototype's 'windy'/'night' weather conditions ('night' in the app is
 // time-of-day, handled by the `hour` argument below), so those rows of the
 // prototype maps are unreachable and intentionally not ported.
-type ProtoWeatherKey = 'sunny' | 'rain' | 'thunder' | 'snow' | 'cloudy' | 'fog';
+type ProtoWeatherKey = 'sunny' | 'rain' | 'drizzle' | 'thunder' | 'snow' | 'cloudy' | 'fog';
 function toProtoKey(condition: WeatherCondition | null): ProtoWeatherKey {
   switch (condition) {
     case 'rain':
-    case 'drizzle':
     case 'showers':
       return 'rain';
+    case 'drizzle':
+      // Rain / Drizzle differentiation checkpoint: drizzle used to collapse
+      // into 'rain' here, so Home's hero/CTA/context copy was byte-identical
+      // for a full downpour and a light drizzle — the SAME "stay dry, stay
+      // happy" / "See indoor picks" framing regardless of severity. Drizzle
+      // now gets its own proto key so it can carry genuinely lighter,
+      // less-restrictive copy (see HERO_DEFS.drizzle / WEATHER_CTA.drizzle /
+      // the context-line map below). Showers stays grouped with rain —
+      // out of scope for this pass, unchanged.
+      return 'drizzle';
     case 'thunderstorm':
       return 'thunder';
     case 'snow':
@@ -266,6 +275,15 @@ export interface HeroCollectionDef {
 
 const HERO_DEFS = {
   rain:    { key: 'rainy-day' as CollectionKey,     title: 'Rainy Day Picks',  desc: 'Stay dry, stay happy',            emoji: '🌧️', accent: '#3B7FCC', gd1: '#060C18', gd2: '#0A1424' },
+  // Same real 'rainy-day' collection as rain — there is no separate
+  // "lightly damp" collection, and inventing one is out of scope here. The
+  // collection is genuinely indoor-only (soft-play/bowling/indoor-play —
+  // see lib/collections.ts), so the copy stays honest about that while
+  // framing it as a light backup rather than "the plan for today". Same
+  // dark-mode gradient family as rain (still a rain-adjacent condition);
+  // a distinct, lighter accent so the hero doesn't read as identical to
+  // full rain at a glance.
+  drizzle: { key: 'rainy-day' as CollectionKey,     title: 'Light Rain Picks', desc: 'A backup plan, just in case',     emoji: '🌦️', accent: '#6FA8DC', gd1: '#060C18', gd2: '#0A1424' },
   thunder: { key: 'rainy-day' as CollectionKey,     title: 'Rainy Day Picks',  desc: 'Best to stay inside today',       emoji: '⛈️', accent: '#3B7FCC', gd1: '#060C18', gd2: '#0A1424' },
   energy:  { key: 'burn-energy' as CollectionKey,   title: 'Burn Energy',      desc: 'Wear them right out',             emoji: '⚡',  accent: '#E05A20', gd1: '#1C0D04', gd2: '#2C1608' },
   free:    { key: 'free-days-out' as CollectionKey, title: 'Free Days Out',    desc: 'No entry cost, ever',             emoji: '🌿', accent: '#2E9E62', gd1: '#050E09', gd2: '#091810' },
@@ -277,8 +295,11 @@ const HERO_DEFS = {
 } satisfies Record<string, HeroCollectionDef>;
 
 /**
- * Prototype precedence: rain/thunder → night (time-based here; the app has no
- * 'night' weather condition) → snow → active intent → season. Intents with no
+ * Prototype precedence: rain/drizzle/thunder → night (time-based here; the
+ * app has no 'night' weather condition) → snow → active intent → season.
+ * Drizzle sits at the same precedence tier as rain (still real-time current
+ * weather, still more relevant than a time-of-day/season guess) but resolves
+ * its own distinct hero. Intents with no
  * prototype hero ('toddler'/'parent') fall through to the season default,
  * exactly as the prototype's `H[activeIntent] || season` did.
  */
@@ -290,6 +311,7 @@ export function pickHeroCollection(
 ): HeroCollectionDef {
   const proto = toProtoKey(condition);
   if (proto === 'rain') return HERO_DEFS.rain;
+  if (proto === 'drizzle') return HERO_DEFS.drizzle;
   if (proto === 'thunder') return HERO_DEFS.thunder;
   if (hour >= 21 || hour < 6) return HERO_DEFS.night;
   if (proto === 'snow') return HERO_DEFS.winter;
@@ -313,6 +335,13 @@ export interface WeatherCta {
 const WEATHER_CTA: Record<ProtoWeatherKey, WeatherCta> = {
   sunny:   { icon: '☀️', line: 'Perfect weather for a day out.',            cta: 'Find outdoor spots',    color: '#E8A828' },
   rain:    { icon: '🌧️', line: "Rainy day? We've got you covered.",         cta: 'See indoor picks',      color: '#4C8DF6' },
+  // The button's own action (openSearch in app/(tabs)/index.tsx) is a plain
+  // search-tab navigation with no filter applied — same honesty level as
+  // every other row here. "Explore nearby options" doesn't overclaim a
+  // curated café/outdoor set the app doesn't actually have; "plans can stay
+  // flexible" is genuinely true (light drizzle no longer forces the
+  // indoor-only default feed — see restrictToIndoorWeather in index.tsx).
+  drizzle: { icon: '🌦️', line: 'Light drizzle — plans can stay flexible.',  cta: 'Explore nearby options', color: '#6FA8DC' },
   cloudy:  { icon: '⛅', line: 'Mild day — any excuse to get out.',          cta: 'Find something nearby', color: '#8899AA' },
   snow:    { icon: '❄️', line: 'Snow day! Rare fun — make the most of it.', cta: 'Snow day picks',        color: '#7AB8D8' },
   thunder: { icon: '⛈️', line: "Stay inside — we've got great indoor picks.", cta: 'Indoor only',         color: '#8AAACE' },
@@ -333,6 +362,7 @@ export function getHomeContextLine(condition: WeatherCondition | null, now: Date
   const tod = hour < 12 ? 'am' : hour < 17 ? 'pm' : hour < 21 ? 'eve' : 'night';
   const map: Record<ProtoWeatherKey, Record<'am' | 'pm' | 'eve' | 'night', string>> = {
     rain:    { am: 'Rainy morning — indoor picks sorted.', pm: "Wet afternoon? We've got you.", eve: 'Rainy evening — plan ahead.', night: 'Wet one tonight — indoor picks below.' },
+    drizzle: { am: 'Light drizzle — still plenty to do.', pm: 'Just a drizzle — plans can stay flexible.', eve: "Drizzly evening — nothing a coat can't fix.", night: 'Light rain about — flexible plans for tomorrow.' },
     thunder: { am: 'Stay inside — great indoor picks.', pm: 'Storm outside — best to stay cosy.', eve: 'Thundery evening — settle in.', night: 'Stormy night — indoor plans ready.' },
     snow:    { am: 'Snow day! Make the most of it.', pm: 'Still snowing — wrap up and go.', eve: 'Snowy evening — magical out there.', night: 'Snow expected — exciting morning ahead.' },
     cloudy:  { am: 'Mild morning — still worth getting out.', pm: 'Overcast but dry — go for it.', eve: 'Grey day ending — plan a better one.', night: "Let's plan something for tomorrow." },

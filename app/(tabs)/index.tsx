@@ -117,13 +117,20 @@ const MAX_LIST = 20;
 // prompt) can never fire pre-consent.
 interface HomeResultsProps {
   activeIntent: IntentKey | null;
-  isRain: boolean;
+  /**
+   * Whether the default (no active intent) feed should be restricted to
+   * indoor-suitable venues. Deliberately NARROWER than "is it currently
+   * rain-family weather" — see restrictToIndoorWeather in HomeScreen below
+   * for why a light drizzle no longer sets this (Rain/Drizzle
+   * differentiation checkpoint).
+   */
+  restrictToIndoor: boolean;
   refreshSeed: number;
   onShuffle: () => void;
   onClearFilter: () => void;
 }
 
-function HomeResults({ activeIntent, isRain, refreshSeed, onShuffle, onClearFilter }: HomeResultsProps) {
+function HomeResults({ activeIntent, restrictToIndoor, refreshSeed, onShuffle, onClearFilter }: HomeResultsProps) {
   const { tokens, accent } = useAppTheme();
   const { coords, isLoading: locLoading } = useLocation();
 
@@ -150,8 +157,8 @@ function HomeResults({ activeIntent, isRain, refreshSeed, onShuffle, onClearFilt
       ...v,
       category: v.category ?? (v.category_id ? categoryMap[v.category_id] : undefined),
     }));
-    return filterHomeVenues(enriched, activeIntent, null, isRain);
-  }, [venues, categoryMap, activeIntent, isRain]);
+    return filterHomeVenues(enriched, activeIntent, null, restrictToIndoor);
+  }, [venues, categoryMap, activeIntent, restrictToIndoor]);
 
   const list = useMemo(() => seededShuffle(filtered, refreshSeed).slice(0, MAX_LIST), [filtered, refreshSeed]);
 
@@ -347,8 +354,21 @@ export default function HomeScreen() {
   // consented coarse location once granted — this call itself never
   // triggers the OS location prompt (see that hook's header for why).
   const { weather, condition, usingConsentedLocation } = useResolvedWeather();
+  // Badge-colour family only — drizzle stays visually part of the "rain
+  // blue" treatment below. This is DELIBERATELY broader than
+  // restrictToIndoorWeather (passed to HomeResults) — see that variable for
+  // why venue-list filtering severity and badge colour now diverge
+  // (Rain/Drizzle differentiation checkpoint).
   const isRain =
     condition === 'rain' || condition === 'drizzle' || condition === 'showers' || condition === 'thunderstorm';
+  // Only genuine rain/showers/thunderstorm restrict the default (no active
+  // intent) home feed to indoor-suitable venues. A light drizzle no longer
+  // does — matching the lighter, "plans can stay flexible" Drizzly guidance
+  // in lib/homeIntents.ts's HERO_DEFS.drizzle / WEATHER_CTA.drizzle. Without
+  // this split, Drizzly's copy would say "flexible, nearby options" while
+  // the actual feed stayed hard-restricted to indoor venues — dishonest.
+  const restrictToIndoorWeather =
+    condition === 'rain' || condition === 'showers' || condition === 'thunderstorm';
   // ADDITIVE (2026-07-28, light fog pill): strictly mode-gated (mode ===
   // 'light' && condition === 'fog') so DARK is provably untouched — dark fog
   // still falls through to the existing amber `else` branch exactly as
@@ -725,7 +745,7 @@ export default function HomeScreen() {
           ) : consentStatus === 'granted' ? (
             <HomeResults
               activeIntent={activeIntent}
-              isRain={!!isRain}
+              restrictToIndoor={!!restrictToIndoorWeather}
               refreshSeed={refreshSeed}
               onShuffle={() => setRefreshSeed((s) => s + 1)}
               onClearFilter={clearFilters}
