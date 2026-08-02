@@ -19,7 +19,7 @@
  * Raw coordinates are NEVER shown to the user and are not logged
  * (UK GDPR data minimisation).
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -40,6 +39,7 @@ import { supabase } from '@/lib/supabase';
 import { useUser } from '@/hooks/useAuth';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
+import { GlassButton } from '@/components/ui/GlassButton';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { FontFamily, ocean, type ThemeTokens } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
@@ -130,6 +130,11 @@ export default function AddVenueScreen() {
   const [postcodeError, setPostcodeError]     = useState('');
   const [postcodeConfirmed, setPostcodeConfirmed] = useState(false);
 
+  // Prevents a rapid double-tap from firing two inserts before `loading`
+  // becomes true on the first re-render after setLoading(true) — same
+  // pattern as ReviewForm's submitLocked guard.
+  const submitLocked = useRef(false);
+
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
     queryFn: async () => {
@@ -179,6 +184,8 @@ export default function AddVenueScreen() {
   }
 
   async function handleSubmit() {
+    if (submitLocked.current || loading) return;
+
     // Guard: session may have expired while the user was filling in the form.
     // Using user!.id below would crash with TypeError if user is null.
     if (!user?.id) {
@@ -220,6 +227,7 @@ export default function AddVenueScreen() {
       return;
     }
 
+    submitLocked.current = true;
     setLoading(true);
 
     const addressLine1 = houseNumber.trim()
@@ -245,6 +253,7 @@ export default function AddVenueScreen() {
     });
 
     setLoading(false);
+    submitLocked.current = false;
 
     if (error) {
       console.error('Venue insert error:', error.code, error.hint);
@@ -380,18 +389,14 @@ export default function AddVenueScreen() {
                     autoCapitalize="characters"
                     autoCorrect={false}
                   />
-                  <TouchableOpacity
-                    style={styles.lookupBtn}
+                  <GlassButton
                     onPress={handleLookupPostcode}
                     disabled={postcodeLoading}
-                    accessibilityRole="button"
+                    loading={postcodeLoading}
                     accessibilityLabel="Look up postcode"
-                  >
-                    {postcodeLoading
-                      ? <ActivityIndicator color="#fff" size="small" />
-                      : <Text style={styles.lookupBtnText}>Look up</Text>
-                    }
-                  </TouchableOpacity>
+                    label="Look up"
+                    style={{ borderRadius: 12, paddingHorizontal: 16, minWidth: 80 }}
+                  />
                 </View>
 
                 {postcodeError !== '' && (
@@ -488,19 +493,15 @@ export default function AddVenueScreen() {
             style={[styles.stickyBar, { paddingBottom: insets.bottom + 14 }]}
             tintColor={stickyBarTint}
           >
-            <TouchableOpacity
-              style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
+            <GlassButton
               onPress={handleSubmit}
               disabled={loading}
-              accessibilityRole="button"
+              loading={loading}
               accessibilityLabel="Submit venue"
               accessibilityState={{ disabled: loading, busy: loading }}
-            >
-              {loading
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.submitBtnText}>Submit venue</Text>
-              }
-            </TouchableOpacity>
+              label="Submit venue"
+              style={{ height: 54, borderRadius: 16 }}
+            />
           </GlassSurface>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -600,19 +601,6 @@ function createStyles(T: ThemeTokens) {
     flexDirection: 'row',
     gap: 8,
   },
-  lookupBtn: {
-    backgroundColor: ACCENT.accent,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 80,
-  },
-  lookupBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 14,
-    color: '#FFFFFF',
-  },
   errorText: {
     fontFamily: FontFamily.body,
     fontSize: 13,
@@ -650,21 +638,6 @@ function createStyles(T: ThemeTokens) {
     paddingTop: 14,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-  },
-  submitBtn: {
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: ACCENT.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitBtnDisabled: {
-    opacity: 0.7,
-  },
-  submitBtnText: {
-    fontFamily: FontFamily.bodyStrong,
-    fontSize: 16,
-    color: '#FFFFFF',
   },
   });
 }
