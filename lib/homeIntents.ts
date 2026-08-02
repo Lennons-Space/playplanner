@@ -256,6 +256,25 @@ function toProtoKey(condition: WeatherCondition | null): ProtoWeatherKey {
   }
 }
 
+/**
+ * Whether the DEFAULT (no active intent) Home feed should be restricted to
+ * indoor-suitable venues (filterHomeVenues's `weatherRain` parameter).
+ * Deliberately NARROWER than "is this rain-family weather" — a light
+ * drizzle does NOT restrict the feed, matching the lighter, "plans can stay
+ * flexible" Drizzly copy in HERO_DEFS.drizzle / WEATHER_CTA.drizzle below.
+ * Without this split, Drizzly's copy would promise flexibility while the
+ * actual feed stayed hard-restricted to indoor venues — dishonest.
+ *
+ * Extracted as its own pure function (Rain/Drizzle differentiation
+ * checkpoint, verification follow-up) specifically so this real
+ * feed-filtering decision has a direct, isolated test — this is a
+ * behavioural change (which venues a parent actually sees), not just copy,
+ * so it needs more than code inspection or a full-component render to prove.
+ */
+export function shouldRestrictToIndoor(condition: WeatherCondition | null): boolean {
+  return condition === 'rain' || condition === 'showers' || condition === 'thunderstorm';
+}
+
 // ── "Good for today" hero collection (pp2-home.jsx `heroCollection`) ───────
 // Every hero routes to a REAL app collection (lib/collections):
 //   proto 'rain'   → 'rainy-day'      proto 'energy' → 'burn-energy'

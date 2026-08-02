@@ -23,7 +23,7 @@ import { render, fireEvent, within } from '@testing-library/react-native';
 
 import { router } from 'expo-router';
 import HomeScreen from '../index';
-import { pickHeroCollection, getWeatherCta, getHomeContextLine } from '@/lib/homeIntents';
+import { pickHeroCollection, getWeatherCta, getHomeContextLine, shouldRestrictToIndoor } from '@/lib/homeIntents';
 import { useThemeStore } from '@/store/themeStore';
 import type { Venue } from '@/types';
 
@@ -642,6 +642,54 @@ describe('Rain vs Drizzle — genuinely distinct Home content, not shared copy',
     expect(() => pickHeroCollection(null, null, 6, 12)).not.toThrow();
     expect(getWeatherCta(null)).toBeNull(); // getWeatherCta's own documented null-condition contract
     expect(getHomeContextLine(null, new Date(2026, 6, 15, 12, 0))).toBe(getHomeContextLine('clear', new Date(2026, 6, 15, 12, 0)));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Rain/Drizzle differentiation — verification follow-up. shouldRestrictToIndoor
+// is a FUNCTIONAL change (which real venues a parent sees in the default
+// Home feed), not just copy, so it needs its own direct, isolated test
+// proving the actual filtering decision per condition — not just that the
+// copy reads differently. This exercises the real exported function used by
+// app/(tabs)/index.tsx, not a reimplementation of its logic.
+// ─────────────────────────────────────────────────────────────────────────
+describe('shouldRestrictToIndoor — the real default-feed filtering decision per weather condition', () => {
+  it('rain restricts the default feed to indoor-suitable venues', () => {
+    expect(shouldRestrictToIndoor('rain')).toBe(true);
+  });
+
+  it('showers retain the existing rain restriction (unchanged, out of scope for this pass)', () => {
+    expect(shouldRestrictToIndoor('showers')).toBe(true);
+  });
+
+  it('thunderstorm also restricts the default feed (unchanged — full severe weather)', () => {
+    expect(shouldRestrictToIndoor('thunderstorm')).toBe(true);
+  });
+
+  it('drizzle does NOT restrict the default feed to indoor-only venues (the fix)', () => {
+    expect(shouldRestrictToIndoor('drizzle')).toBe(false);
+  });
+
+  it('fog does not accidentally inherit the rain restriction', () => {
+    expect(shouldRestrictToIndoor('fog')).toBe(false);
+  });
+
+  it('clear/sunny does not restrict the feed', () => {
+    expect(shouldRestrictToIndoor('clear')).toBe(false);
+    expect(shouldRestrictToIndoor('mainly_clear')).toBe(false);
+  });
+
+  it('overcast/partly_cloudy do not restrict the feed (never part of the rain family)', () => {
+    expect(shouldRestrictToIndoor('overcast')).toBe(false);
+    expect(shouldRestrictToIndoor('partly_cloudy')).toBe(false);
+  });
+
+  it('snow does not restrict the feed (a real snow day is its own thing, not "indoor-only")', () => {
+    expect(shouldRestrictToIndoor('snow')).toBe(false);
+  });
+
+  it('null/unknown weather follows the existing safe fallback — never restricts with no real data', () => {
+    expect(shouldRestrictToIndoor(null)).toBe(false);
   });
 });
 

@@ -84,6 +84,7 @@ import {
   getHomeContextLine,
   getWeatherCta,
   pickHeroCollection,
+  shouldRestrictToIndoor,
   type IntentKey,
 } from '@/lib/homeIntents';
 
@@ -362,13 +363,12 @@ export default function HomeScreen() {
   const isRain =
     condition === 'rain' || condition === 'drizzle' || condition === 'showers' || condition === 'thunderstorm';
   // Only genuine rain/showers/thunderstorm restrict the default (no active
-  // intent) home feed to indoor-suitable venues. A light drizzle no longer
-  // does — matching the lighter, "plans can stay flexible" Drizzly guidance
-  // in lib/homeIntents.ts's HERO_DEFS.drizzle / WEATHER_CTA.drizzle. Without
-  // this split, Drizzly's copy would say "flexible, nearby options" while
-  // the actual feed stayed hard-restricted to indoor venues — dishonest.
-  const restrictToIndoorWeather =
-    condition === 'rain' || condition === 'showers' || condition === 'thunderstorm';
+  // intent) home feed to indoor-suitable venues — see
+  // lib/homeIntents.ts's shouldRestrictToIndoor for the full reasoning and
+  // its own direct, isolated tests. Extracted there (not left as an inline
+  // boolean here) specifically so this real feed-filtering behaviour is
+  // testable without rendering the whole screen.
+  const restrictToIndoorWeather = shouldRestrictToIndoor(condition);
   // ADDITIVE (2026-07-28, light fog pill): strictly mode-gated (mode ===
   // 'light' && condition === 'fog') so DARK is provably untouched — dark fog
   // still falls through to the existing amber `else` branch exactly as
