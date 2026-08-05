@@ -66,6 +66,79 @@ function generatePhotoFilename(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}.jpg`;
 }
 
+// ─── Dev-only diagnostic logging ──────────────────────────────────────────
+//
+// __DEV__-gated only — no-op and no behaviour change in release builds.
+// Marks the boundaries of this multi-stage upload (image conversion ->
+// Storage upload -> DB insert -> orphan cleanup) so a future on-device
+// failure can be localised from the Metro log without guesswork. Tag:
+// "PHOTO_STAGE" — grep the Metro log for it.
+//
+// Logged fields are deliberately narrow:
+//   - booleans/lengths for anything that touches a path, URL, or byte buffer
+//   - full Supabase error.code/message/details/hint ARE logged on failure,
+//     but only inside this __DEV__-gated diagnostic path — the existing
+//     user-facing console.error calls elsewhere in this file are unchanged
+//     and still log only safe minimal fields.
+//   - venue IDs are logged directly (public, non-personal venue identifiers)
+//   - user IDs are NEVER logged directly — only booleans (present? matches
+//     the authenticated user?)
+// Never logged, anywhere in this block: access/refresh tokens, Authorization
+// headers, signed/public URLs, image URIs, storage paths, or raw image bytes.
+
+function logPhotoStage(stage: string, fields?: Record<string, unknown>): void {
+  if (!__DEV__) return;
+  // eslint-disable-next-line no-console -- deliberate dev-only diagnostic log
+  console.log('PHOTO_STAGE', stage, fields ?? {});
+}
+
+/**
+ * Best-effort, dev-only check of whether the CURRENT live auth state (read
+ * fresh from the Zustand store, not the value this mutation closed over)
+ * still has a user, and whether it matches the user this mutation started
+ * with. Directly tests the "stale auth closure" hypothesis — if this ever
+ * logs `false` at a failure boundary, the session changed under us between
+ * mutation start and that boundary. Errors are swallowed (never thrown) so
+ * this can never alter the real upload flow.
+ */
+function devLiveAuthMatches(capturedUserId: string): boolean {
+  try {
+    return useAuthStore.getState().user?.id === capturedUserId;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Best-effort, dev-only check of whether a Supabase session is present at
+ * the moment of the Storage upload call. Wrapped in try/catch so a failure
+ * here can never alter the real upload flow's success/failure/timing.
+ */
+async function devHasActiveSession(): Promise<boolean> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return !!data.session;
+  } catch {
+    return false;
+  }
+}
+
+/** Safe error-field extraction shared by every `_failed` PHOTO_STAGE log. */
+function devSafeErrorFields(error: unknown): Record<string, unknown> {
+  const e = (error ?? {}) as {
+    code?: unknown; message?: unknown; details?: unknown; hint?: unknown;
+    status?: unknown; statusCode?: unknown; name?: unknown;
+  };
+  return {
+    code:    e.code ?? null,
+    message: e.message ?? null,
+    details: e.details ?? null,
+    hint:    e.hint ?? null,
+    status:  e.status ?? e.statusCode ?? null,
+    name:    e.name ?? null,
+  };
+}
+
 // ─── useUploadVenuePhoto ───────────────────────────────────────────────────────
 
 interface UploadPhotoInput {
@@ -95,12 +168,14 @@ export function useUploadVenuePhoto() {
       // Declared outside the try block so the finally clause can safely reference
       // it. Initialised to null so the finally guard (manipResult?.uri) works
       // correctly even if manipulateAsync throws before assigning.
+      logPhotoStage('conversion_started');
       let manipResult: ImageManipulator.ImageResult | null = null;
       manipResult = await ImageManipulator.manipulateAsync(
         imageUri,
         [],
         { format: ImageManipulator.SaveFormat.JPEG, compress: 0.85 }
       );
+      logPhotoStage('conversion_succeeded', { hasUri: !!manipResult?.uri });
 
       // P5 — Always delete the re-encoded temp file when we're done, success or
       // failure. expo-image-manipulator writes a new file each call; without
@@ -144,17 +219,35 @@ export function useUploadVenuePhoto() {
         const storagePath = `${venueId}/${filename}`;
 
         // Step 4: Upload to Storage.
+        if (__DEV__) {
+          logPhotoStage('storage_upload_started', {
+            bodyByteLength:   arrayBuffer.byteLength,
+            hasActiveSession: await devHasActiveSession(),
+          });
+        }
         const { error: uploadError } = await supabase.storage
           .from('venue-photos')
           .upload(storagePath, arrayBuffer, { contentType: 'image/jpeg', upsert: false });
 
         if (uploadError) {
-          // Safe diagnostic only (name/status) — never the raw message, which
-          // can echo request detail. Matches the console.error(code, hint)
-          // pattern used in useFacilities.ts (useCastFacilityVote).
-          console.error('useUploadVenuePhoto storage upload error:', uploadError.name, uploadError.status);
+          // Diagnostic logging moved to the __DEV__-gated PHOTO_STAGE path
+          // below (Reliability Repair Sprint instrumentation), which already
+          // captures name/status (via devSafeErrorFields) plus more — the
+          // plain console.error that used to sit here triggered React
+          // Native's on-device LogBox even though it only ever logged safe,
+          // minimal fields. No raw Storage error detail is shown to the user
+          // either way — see the generic message thrown just below.
+          if (__DEV__) {
+            logPhotoStage('storage_upload_failed', {
+              ...devSafeErrorFields(uploadError),
+              venueId,
+              hasUserId:             !!user.id,
+              userIdMatchesLiveAuth: devLiveAuthMatches(user.id),
+            });
+          }
           throw new Error('Could not upload photo. Please try again.');
         }
+        logPhotoStage('storage_upload_succeeded');
 
         // Step 5: Get the public URL.
         const { data: urlData } = supabase.storage
@@ -165,6 +258,12 @@ export function useUploadVenuePhoto() {
 
         // Step 6: Insert the DB row. Status is forced to 'pending' by the RLS
         // insert policy — we also set it here to be explicit and type-safe.
+        if (__DEV__) {
+          logPhotoStage('database_insert_started', {
+            urlLength:         publicUrl?.length ?? 0,
+            storagePathLength: storagePath?.length ?? 0,
+          });
+        }
         const { error: insertError } = await supabase
           .from('venue_photos')
           .insert({
@@ -177,7 +276,16 @@ export function useUploadVenuePhoto() {
           });
 
         if (insertError) {
+          if (__DEV__) {
+            logPhotoStage('database_insert_failed', {
+              ...devSafeErrorFields(insertError),
+              venueId,
+              hasUserId:             !!user.id,
+              userIdMatchesLiveAuth: devLiveAuthMatches(user.id),
+            });
+          }
           // Rollback: delete the storage object so we don't leave orphaned files.
+          logPhotoStage('orphan_cleanup_started');
           const { error: cleanupError } = await supabase.storage
             .from('venue-photos')
             .remove([storagePath]);
@@ -185,10 +293,21 @@ export function useUploadVenuePhoto() {
             // Safe diagnostic only — never cleanupError.message (may embed
             // the storage path). GDPR: no user data in logs.
             console.error('useUploadVenuePhoto storage cleanup error:', cleanupError.name, cleanupError.status);
+            if (__DEV__) {
+              logPhotoStage('orphan_cleanup_failed', {
+                ...devSafeErrorFields(cleanupError),
+                venueId,
+              });
+            }
+          } else {
+            logPhotoStage('orphan_cleanup_succeeded');
           }
-          console.error('useUploadVenuePhoto insert error:', insertError.code, insertError.hint);
+          // Diagnostic logging moved to the __DEV__-gated PHOTO_STAGE path
+          // above (database_insert_failed) — see the storage_upload_failed
+          // comment above for why the plain console.error was removed.
           throw new Error('Could not save photo. Please try again.');
         }
+        logPhotoStage('database_insert_succeeded');
       } finally {
         // Delete the temp re-encoded JPEG regardless of success or failure.
         // Guard on manipResult?.uri in case manipulateAsync itself threw before

@@ -48,6 +48,9 @@ import {
   Platform,
   KeyboardAvoidingView,
   Keyboard,
+  type KeyboardEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -344,31 +347,91 @@ export function ReviewForm({
     bodyInputRef.current?.focus();
   }
 
-  // Defensive backstop for "the focused input must scroll fully above the
-  // keyboard": React Native's own ScrollView-scrolls-focused-TextInput-
-  // above-keyboard mechanism depends on an accurate keyboard height being
-  // reported to JS, which is a documented Android flakiness on some OEM
-  // keyboards/versions when combined with adjustResize (the height/frame
-  // event can be mistimed or under-report). Rather than guessing how long
-  // that report takes, listen for the real `keyboardDidShow` event (fired
-  // once Android has actually reported the final keyboard frame) and scroll
-  // then — deterministic against the real signal instead of a timer. Scoped
-  // to Android + step 2 only: iOS is not reported as affected and already
-  // has its own `behavior="padding"` handling.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef  = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
   function handleBodyFocus() {
     setBodyFocused(true);
   }
-  useEffect(() => {
-    if (Platform.OS !== 'android' || step !== 2) return undefined;
-    const sub = Keyboard.addListener('keyboardDidShow', () => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    });
-    return () => sub.remove();
-  }, [step]);
+  function handleScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
+    scrollYRef.current = e.nativeEvent.contentOffset.y;
+  }
 
   // Computed (not guessed) footer clearance — see FOOTER_* constants above.
+  // Declared here (ahead of the Phase 7 keyboard effect below, which reads
+  // it) rather than in its previous spot after that effect, since the effect
+  // needs it in both its closure and its dependency array.
   const footerHeight = FOOTER_TOP_PADDING + FOOTER_BUTTON_HEIGHT + Math.max(28, insets.bottom + 12);
+
+  // ---------------------------------------------------------------------
+  // Phase 7 (keyboard-timing fix, UI Trust & Reliability Repair Sprint)
+  // ---------------------------------------------------------------------
+  // Root cause of the reported symptom ("footer covers the body field for a
+  // beat, then a delayed correction scrolls it into view"): the Phase 6 fix
+  // above only corrected the scroll position AFTER the keyboard had already
+  // fully opened — `keyboardDidShow` is the only keyboard-show event Android
+  // ever fires (react-native's own Keyboard.js docs: "keyboardWillShow ...
+  // not available on Android since there is no native corresponding event").
+  // So the first rendered frame post-focus always showed the sticky footer
+  // overlapping the field for one visible beat before `scrollToEnd` snapped
+  // the content up. iOS had NO correction at all here and relied solely on
+  // RN's own built-in focused-input autoscroll, which has the identical
+  // "only fires once the keyboard event lands" timing gap.
+  //
+  // Fix: also listen for `keyboardWillShow`, which DOES fire on iOS — and
+  // fires BEFORE the keyboard's opening animation starts, carrying its
+  // target height. Scrolling from that event means the content moves in
+  // step with the keyboard opening rather than snapping into place after
+  // the fact, satisfying "visible in the first rendered frame" on iOS.
+  // Android keeps `keyboardDidShow` as its only available signal (a hard OS
+  // limitation, not something JS can schedule around) but now scrolls to a
+  // MEASURED target instead of a blind `scrollToEnd` — precise regardless of
+  // how many tags wrapped onto how many rows above the field. `handledForShowRef`
+  // guards against double-handling when both events fire for the same
+  // keyboard-show (keyboardDidShow always follows keyboardWillShow on iOS).
+  const handledForShowRef = useRef(false);
+  useEffect(() => {
+    if (step !== 2) return undefined;
+
+    function scrollBodyIntoView(e: KeyboardEvent) {
+      if (handledForShowRef.current) return;
+      handledForShowRef.current = true;
+
+      const keyboardTop = e?.endCoordinates?.screenY;
+      if (keyboardTop == null || !bodyInputRef.current) return;
+
+      // measureInWindow reports the field's REAL on-screen position — not a
+      // guessed offset — so this stays correct across device sizes, font
+      // scale, and however many tag chips wrapped above it.
+      bodyInputRef.current.measureInWindow((_x, y, _width, height) => {
+        const visibleBottom = keyboardTop - footerHeight;
+        const inputBottom   = y + height;
+        const overlap       = inputBottom - visibleBottom + FOOTER_SCROLL_GAP;
+        if (overlap > 0) {
+          scrollRef.current?.scrollTo({
+            y: Math.max(0, scrollYRef.current + overlap),
+            animated: true,
+          });
+        }
+      });
+    }
+
+    function resetForNextShow() {
+      handledForShowRef.current = false;
+    }
+
+    const willShow = Keyboard.addListener('keyboardWillShow', scrollBodyIntoView);
+    const didShow  = Keyboard.addListener('keyboardDidShow', scrollBodyIntoView);
+    const willHide = Keyboard.addListener('keyboardWillHide', resetForNextShow);
+    const didHide  = Keyboard.addListener('keyboardDidHide', resetForNextShow);
+
+    return () => {
+      willShow.remove();
+      didShow.remove();
+      willHide.remove();
+      didHide.remove();
+    };
+  }, [step, footerHeight]);
+
   const scrollContentStyle = useMemo(
     () => [styles.scrollContent, { paddingBottom: footerHeight + FOOTER_SCROLL_GAP }],
     [styles, footerHeight],
@@ -509,6 +572,8 @@ export function ReviewForm({
             contentContainerStyle={scrollContentStyle}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
           >
             {/* ----------------------------------------------------------------
                 STEP 1 — Star rating
@@ -1016,9 +1081,15 @@ function createStyles(PP: PPType) {
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Tinted-glass selected treatment — matches the established selected-chip
+  // pattern used elsewhere in the app (IntentChips' tinted card fill +
+  // colour ring, FacilityChips' chipFilled) instead of a heavy solid-blue
+  // fill. Reuses the same skyWash/border pair already used a few lines
+  // below for the step-3 preview tag pills (previewTag/previewTagText) —
+  // this file already had the right treatment, just not applied here.
   tagChipSelected: {
-    backgroundColor: PP.sky,
-    borderColor: PP.sky,
+    backgroundColor: PP.skyWash,
+    borderColor: 'rgba(76,141,246,0.4)', // mirrors GlassButton's ACCENT_BORDER
   },
   tagChipUnselected: {
     backgroundColor: PP.paper,
@@ -1029,7 +1100,7 @@ function createStyles(PP: PPType) {
     fontSize: 13,
   },
   tagChipTextSelected: {
-    color: '#fff',
+    color: PP.skyText,
   },
   tagChipTextUnselected: {
     color: PP.ink,

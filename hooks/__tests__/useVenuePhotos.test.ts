@@ -394,6 +394,77 @@ describe('useUploadVenuePhoto', () => {
     );
   });
 
+  // Full payload shape check (not just status) — a column typo (e.g. sending
+  // `venueId` instead of `venue_id`) would pass the objectContaining checks
+  // elsewhere in this file but fail silently against the real schema as an
+  // "unexpected column" or, worse, insert into the wrong column. Pinning the
+  // exact object here means any accidental field rename is caught immediately.
+  it('sends the complete, exact insert payload — venue_id, uploaded_by, storage_path, url, caption, status', async () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI, caption: 'Lovely play area' });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockInsert()).toHaveBeenCalledWith({
+      venue_id:     VENUE_ID,
+      uploaded_by:  FAKE_USER.id,
+      storage_path: `${VENUE_ID}/generated-uuid.jpg`,
+      url:          'https://cdn.example.com/venue-123/generated-uuid.jpg',
+      caption:      'Lovely play area',
+      status:       'pending',
+    });
+  });
+
+  // caption is optional at the call site — the DB column allows null, and
+  // sending undefined instead of null could behave differently depending on
+  // the client library's handling of omitted keys, so this is asserted
+  // explicitly rather than assumed.
+  it('sends caption: null (not undefined) when no caption is provided', async () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const call = mockInsert().mock.calls[0][0];
+    expect(call.caption).toBeNull();
+  });
+
+  // Reliability: a transient DB failure must not leave the mutation "stuck" —
+  // a subsequent mutate() call (the app's own retry flow, see
+  // VenuePhotoUpload's "Try again") must be able to succeed normally. This
+  // guards against any accidental shared/stale state across mutate() calls
+  // (e.g. a variable captured once instead of re-read per call).
+  it('succeeds on a second mutate() call after the first call failed (no stuck error state)', async () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    // First attempt: DB insert fails.
+    mockInsert().mockResolvedValueOnce({ data: null, error: { code: '50000', hint: null } });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    // Second attempt (retry, e.g. user taps "Try again"): insert succeeds —
+    // falls back to the default success mock set in beforeEach.
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockUpload()).toHaveBeenCalledTimes(2);
+    expect(mockInsert()).toHaveBeenCalledTimes(2);
+  });
+
   // If the Storage upload fails but we still attempt the DB insert, we create
   // a DB row that points to a file that does not exist — corrupted data.
   it('does not attempt the DB insert when the Storage upload fails', async () => {
@@ -414,8 +485,7 @@ describe('useUploadVenuePhoto', () => {
 
   // Raw Supabase Storage error messages must never reach the thrown error
   // (which the UI's onError handler could one day read) — only a safe,
-  // generic message. The raw detail may still be logged, but only via safe
-  // fields (name/status), never the full message text.
+  // generic message.
   it('surfaces a safe generic message (not the raw Storage error) when the Storage upload fails', async () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     mockUpload().mockResolvedValue({
@@ -439,6 +509,32 @@ describe('useUploadVenuePhoto', () => {
     consoleSpy.mockRestore();
   });
 
+  // Reliability Repair Sprint (LogBox fix): the plain console.error that used
+  // to run unconditionally on a Storage upload failure triggered React
+  // Native's on-device LogBox even though it only ever logged safe, minimal
+  // fields. It has been removed entirely — diagnostics now flow only through
+  // the __DEV__-gated PHOTO_STAGE path (see the "instrumentation" describe
+  // block below), which captures more detail without ever surfacing on
+  // Metro's LogBox overlay via a bare console.error call.
+  it('never calls console.error on a Storage upload failure (diagnostics moved to the __DEV__-gated PHOTO_STAGE log)', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockUpload().mockResolvedValue({
+      error: { name: 'StorageApiError', status: 400, message: 'irrelevant' },
+    });
+
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
   // If the DB insert fails after a successful upload, we'd have an orphaned
   // file in Storage with no corresponding DB row — wasted space and a data
   // integrity problem. The rollback must remove the file.
@@ -460,8 +556,6 @@ describe('useUploadVenuePhoto', () => {
   });
 
   // Raw Postgres error messages/details must never reach the thrown error.
-  // Safe fields (code/hint) may be logged, matching the pattern already used
-  // by useCastFacilityVote in useFacilities.ts.
   it('surfaces a safe generic message (not the raw Postgres error) when the DB insert fails', async () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     mockInsert().mockResolvedValue({
@@ -484,6 +578,33 @@ describe('useUploadVenuePhoto', () => {
     expect(allLogArgs).not.toContain('duplicate key value violates');
 
     consoleSpy.mockRestore();
+  });
+
+  // Reliability Repair Sprint (LogBox fix): same reasoning as the Storage
+  // upload test above — the plain console.error that used to run
+  // unconditionally on a DB insert failure has been removed entirely, so a
+  // real 42P17/42501/etc. never trips LogBox on-device anymore. The orphan
+  // Storage cleanup step's OWN console.error (a different, unrelated failure
+  // path — the cleanup call itself failing) is intentionally untouched and
+  // out of scope for this change.
+  it('never calls console.error on a DB insert failure (diagnostics moved to the __DEV__-gated PHOTO_STAGE log)', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockInsert().mockResolvedValue({ data: null, error: { code: '42P17', message: 'irrelevant' } });
+    // Cleanup succeeds (default mock) so the untouched cleanup-error console.error
+    // path is not exercised here — isolates this assertion to the insert-error line.
+    mockRemove().mockResolvedValue({ error: null });
+
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 
   // On success the venuePhotos cache for this venue must be invalidated so
@@ -548,6 +669,45 @@ describe('useUploadVenuePhoto', () => {
     expect(allLogArgs).not.toContain(FAKE_USER.id);
 
     consoleSpy.mockRestore();
+  });
+
+  // Reliability Repair Sprint (PHOTO_STAGE instrumentation): the dev-only
+  // diagnostic logging added to pinpoint the pipeline-boundary failure must
+  // never leak the local image URI, the manipulated-file URI, the raw user
+  // id, or anything token/URL-shaped — even on a real failure, where the
+  // full Supabase error.message/.details ARE deliberately included (per the
+  // coordinator's explicit instruction) alongside the safe booleans/lengths.
+  it('PHOTO_STAGE logs on a DB insert failure include safe error detail but never the image URI, manipulated-file URI, or raw user id', async () => {
+    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    mockInsert().mockResolvedValue({
+      data: null,
+      error: { code: '42P17', message: 'infinite recursion detected in policy for relation "venue_photos"', hint: null, details: null },
+    });
+
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUploadVenuePhoto(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({ venueId: VENUE_ID, imageUri: IMAGE_URI });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    const stageCalls = consoleLogSpy.mock.calls.filter((c) => c[0] === 'PHOTO_STAGE');
+    expect(stageCalls.length).toBeGreaterThan(0);
+
+    const allLogArgs = consoleLogSpy.mock.calls.flat().map((a) => JSON.stringify(a)).join(' ');
+    // The real Postgres error code/message ARE present (deliberate, dev-only).
+    expect(allLogArgs).toContain('42P17');
+    expect(allLogArgs).toContain('infinite recursion');
+    // Never present, in any PHOTO_STAGE call, under any circumstances:
+    expect(allLogArgs).not.toContain(IMAGE_URI);
+    expect(allLogArgs).not.toContain(MANIP_URI);
+    expect(allLogArgs).not.toContain(FAKE_USER.id);
+    expect(allLogArgs.toLowerCase()).not.toContain('bearer');
+    expect(allLogArgs.toLowerCase()).not.toContain('authorization');
+
+    consoleLogSpy.mockRestore();
   });
 
   // If there is no authenticated user, the mutation must fail immediately

@@ -226,6 +226,28 @@ describe('ReviewForm — step 2: tags and body', () => {
     expect(screen.getByLabelText('Pram friendly')).toBeTruthy();
   });
 
+  // Visual-nit fix (Reliability Repair Sprint): the selected tag chip must
+  // use the same "tinted-glass" treatment already established elsewhere in
+  // the app (IntentChips' tinted card fill + ring, FacilityChips'
+  // chipFilled) — a low-alpha accent fill + accent-coloured border — instead
+  // of the previous heavy solid-blue (#4C8DF6) fill with white text.
+  it('gives a selected tag chip the tinted-glass fill + ring treatment, not a heavy solid-blue fill', () => {
+    renderForm();
+    goToStep2();
+    const tag = screen.getByLabelText('Good value');
+    fireEvent.press(tag);
+
+    const styleArr = Array.isArray(tag.props.style) ? tag.props.style : [tag.props.style];
+    const flat = Object.assign({}, ...styleArr.filter(Boolean)) as Record<string, unknown>;
+
+    // Tinted fill (ocean.light), never the old solid accent block.
+    expect(flat.backgroundColor).toBe('rgba(76,141,246,0.16)');
+    expect(flat.backgroundColor).not.toBe('#4C8DF6');
+    // A visible accent-coloured ring is what makes the selected state
+    // "clearly distinguishable" without a heavy fill.
+    expect(flat.borderColor).toBe('rgba(76,141,246,0.4)');
+  });
+
   it('"Post review" does not call mutate when body is empty', () => {
     renderForm();
     goToStep2();
@@ -716,68 +738,11 @@ describe('ReviewForm — Phase 6: Android keyboard/input fix', () => {
     expect(() => unmount()).not.toThrow();
   });
 
-  it('schedules a scroll-to-end backstop on Android via the real keyboardDidShow event (not a guessed delay)', () => {
-    // NOTE: KeyboardAvoidingView itself registers its own internal
-    // 'keyboardDidShow' listener (for its own height/offset bookkeeping) the
-    // moment it mounts — i.e. before ReviewForm's own listener exists. So
-    // this asserts on the LAST 'keyboardDidShow' registration (ours),
-    // registered only once step 2 is reached, not the first one found.
-    const originalOS = Platform.OS;
-    Platform.OS = 'android';
-    const addListenerSpy = jest.spyOn(Keyboard, 'addListener');
-
-    const { UNSAFE_getByType } = renderForm();
-
-    const keyboardDidShowCallsBeforeStep2 = addListenerSpy.mock.calls.filter(
-      ([event]) => event === 'keyboardDidShow',
-    ).length;
-
-    goToStep2();
-
-    const keyboardDidShowCalls = addListenerSpy.mock.calls.filter(
-      ([event]) => event === 'keyboardDidShow',
-    );
-    // Reaching step 2 on Android must add exactly one new registration —
-    // ours — on top of whatever KeyboardAvoidingView already registered.
-    expect(keyboardDidShowCalls.length).toBe(keyboardDidShowCallsBeforeStep2 + 1);
-    const handler = keyboardDidShowCalls[keyboardDidShowCalls.length - 1][1] as () => void;
-
-    const scrollInstance = UNSAFE_getByType(ScrollView).instance as unknown as {
-      scrollToEnd: (opts?: { animated?: boolean }) => void;
-    };
-    const scrollSpy = jest.spyOn(scrollInstance, 'scrollToEnd').mockImplementation(() => {});
-
-    act(() => {
-      handler();
-    });
-
-    expect(scrollSpy).toHaveBeenCalledTimes(1);
-    Platform.OS = originalOS;
-    addListenerSpy.mockRestore();
-  });
-
-  it('does NOT register an additional keyboardDidShow scroll backstop on iOS when reaching step 2', () => {
-    const originalOS = Platform.OS;
-    Platform.OS = 'ios';
-    const addListenerSpy = jest.spyOn(Keyboard, 'addListener');
-
-    renderForm();
-    const keyboardDidShowCallsBeforeStep2 = addListenerSpy.mock.calls.filter(
-      ([event]) => event === 'keyboardDidShow',
-    ).length;
-
-    goToStep2();
-
-    const keyboardDidShowCallsAfterStep2 = addListenerSpy.mock.calls.filter(
-      ([event]) => event === 'keyboardDidShow',
-    ).length;
-    // On iOS only KeyboardAvoidingView's own internal listener exists —
-    // reaching step 2 must not add a second one.
-    expect(keyboardDidShowCallsAfterStep2).toBe(keyboardDidShowCallsBeforeStep2);
-
-    Platform.OS = originalOS;
-    addListenerSpy.mockRestore();
-  });
+  // Superseded by the Phase 7 describe block below: the fix no longer relies
+  // on a blind `scrollToEnd`, and now listens on both platforms (iOS gets a
+  // pre-emptive `keyboardWillShow`, which does not exist on Android — see
+  // Phase 7's root-cause comment in ReviewForm.tsx). See "ReviewForm — Phase
+  // 7: keyboard-timing fix" for the current coverage of this behaviour.
 
   // Preserving entered text across step navigation is an explicit docx
   // requirement ("Preserve entered text when moving between steps or
@@ -841,6 +806,242 @@ describe('ReviewForm — Phase 6: Android keyboard/input fix', () => {
 
     fireEvent.press(backBtn);
     expect(screen.getByText('STEP 1 OF 3')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 7 — keyboard-timing fix (measured scroll-to-input, cross-platform)
+//
+// Replaces the Phase 6 Android-only `keyboardDidShow -> scrollToEnd` backstop
+// with a measured scroll driven by `keyboardWillShow` (iOS, fires BEFORE the
+// keyboard's opening animation) and `keyboardDidShow` (Android's only
+// available signal — RN never fires `keyboardWillShow` there). See the
+// root-cause comment above the effect in ReviewForm.tsx for the full story.
+//
+// Same RNTL limitation as the Phase 6 tests: there is no real on-screen
+// keyboard or window resize in this environment. These tests verify the JS
+// wiring — which events are registered, that measurement/scroll are driven
+// by those events (never a timer), and the arithmetic that turns a measured
+// position + keyboard height into a scroll target — not the real-device
+// pixel result, which still needs a physical-device check (see report).
+// ---------------------------------------------------------------------------
+
+describe('ReviewForm — Phase 7: keyboard-timing fix', () => {
+  afterEach(() => {
+    Platform.OS = 'ios';
+  });
+
+  it('registers keyboardWillShow, keyboardDidShow, keyboardWillHide and keyboardDidHide listeners once step 2 is reached', () => {
+    const addListenerSpy = jest.spyOn(Keyboard, 'addListener');
+
+    renderForm();
+    const before = addListenerSpy.mock.calls.map(([event]) => event);
+
+    goToStep2();
+
+    const added = addListenerSpy.mock.calls.map(([event]) => event).slice(before.length);
+    expect(added).toEqual(
+      expect.arrayContaining([
+        'keyboardWillShow',
+        'keyboardDidShow',
+        'keyboardWillHide',
+        'keyboardDidHide',
+      ]),
+    );
+    addListenerSpy.mockRestore();
+  });
+
+  it('scrolls to a MEASURED target (not a blind scrollToEnd) on Android keyboardDidShow, computed from the real field position and the keyboard height', () => {
+    Platform.OS = 'android';
+    const addListenerSpy = jest.spyOn(Keyboard, 'addListener');
+
+    const { UNSAFE_getByType } = renderForm();
+    goToStep2();
+
+    const didShowHandler = addListenerSpy.mock.calls
+      .filter(([event]) => event === 'keyboardDidShow')
+      .slice(-1)[0][1] as (e: unknown) => void;
+
+    const inputInstance = UNSAFE_getByType(TextInput).instance as unknown as {
+      measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+    };
+    // Field sits at screen y=650, height 40 -> bottom edge at 690.
+    jest.spyOn(inputInstance, 'measureInWindow').mockImplementation(
+      (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, 650, 300, 40),
+    );
+
+    const scrollInstance = UNSAFE_getByType(ScrollView).instance as unknown as {
+      scrollTo: (opts: { y: number; animated?: boolean }) => void;
+    };
+    const scrollToSpy = jest.spyOn(scrollInstance, 'scrollTo').mockImplementation(() => {});
+
+    act(() => {
+      didShowHandler({ endCoordinates: { screenY: 500 } });
+    });
+
+    // footerHeight mirrors ReviewForm.tsx's own formula: FOOTER_TOP_PADDING (12)
+    // + FOOTER_BUTTON_HEIGHT (50) + Math.max(28, insets.bottom (34, from the
+    // SafeAreaContext mock above) + 12) = 12 + 50 + 46 = 108.
+    // visibleBottom = keyboardTop(500) - footerHeight(108) = 392.
+    // overlap = inputBottom(690) - visibleBottom(392) + FOOTER_SCROLL_GAP(16) = 314.
+    expect(scrollToSpy).toHaveBeenCalledWith({ y: 314, animated: true });
+
+    addListenerSpy.mockRestore();
+  });
+
+  it('does not scroll when the field is already fully visible above the keyboard', () => {
+    Platform.OS = 'android';
+    const addListenerSpy = jest.spyOn(Keyboard, 'addListener');
+
+    const { UNSAFE_getByType } = renderForm();
+    goToStep2();
+
+    const didShowHandler = addListenerSpy.mock.calls
+      .filter(([event]) => event === 'keyboardDidShow')
+      .slice(-1)[0][1] as (e: unknown) => void;
+
+    const inputInstance = UNSAFE_getByType(TextInput).instance as unknown as {
+      measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+    };
+    // Field is well above where the keyboard will start (bottom edge at 140).
+    jest.spyOn(inputInstance, 'measureInWindow').mockImplementation(
+      (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, 100, 300, 40),
+    );
+
+    const scrollInstance = UNSAFE_getByType(ScrollView).instance as unknown as {
+      scrollTo: (opts: { y: number; animated?: boolean }) => void;
+    };
+    const scrollToSpy = jest.spyOn(scrollInstance, 'scrollTo').mockImplementation(() => {});
+
+    act(() => {
+      didShowHandler({ endCoordinates: { screenY: 500 } });
+    });
+
+    expect(scrollToSpy).not.toHaveBeenCalled();
+    addListenerSpy.mockRestore();
+  });
+
+  it('only measures/scrolls once even though both keyboardWillShow and keyboardDidShow fire for the same keyboard opening (no double-scroll)', () => {
+    const addListenerSpy = jest.spyOn(Keyboard, 'addListener');
+
+    const { UNSAFE_getByType } = renderForm();
+    goToStep2();
+
+    const willShowHandler = addListenerSpy.mock.calls
+      .filter(([event]) => event === 'keyboardWillShow')
+      .slice(-1)[0][1] as (e: unknown) => void;
+    const didShowHandler = addListenerSpy.mock.calls
+      .filter(([event]) => event === 'keyboardDidShow')
+      .slice(-1)[0][1] as (e: unknown) => void;
+
+    const inputInstance = UNSAFE_getByType(TextInput).instance as unknown as {
+      measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+    };
+    const measureSpy = jest.spyOn(inputInstance, 'measureInWindow').mockImplementation(
+      (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, 650, 300, 40),
+    );
+
+    act(() => {
+      // iOS fires keyboardWillShow first, then keyboardDidShow shortly after
+      // for the SAME keyboard opening — only the first should act.
+      willShowHandler({ endCoordinates: { screenY: 500 } });
+      didShowHandler({ endCoordinates: { screenY: 500 } });
+    });
+
+    expect(measureSpy).toHaveBeenCalledTimes(1);
+    addListenerSpy.mockRestore();
+  });
+
+  it('resets the "already handled" guard on keyboardDidHide, so the NEXT keyboard-show is measured again', () => {
+    const addListenerSpy = jest.spyOn(Keyboard, 'addListener');
+
+    const { UNSAFE_getByType } = renderForm();
+    goToStep2();
+
+    const willShowHandler = addListenerSpy.mock.calls
+      .filter(([event]) => event === 'keyboardWillShow')
+      .slice(-1)[0][1] as (e: unknown) => void;
+    const didHideHandler = addListenerSpy.mock.calls
+      .filter(([event]) => event === 'keyboardDidHide')
+      .slice(-1)[0][1] as (e: unknown) => void;
+
+    const inputInstance = UNSAFE_getByType(TextInput).instance as unknown as {
+      measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+    };
+    const measureSpy = jest.spyOn(inputInstance, 'measureInWindow').mockImplementation(
+      (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, 650, 300, 40),
+    );
+
+    act(() => {
+      willShowHandler({ endCoordinates: { screenY: 500 } });
+    });
+    expect(measureSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      didHideHandler({});
+      willShowHandler({ endCoordinates: { screenY: 500 } });
+    });
+    expect(measureSpy).toHaveBeenCalledTimes(2);
+
+    addListenerSpy.mockRestore();
+  });
+
+  // Required regression coverage: the scroll-to-input correction must be
+  // wired to the real keyboard-open EVENT, and must only run once the
+  // field's actual layout is known — asserting the order
+  //   layout measured -> focus -> keyboard opens -> scroll-to-input
+  // and specifically that nothing scrolls on a delay/timeout race.
+  it('only scrolls-to-input AFTER layout is measured, focus happens, and the keyboard-show event fires — never on a timer', () => {
+    jest.useFakeTimers();
+    const addListenerSpy = jest.spyOn(Keyboard, 'addListener');
+
+    try {
+      const { UNSAFE_getByType, getByTestId } = renderForm();
+      goToStep2();
+
+      const inputInstance = UNSAFE_getByType(TextInput).instance as unknown as {
+        focus: () => void;
+        measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+      };
+      const focusSpy = jest.spyOn(inputInstance, 'focus').mockImplementation(() => {});
+      const measureSpy = jest.spyOn(inputInstance, 'measureInWindow').mockImplementation(
+        (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, 650, 300, 40),
+      );
+      const scrollInstance = UNSAFE_getByType(ScrollView).instance as unknown as {
+        scrollTo: (opts: { y: number; animated?: boolean }) => void;
+      };
+      const scrollToSpy = jest.spyOn(scrollInstance, 'scrollTo').mockImplementation(() => {});
+
+      // Step 1: layout is measured -> triggers the imperative focus.
+      expect(focusSpy).not.toHaveBeenCalled();
+      fireEvent(getByTestId('review-step-2'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 400 } },
+      });
+      expect(focusSpy).toHaveBeenCalledTimes(1);
+
+      // Step 2: focusing alone must not measure or scroll — and no amount of
+      // elapsed time does either, proving this is event-driven, not timer-driven.
+      expect(measureSpy).not.toHaveBeenCalled();
+      expect(scrollToSpy).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(5000);
+      expect(measureSpy).not.toHaveBeenCalled();
+      expect(scrollToSpy).not.toHaveBeenCalled();
+
+      // Step 3: only the real keyboard-show event triggers measurement, and
+      // (given an overlapping position) the scroll-to-input correction.
+      const willShowHandler = addListenerSpy.mock.calls
+        .filter(([event]) => event === 'keyboardWillShow')
+        .slice(-1)[0][1] as (e: unknown) => void;
+      act(() => {
+        willShowHandler({ endCoordinates: { screenY: 500 } });
+      });
+
+      expect(measureSpy).toHaveBeenCalledTimes(1);
+      expect(scrollToSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      addListenerSpy.mockRestore();
+      jest.useRealTimers();
+    }
   });
 });
 

@@ -248,6 +248,64 @@ describe('VenuePhotoUpload', () => {
     );
   });
 
+  // ── Rapid double-tap guard (pickingRef) ────────────────────────────────────
+
+  // uploadMutation.isPending only becomes true once mutate() is actually
+  // called (after the picker resolves) — there is a window between the first
+  // tap (picker opens) and that resolution where isPending is still false.
+  // pickingRef is the synchronous guard that closes that window; without it
+  // a rapid second tap during that gap would open a second system picker.
+  it('does not open a second system picker on a rapid second tap while the first pick is still in progress', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    let resolvePicker: (value: { canceled: boolean; assets: { uri: string }[] }) => void;
+    mockLaunchPicker.mockImplementation(
+      () => new Promise((resolve) => { resolvePicker = resolve; }),
+    );
+
+    render(<VenuePhotoUpload venueId={VENUE_ID} />);
+    fireEvent.press(screen.getByLabelText('Add a photo of this venue'));
+
+    await act(async () => {
+      pressAlertButton(alertSpy, 'I agree & continue');
+    });
+
+    // Picker is now "open" (its promise has not resolved yet) — pickingRef
+    // must still be locked. A second tap of the button must be a no-op: no
+    // second guidelines Alert, no second picker launch.
+    const alertCallsBeforeSecondTap = alertSpy.mock.calls.length;
+    fireEvent.press(screen.getByLabelText('Add a photo of this venue'));
+    expect(alertSpy.mock.calls.length).toBe(alertCallsBeforeSecondTap);
+
+    // Resolve the picker to let the first flow finish cleanly.
+    await act(async () => {
+      resolvePicker({ canceled: true, assets: [] });
+    });
+
+    expect(mockLaunchPicker).toHaveBeenCalledTimes(1);
+  });
+
+  // Once a pick/upload cycle fully completes (finally releases pickingRef),
+  // a subsequent tap must work normally — the guard must not permanently
+  // lock the button after one use.
+  it('allows a new pick after the previous one fully completes', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    mockLaunchPicker.mockResolvedValue({ canceled: true, assets: [] });
+
+    render(<VenuePhotoUpload venueId={VENUE_ID} />);
+
+    fireEvent.press(screen.getByLabelText('Add a photo of this venue'));
+    await act(async () => {
+      pressAlertButton(alertSpy, 'I agree & continue');
+    });
+    expect(mockLaunchPicker).toHaveBeenCalledTimes(1);
+
+    fireEvent.press(screen.getByLabelText('Add a photo of this venue'));
+    await act(async () => {
+      pressAlertButton(alertSpy, 'I agree & continue');
+    });
+    expect(mockLaunchPicker).toHaveBeenCalledTimes(2);
+  });
+
   // ── Loading state ─────────────────────────────────────────────────────────
 
   // If the button is not disabled during upload, the user could tap again and
