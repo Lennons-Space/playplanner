@@ -32,6 +32,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // ─── Imports (after mocks) ───────────────────────────────────────────────────
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
+import { useAuthStore } from '@/store/authStore';
 import { useNearbyVenues } from '@/hooks/useVenues';
 import ExploreScreen from '../map';
 import type { Venue } from '@/types';
@@ -39,6 +40,16 @@ import type { Venue } from '@/types';
 // ─── Module mocks ────────────────────────────────────────────────────────────
 // All jest.mock() calls are hoisted to the top of the file by Jest's transform
 // (before any imports run). Keep them here — do not move them after imports.
+
+// authStore: ExploreScreen's default export is now wrapped in RequireSession
+// (deep-link auth guard — see components/auth/RequireSession.tsx), which
+// reads session/isLoading straight from this store. Every test in this file
+// exercises post-auth behaviour, so default to an authenticated, settled
+// session — the guard's own signed-out/loading behaviour is covered
+// separately in app/explore/__tests__/map.authGuard.test.tsx.
+jest.mock('@/store/authStore', () => ({
+  useAuthStore: jest.fn(),
+}));
 
 // SecureStore: default to no stored consent (null) so most tests start at the
 // consent prompt. Per-test overrides use mockResolvedValueOnce.
@@ -218,6 +229,19 @@ const mockGetItemAsync = SecureStore.getItemAsync as jest.MockedFunction<
 const mockUseNearbyVenues = useNearbyVenues as jest.MockedFunction<
   typeof useNearbyVenues
 >;
+const mockUseAuthStore = useAuthStore as jest.MockedFunction<typeof useAuthStore>;
+// Derive the store state type without importing AuthState directly (it is not exported).
+type AuthStoreState = ReturnType<typeof useAuthStore.getState>;
+
+/** Drives RequireSession to its authenticated, settled-loading branch. */
+function mockAuthenticatedSession() {
+  mockUseAuthStore.mockImplementation((selector) =>
+    selector({
+      session: { access_token: 'tok', user: { id: 'user-test-id' } },
+      isLoading: false,
+    } as unknown as AuthStoreState),
+  );
+}
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
 
@@ -328,6 +352,9 @@ async function renderAndWaitForConsent(options: { consentStored?: boolean } = {}
 // ─────────────────────────────────────────────────────────────────────────────
 beforeEach(() => {
   jest.clearAllMocks();
+  // Restore the default: an authenticated, settled session — see
+  // mockAuthenticatedSession() above.
+  mockAuthenticatedSession();
   // Restore the default: no stored consent. Individual tests override this.
   mockGetItemAsync.mockResolvedValue(null);
   // Restore the default hook return: empty array, not loading.

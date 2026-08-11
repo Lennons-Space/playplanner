@@ -9,7 +9,9 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert, StyleSheet, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { router } from 'expo-router';
+import { FunctionsHttpError, FunctionsFetchError } from '@supabase/supabase-js';
 import { useUser } from '@/hooks/useAuth';
+import { useAuthStore } from '@/store/authStore';
 import { GlassButton } from '@/components/ui/GlassButton';
 import { useThemeStore } from '@/store/themeStore';
 import AddVenueScreen from '../add';
@@ -20,6 +22,17 @@ import AddVenueScreen from '../add';
 
 jest.mock('expo-router', () => ({
   router: { back: jest.fn() },
+  Redirect: () => null,
+}));
+
+// authStore: AddVenueScreen's default export is now wrapped in RequireSession
+// (deep-link auth guard — see components/auth/RequireSession.tsx), which
+// reads session/isLoading straight from this store, independently of
+// useUser() (mocked separately below). Default to an authenticated, settled
+// session so every existing test in this file still reaches the real form.
+// Signed-out/loading guard behaviour is covered by add.authGuard.test.tsx.
+jest.mock('@/store/authStore', () => ({
+  useAuthStore: jest.fn(),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -64,9 +77,23 @@ jest.mock('@/lib/supabase', () => ({
 }));
 
 const mockUseUser = useUser as jest.MockedFunction<typeof useUser>;
+const mockUseAuthStore = useAuthStore as jest.MockedFunction<typeof useAuthStore>;
+// Derive the store state type without importing AuthState directly (it is not exported).
+type AuthStoreState = ReturnType<typeof useAuthStore.getState>;
+
+/** Drives RequireSession to its authenticated, settled-loading branch. */
+function mockAuthenticatedSession() {
+  mockUseAuthStore.mockImplementation((selector) =>
+    selector({
+      session: { access_token: 'tok', user: { id: 'user-test-id' } },
+      isLoading: false,
+    } as unknown as AuthStoreState),
+  );
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockAuthenticatedSession();
   mockUseUser.mockReturnValue({ id: 'user-test-id' } as any);
   mockInsert.mockResolvedValue({ error: null });
   mockFunctionsInvoke.mockResolvedValue({
@@ -141,13 +168,98 @@ describe('AddVenueScreen — postcode lookup', () => {
     });
   });
 
-  it('shows "not found" when the geocode function returns an error', async () => {
-    mockFunctionsInvoke.mockResolvedValue({ data: null, error: { message: 'not found' } });
+  it('successfully looks up SY13 1NX — the exact postcode originally reported as broken (root cause: the geocode-postcode Edge Function was not deployed, not a bad postcode)', async () => {
+    mockFunctionsInvoke.mockResolvedValue({
+      data: { latitude: 52.972411, longitude: -2.676992, city: 'Shropshire' },
+      error: null,
+    });
     render(<AddVenueScreen />);
-    fireEvent.changeText(screen.getByPlaceholderText('e.g. M1 1AE'), 'ZZ1 1ZZ');
+    fireEvent.changeText(screen.getByPlaceholderText('e.g. M1 1AE'), 'SY13 1NX');
     fireEvent.press(screen.getByLabelText('Look up postcode'));
     await waitFor(() => {
-      expect(screen.getByText(/Postcode not found/)).toBeTruthy();
+      expect(screen.getByText(/SY13 1NX — Shropshire/)).toBeTruthy();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Postcode lookup — error classification. Never blame the user's postcode
+// for a service failure: each of INVALID / NOT_FOUND / SERVICE_UNAVAILABLE
+// must render its own distinct, honest message (see lib/postcode.ts).
+// ---------------------------------------------------------------------------
+
+describe('AddVenueScreen — postcode lookup error classification', () => {
+  it('INVALID: a malformed postcode is rejected locally and never reaches the network', async () => {
+    render(<AddVenueScreen />);
+    fireEvent.changeText(screen.getByPlaceholderText('e.g. M1 1AE'), 'NOTAPOSTCODE');
+    fireEvent.press(screen.getByLabelText('Look up postcode'));
+    await waitFor(() => {
+      expect(screen.getByText('Enter a valid UK postcode.')).toBeTruthy();
+    });
+    expect(mockFunctionsInvoke).not.toHaveBeenCalled();
+  });
+
+  it('INVALID: an outward-only code is rejected — Add a Venue requires a FULL postcode', async () => {
+    render(<AddVenueScreen />);
+    fireEvent.changeText(screen.getByPlaceholderText('e.g. M1 1AE'), 'SY13');
+    fireEvent.press(screen.getByLabelText('Look up postcode'));
+    await waitFor(() => {
+      expect(screen.getByText('Enter a valid UK postcode.')).toBeTruthy();
+    });
+    expect(mockFunctionsInvoke).not.toHaveBeenCalled();
+  });
+
+  it('NOT_FOUND: the function\'s own 404 body ({"error":"Postcode not found"}) shows the not-found message', async () => {
+    mockFunctionsInvoke.mockResolvedValue({
+      data: null,
+      error: new FunctionsHttpError({ status: 404, json: async () => ({ error: 'Postcode not found' }) }),
+    });
+    render(<AddVenueScreen />);
+    fireEvent.changeText(screen.getByPlaceholderText('e.g. M1 1AE'), 'ZZ99 9ZZ');
+    fireEvent.press(screen.getByLabelText('Look up postcode'));
+    await waitFor(() => {
+      expect(screen.getByText('Postcode not found. Please check and try again.')).toBeTruthy();
+    });
+  });
+
+  it('SERVICE_UNAVAILABLE: a gateway 404 ({"code":"NOT_FOUND",...}, function not deployed) is never shown as a bad postcode', async () => {
+    mockFunctionsInvoke.mockResolvedValue({
+      data: null,
+      error: new FunctionsHttpError({
+        status: 404,
+        json: async () => ({ code: 'NOT_FOUND', message: 'Requested function was not found' }),
+      }),
+    });
+    render(<AddVenueScreen />);
+    fireEvent.changeText(screen.getByPlaceholderText('e.g. M1 1AE'), 'SY13 1NX');
+    fireEvent.press(screen.getByLabelText('Look up postcode'));
+    await waitFor(() => {
+      expect(screen.getByText('Postcode lookup is temporarily unavailable. Please try again.')).toBeTruthy();
+    });
+    // Must never claim the (perfectly valid) postcode was the problem.
+    expect(screen.queryByText(/Postcode not found/)).toBeNull();
+  });
+
+  it('SERVICE_UNAVAILABLE: a network failure shows the service-unavailable message, not "not found"', async () => {
+    mockFunctionsInvoke.mockResolvedValue({
+      data: null,
+      error: new FunctionsFetchError(new TypeError('Network request failed')),
+    });
+    render(<AddVenueScreen />);
+    fireEvent.changeText(screen.getByPlaceholderText('e.g. M1 1AE'), 'SY13 1NX');
+    fireEvent.press(screen.getByLabelText('Look up postcode'));
+    await waitFor(() => {
+      expect(screen.getByText('Postcode lookup is temporarily unavailable. Please try again.')).toBeTruthy();
+    });
+  });
+
+  it('SERVICE_UNAVAILABLE: a malformed 2xx response (missing coordinates) is never shown as a bad postcode', async () => {
+    mockFunctionsInvoke.mockResolvedValue({ data: { unexpected: 'shape' }, error: null });
+    render(<AddVenueScreen />);
+    fireEvent.changeText(screen.getByPlaceholderText('e.g. M1 1AE'), 'SY13 1NX');
+    fireEvent.press(screen.getByLabelText('Look up postcode'));
+    await waitFor(() => {
+      expect(screen.getByText('Postcode lookup is temporarily unavailable. Please try again.')).toBeTruthy();
     });
   });
 });

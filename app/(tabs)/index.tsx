@@ -51,7 +51,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -436,6 +436,22 @@ export default function HomeScreen() {
   const weatherCta = getWeatherCta(condition);
   const hero = pickHeroCollection(condition, activeIntent, now.getMonth(), now.getHours());
 
+  // Accessibility font scaling for the hero headline (2026-08-11 follow-up):
+  // `maxFontSizeMultiplier={1.2}` (below, matching the existing Home
+  // convention in EditorialCollectionHero/IntentChips/SmartFeaturedCard)
+  // clamps how far RN scales the heading's `fontSize` at large OS font-size
+  // settings. But RN only auto-scales `fontSize` — the heading's
+  // `lineHeight` and `maxWidth` are plain numbers it does NOT touch, so
+  // without this they'd stay fixed while the glyphs grow, causing lines to
+  // overlap and forcing extra, cramped wraps. `heroFontScale` mirrors the
+  // SAME 1.2 clamp so lineHeight/maxWidth grow proportionally with the
+  // glyphs instead. At the default fontScale (1.0, i.e. no accessibility
+  // scaling), `heroFontScale` is exactly 1 — so `38 * 1 === 38` and
+  // `260 * 1 === 260`, and the geometry below is numerically identical to
+  // the accepted default-scale look.
+  const { fontScale } = useWindowDimensions();
+  const heroFontScale = Math.min(fontScale, 1.2);
+
   const openMap = () => router.push('/explore/map');
   const openProfile = () => router.push('/(tabs)/profile');
   const openSearch = () => router.push('/(tabs)/search');
@@ -527,8 +543,14 @@ export default function HomeScreen() {
           {/* ── 2. Greeting + weather pill + headline + context line ────── */}
           <Animated.View entering={FadeIn.duration(450).delay(50)}>
             <View style={{ paddingHorizontal: GUTTER, paddingTop: 14 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
-                <Text style={{ fontFamily: FontFamily.body, fontSize: 14.5, color: tokens.label3 }}>
+              <View
+                testID="home-hero-greeting-row"
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}
+              >
+                <Text
+                  style={{ fontFamily: FontFamily.body, fontSize: 14.5, color: tokens.label3 }}
+                  maxFontSizeMultiplier={1.2}
+                >
                   {`${greeting.text}, ${firstName ?? 'there'} ${greeting.emoji}`}
                 </Text>
 
@@ -559,20 +581,43 @@ export default function HomeScreen() {
                 )}
               </View>
 
-              {/* jsx: 38/800/display, letterSpacing -1.2, line-height 1.0 */}
+              {/* jsx: 38/800/display, letterSpacing -1.2, line-height 1.0
+                  Centred, editorial headline. No hardcoded line break — the
+                  `maxWidth` below is a "measure" (an editorial max line
+                  length) chosen to *encourage* a balanced two-line wrap at
+                  normal phone widths, not to force one; on any viewport
+                  narrower than the measure the box just shrinks to the
+                  container and wraps on its own. */}
               <Text
+                testID="home-hero-heading"
+                maxFontSizeMultiplier={1.2}
                 style={{
                   fontFamily: FontFamily.display,
                   fontSize: 38,
                   color: tokens.label,
                   letterSpacing: -1.2,
-                  lineHeight: 38,
+                  lineHeight: 38 * heroFontScale,
+                  textAlign: 'center',
+                  alignSelf: 'center',
+                  maxWidth: 260 * heroFontScale,
                 }}
               >
-                {"What's the\nplan today?"}
+                What's the plan today?
               </Text>
 
-              <Text style={{ fontFamily: FontFamily.body, fontSize: 14.5, color: tokens.label3, marginTop: 6 }}>
+              <Text
+                testID="home-hero-ctxline"
+                maxFontSizeMultiplier={1.2}
+                style={{
+                  fontFamily: FontFamily.body,
+                  fontSize: 14.5,
+                  color: tokens.label3,
+                  marginTop: 6,
+                  textAlign: 'center',
+                  alignSelf: 'center',
+                  maxWidth: '90%',
+                }}
+              >
                 {ctxLine}
               </Text>
             </View>

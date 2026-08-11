@@ -36,7 +36,9 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { lookupPostcode, POSTCODE_ERROR_MESSAGES } from '@/lib/postcode';
 import { useUser } from '@/hooks/useAuth';
+import { RequireSession } from '@/components/auth/RequireSession';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
 import { GlassButton } from '@/components/ui/GlassButton';
@@ -78,28 +80,7 @@ function validateAgeRange(minAge: string, maxAge: string): string | null {
   return null;
 }
 
-interface PostcodeResult {
-  latitude: number;
-  longitude: number;
-  city: string;
-}
-
-async function lookupPostcode(raw: string): Promise<PostcodeResult | null> {
-  const postcode = raw.trim().toUpperCase().replace(/\s+/g, '');
-  const res = await supabase.functions.invoke('geocode-postcode', {
-    body: { postcode },
-  });
-  if (res.error || res.data?.error) {
-    return null; // postcode not found or service unavailable
-  }
-  return {
-    latitude:  res.data.latitude  as number,
-    longitude: res.data.longitude as number,
-    city:      res.data.city      as string,
-  };
-}
-
-export default function AddVenueScreen() {
+function AddVenueScreenContent() {
   const { tokens: T, mode } = useAppTheme();
   const styles = useMemo(() => createStyles(T), [T]);
   const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
@@ -153,9 +134,12 @@ export default function AddVenueScreen() {
     setPostcodeError('');
     setPostcodeConfirmed(false);
     try {
+      // Add a Venue needs a full address, so this deliberately does NOT pass
+      // { allowPartial: true } — an outward code like "SY13" must be
+      // rejected here even though Map search accepts it.
       const result = await lookupPostcode(raw);
-      if (!result) {
-        setPostcodeError('Postcode not found. Please check and try again.');
+      if (!result.ok) {
+        setPostcodeError(POSTCODE_ERROR_MESSAGES[result.reason]);
         return;
       }
       setLatitude(result.latitude);
@@ -165,7 +149,9 @@ export default function AddVenueScreen() {
       setPostcode(raw.trim().toUpperCase());
       setPostcodeConfirmed(true);
     } catch {
-      setPostcodeError('Postcode lookup failed. Please try again.');
+      // Defensive only — lookupPostcode() is contracted to never throw, but
+      // the loading state must still be released if that is ever violated.
+      setPostcodeError(POSTCODE_ERROR_MESSAGES.SERVICE_UNAVAILABLE);
     } finally {
       setPostcodeLoading(false);
     }
@@ -506,6 +492,25 @@ export default function AddVenueScreen() {
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
+  );
+}
+
+// ─── AddVenueScreen (default export) ───────────────────────────────────────
+// Deep-link guard: this screen is registered directly on the root Stack
+// (app/_layout.tsx, presentation:'modal') with no layout guard of its own —
+// unlike screens inside app/(tabs), which app/(tabs)/_layout.tsx already
+// gates. A deep link (playplanner://venue/add) could otherwise reach the
+// submission form, including its postcode lookup network call, while signed
+// out. RequireSession applies the identical guard TabsLayout uses — see
+// components/auth/RequireSession.tsx for the full rationale. This also makes
+// the `user!`/`user?.id` assumptions inside AddVenueScreenContent (e.g. the
+// insert's submitted_by field) safe: the content only ever mounts once a
+// session is confirmed present.
+export default function AddVenueScreen() {
+  return (
+    <RequireSession>
+      <AddVenueScreenContent />
+    </RequireSession>
   );
 }
 

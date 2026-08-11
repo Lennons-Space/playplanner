@@ -74,13 +74,14 @@ import FilterSheet from '@/components/filters/FilterSheet';
 import { Icon } from '@/components/ui';
 import { GlassButton } from '@/components/ui/GlassButton';
 import { useLocationConsent } from '@/hooks/useLocationConsent';
+import { RequireSession } from '@/components/auth/RequireSession';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { FALLBACK_LOCATION } from '@/constants/location';
 import { ocean, FontFamily, BorderRadius } from '@/constants/theme';
 import { getCategoryMeta } from '@/constants/categories';
 import { resolveVenueCategory, buildCategoryLookup } from '@/lib/venues/resolveVenueCategory';
 import { useMapStore } from '@/store/mapStore';
-import { supabase } from '@/lib/supabase';
+import { lookupPostcode, POSTCODE_ERROR_MESSAGES } from '@/lib/postcode';
 import type { Venue, Coordinates } from '@/types';
 
 // ─── v2 design tokens ────────────────────────────────────────────────────────
@@ -730,17 +731,20 @@ function MapScreen({
   );
 
   // Cross-tab postcode jump: search tab sets pendingPostcode, consumed here.
+  // allowPartial: true — preserves outward-code area search ("SY13", "M1")
+  // from the search tab, same as the in-screen postcode bar below.
   const { pendingPostcode, setPendingPostcode } = useMapStore();
   useEffect(() => {
     if (!pendingPostcode) return;
     (async () => {
-      const coords = await geocodePostcode(pendingPostcode);
+      const result = await lookupPostcode(pendingPostcode, { allowPartial: true });
       setPendingPostcode(null);
-      if (!coords || cancelledRef.current) return;
+      if (!result.ok || cancelledRef.current) return;
+      const coords = { latitude: result.latitude, longitude: result.longitude };
       setMapCenter(coords);
       suppressedAnimateTo({ ...coords, latitudeDelta: 0.12, longitudeDelta: 0.12 }, 600);
     })();
-  // geocodePostcode is stable (defined outside component)
+  // lookupPostcode is a stable module-level import
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingPostcode, suppressedAnimateTo]);
 
@@ -1019,45 +1023,35 @@ function MapScreen({
     };
   }, []);
 
-  async function geocodePostcode(input: string): Promise<{ latitude: number; longitude: number } | null> {
-    const q = input.replace(/\s+/g, '').toUpperCase();
-    try {
-      const res = await supabase.functions.invoke('geocode-postcode', {
-        body: { postcode: q },
-      });
-      if (res.error) return null;
-      const { latitude, longitude } = res.data as { latitude: number; longitude: number; city: string };
-      if (typeof latitude === 'number' && typeof longitude === 'number') {
-        return { latitude, longitude };
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
+  // allowPartial: true — Map search accepts a FULL postcode OR an
+  // outward/area code ("SY13", "M1", "EC1A"), preserving the Edge
+  // Function's autocomplete strategy for partial input. Contrast with Add a
+  // Venue (app/venue/add.tsx), which requires a full postcode since a venue
+  // needs a real address.
   const handlePostcodeSubmit = useCallback(async () => {
     const trimmed = postcodeInput.trim();
     if (!trimmed) return;
     setGeocoding(true);
     setPostcodeError(null);
-    const coords = await geocodePostcode(trimmed);
+    const result = await lookupPostcode(trimmed, { allowPartial: true });
     // Guard against state updates after unmount — the user may have navigated
     // away while the geocoding request was in-flight.
     if (cancelledRef.current) return;
     setGeocoding(false);
-    if (coords) {
+    if (result.ok) {
       if (viewMode === 'map') {
         suppressedAnimateTo(
-          { latitude: coords.latitude, longitude: coords.longitude, latitudeDelta: 0.12, longitudeDelta: 0.12 },
+          { latitude: result.latitude, longitude: result.longitude, latitudeDelta: 0.12, longitudeDelta: 0.12 },
           600,
         );
       }
-      setMapCenter({ latitude: coords.latitude, longitude: coords.longitude });
+      setMapCenter({ latitude: result.latitude, longitude: result.longitude });
       Keyboard.dismiss();
       setPostcodeInput('');
     } else {
-      setPostcodeError('Postcode not found — try SY13 1AB');
+      // Never blame the user's postcode for a service failure — each reason
+      // gets its own honest message (see lib/postcode.ts POSTCODE_ERROR_MESSAGES).
+      setPostcodeError(POSTCODE_ERROR_MESSAGES[result.reason]);
       if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
       errorTimeoutRef.current = setTimeout(() => {
         if (!cancelledRef.current) setPostcodeError(null);
@@ -1855,7 +1849,7 @@ const LocationFallbackMap = memo(function LocationFallbackMap({
 //   'undecided' → show the plain-English consent prompt
 //   'declined'  → fallback map (London, no GPS)
 //   'granted'   → live map with GPS
-export default function ExploreScreen() {
+function ExploreScreenContent() {
   const { tokens: T, mode } = useAppTheme();
   const statusBarStyle = mode === 'dark' ? 'light' : 'dark';
   const { status, grant, decline } = useLocationConsent();
@@ -1911,5 +1905,22 @@ export default function ExploreScreen() {
       )}
       <FilterSheet visible={filterSheetVisible} onClose={handleFilterSheetClose} />
     </>
+  );
+}
+
+// ─── ExploreScreen (default export) ────────────────────────────────────────
+// Deep-link guard: app/(tabs)/_layout.tsx already gates this screen when it
+// is reached as the Map tab (app/(tabs)/map.tsx re-exports this same default
+// export — see that file), but this module is ALSO registered directly on
+// the root Stack's `explore/map` route with no layout guard of its own, so a
+// deep link (playplanner://explore/map) could otherwise reach it signed out.
+// RequireSession applies the identical guard TabsLayout uses, so the map
+// screen requires a session on every path that can reach it, not just the
+// in-app one — see components/auth/RequireSession.tsx for the full rationale.
+export default function ExploreScreen() {
+  return (
+    <RequireSession>
+      <ExploreScreenContent />
+    </RequireSession>
   );
 }

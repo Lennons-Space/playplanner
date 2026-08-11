@@ -1,20 +1,30 @@
 /**
- * Postcode search feature tests for app/(tabs)/index.tsx — MapScreen.
+ * Postcode search feature tests for app/explore/map.tsx — MapScreen.
  *
  * What this file tests:
  *   1. Valid postcode → Edge Function returns coords → animateToRegion called
- *   2. Edge Function returns error → "Postcode not found" message shown
- *   3. Edge Function returns null/malformed data → "Postcode not found" shown
- *   4. Edge Function throws (network failure) → "Postcode not found" shown
- *   5. Clear button (x) clears the input without triggering geocode
- *   6. Error message auto-clears after 3-second timeout (fake timers)
- *   7. Geocoding in list mode updates mapCenter but does NOT call animateToRegion
+ *   2. Error classification, one test per category (see lib/postcode.ts):
+ *        - INVALID              → "Enter a valid UK postcode."
+ *        - NOT_FOUND             → "Postcode not found. Please check and try again."
+ *        - SERVICE_UNAVAILABLE   → "Postcode lookup is temporarily unavailable. Please try again."
+ *      covering: genuine remote not-found, the gateway 404 (function not
+ *      deployed), a non-404 HTTP error, a network failure, and a malformed
+ *      2xx response — never collapsed into a single "not found" message.
+ *   3. Clear button (x) clears the input without triggering geocode
+ *   4. Error message auto-clears after 3-second timeout (fake timers)
+ *   5. Geocoding in list mode updates mapCenter but does NOT call animateToRegion
  *
- * ARCHITECTURE NOTE:
- * geocodePostcode uses supabase.functions.invoke('geocode-postcode', ...).
- * There is no fallback/district endpoint — one Edge Function call handles all
- * postcode formats. The backend returns { latitude, longitude, city } on success
- * or the invoke promise resolves with { data: null, error: {...} } on failure.
+ * ARCHITECTURE NOTE (updated — was previously a single-null architecture):
+ * MapScreen's geocoding now goes through the shared `lookupPostcode()` in
+ * lib/postcode.ts, which itself calls
+ * supabase.functions.invoke('geocode-postcode', ...) and returns a
+ * discriminated PostcodeLookupResult (`{ ok: true, ... }` or
+ * `{ ok: false, reason }`) instead of a bare nullable. This means a service
+ * failure (Edge Function not deployed, network error, 5xx, ...) can never be
+ * misreported to the user as "your postcode is wrong" — each reason renders
+ * its own honest, distinct message. Map search passes
+ * `{ allowPartial: true }` so outward/area codes ("SY13", "M1") still work,
+ * preserving the Edge Function's autocomplete strategy for partial input.
  *
  * mapRef is internal to MapScreen — we cannot access it directly in tests.
  * We observe animateToRegion via the mock on ClusterMapView's ref, which is
@@ -24,13 +34,24 @@
 import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { FunctionsHttpError, FunctionsFetchError } from '@supabase/supabase-js';
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import ExploreScreen from '../map';
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 // All jest.mock() calls are hoisted before imports by Jest's transform.
+
+// authStore: ExploreScreen's default export is wrapped in RequireSession (see
+// components/auth/RequireSession.tsx) — default to an authenticated, settled
+// session so this file's postcode-search behaviour tests are unaffected.
+// Signed-out behaviour (including proof that geocode-postcode is never
+// invoked) is covered by map.authGuard.test.tsx.
+jest.mock('@/store/authStore', () => ({
+  useAuthStore: jest.fn(),
+}));
 
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn().mockResolvedValue('1'), // stored consent → skip prompt
@@ -186,6 +207,19 @@ jest.mock('@/hooks/useWeather', () => ({
 
 // ─── Typed helper ─────────────────────────────────────────────────────────────
 const mockInvoke = supabase.functions.invoke as jest.MockedFunction<typeof supabase.functions.invoke>;
+const mockUseAuthStore = useAuthStore as jest.MockedFunction<typeof useAuthStore>;
+// Derive the store state type without importing AuthState directly (it is not exported).
+type AuthStoreState = ReturnType<typeof useAuthStore.getState>;
+
+/** Drives RequireSession to its authenticated, settled-loading branch. */
+function mockAuthenticatedSession() {
+  mockUseAuthStore.mockImplementation((selector) =>
+    selector({
+      session: { access_token: 'tok', user: { id: 'user-test-id' } },
+      isLoading: false,
+    } as unknown as AuthStoreState),
+  );
+}
 
 // ─── Response shape helpers ───────────────────────────────────────────────────
 
@@ -194,12 +228,34 @@ function makeSuccessResponse(lat: number, lng: number) {
   return { data: { latitude: lat, longitude: lng, city: 'London' }, error: null };
 }
 
-/** Edge Function error: invoke resolves with an error object. */
-function makeErrorResponse(message = 'Function returned non-2xx status') {
-  return { data: null, error: { message } };
+/** Genuine remote not-found: our function's own 404 body. → NOT_FOUND */
+function makeGenuineNotFoundResponse() {
+  return {
+    data: null,
+    error: new FunctionsHttpError({ status: 404, json: async () => ({ error: 'Postcode not found' }) }),
+  };
 }
 
-/** Edge Function returns data but without valid coordinates. */
+/** Gateway 404: the Edge Function itself is not deployed. → SERVICE_UNAVAILABLE */
+function makeGatewayNotFoundResponse() {
+  return {
+    data: null,
+    error: new FunctionsHttpError({
+      status: 404,
+      json: async () => ({ code: 'NOT_FOUND', message: 'Requested function was not found' }),
+    }),
+  };
+}
+
+/** A non-404 HTTP error from the Edge Function (e.g. an upstream 5xx surfaced as 502). → SERVICE_UNAVAILABLE */
+function makeServiceErrorResponse(status = 500) {
+  return {
+    data: null,
+    error: new FunctionsHttpError({ status, json: async () => ({ error: 'Internal error' }) }),
+  };
+}
+
+/** Edge Function returns data but without valid coordinates. → SERVICE_UNAVAILABLE */
 function makeMalformedResponse() {
   return { data: { message: 'unexpected shape' }, error: null };
 }
@@ -259,6 +315,7 @@ async function renderExplore() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockAuthenticatedSession();
   mockAnimateToRegion.mockClear();
   capturedMapRef = null;
   // Default: invoke returns a successful geocode for SW1A 1AA.
@@ -324,11 +381,30 @@ describe('Postcode search — valid full postcode', () => {
 });
 
 // =============================================================================
-// 2. Edge Function returns an error → "Postcode not found" message shown
+// 2. Error classification — one test per category. Never blame the user's
+//    postcode for a service failure: each reason renders its own distinct,
+//    honest message (see lib/postcode.ts POSTCODE_ERROR_MESSAGES).
 // =============================================================================
-describe('Postcode search — Edge Function error', () => {
-  it('shows "Postcode not found" when the Edge Function returns an error', async () => {
-    mockInvoke.mockResolvedValueOnce(makeErrorResponse());
+describe('Postcode search — error classification', () => {
+  it('INVALID: a malformed postcode never reaches the network', async () => {
+    const { getByPlaceholderText, getByText } = await renderExplore();
+
+    const input = getByPlaceholderText('Search by postcode…');
+    fireEvent.changeText(input, 'NOTAPOSTCODE');
+    await act(async () => {
+      fireEvent(input, 'submitEditing');
+    });
+
+    await waitFor(() => {
+      expect(getByText('Enter a valid UK postcode.')).toBeTruthy();
+    });
+
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockAnimateToRegion).not.toHaveBeenCalled();
+  });
+
+  it('NOT_FOUND: the function\'s own 404 body ({"error":"Postcode not found"}) shows the not-found message', async () => {
+    mockInvoke.mockResolvedValueOnce(makeGenuineNotFoundResponse() as any);
 
     const { getByPlaceholderText, getByText } = await renderExplore();
 
@@ -339,7 +415,7 @@ describe('Postcode search — Edge Function error', () => {
     });
 
     await waitFor(() => {
-      expect(getByText(/Postcode not found/)).toBeTruthy();
+      expect(getByText('Postcode not found. Please check and try again.')).toBeTruthy();
     });
 
     // animateToRegion must NOT have been called.
@@ -347,13 +423,62 @@ describe('Postcode search — Edge Function error', () => {
     // Input should remain populated so the user can correct it.
     expect(input.props.value).toBe('ZZ99 9ZZ');
   });
-});
 
-// =============================================================================
-// 3. Malformed / missing coordinates → "Postcode not found" shown
-// =============================================================================
-describe('Postcode search — malformed response', () => {
-  it('shows "Postcode not found" when the Edge Function returns data without valid coordinates', async () => {
+  it('SERVICE_UNAVAILABLE: a gateway 404 ({"code":"NOT_FOUND",...}, function not deployed) is never shown as a bad postcode', async () => {
+    mockInvoke.mockResolvedValueOnce(makeGatewayNotFoundResponse() as any);
+
+    const { getByPlaceholderText, getByText, queryByText } = await renderExplore();
+
+    const input = getByPlaceholderText('Search by postcode…');
+    // A genuinely valid, real postcode — proves the message is about the
+    // service, not the postcode.
+    fireEvent.changeText(input, 'SY13 1NX');
+    await act(async () => {
+      fireEvent(input, 'submitEditing');
+    });
+
+    await waitFor(() => {
+      expect(getByText('Postcode lookup is temporarily unavailable. Please try again.')).toBeTruthy();
+    });
+    expect(queryByText(/Postcode not found/)).toBeNull();
+    expect(mockAnimateToRegion).not.toHaveBeenCalled();
+  });
+
+  it('SERVICE_UNAVAILABLE: a non-404 HTTP error (e.g. 5xx) shows the service-unavailable message', async () => {
+    mockInvoke.mockResolvedValueOnce(makeServiceErrorResponse(500) as any);
+
+    const { getByPlaceholderText, getByText } = await renderExplore();
+
+    const input = getByPlaceholderText('Search by postcode…');
+    fireEvent.changeText(input, 'SW1A 1AA');
+    await act(async () => {
+      fireEvent(input, 'submitEditing');
+    });
+
+    await waitFor(() => {
+      expect(getByText('Postcode lookup is temporarily unavailable. Please try again.')).toBeTruthy();
+    });
+  });
+
+  it('SERVICE_UNAVAILABLE: a network failure (invoke rejects) shows the service-unavailable message, not "not found"', async () => {
+    mockInvoke.mockRejectedValueOnce(new FunctionsFetchError(new TypeError('Network request failed')));
+
+    const { getByPlaceholderText, getByText } = await renderExplore();
+
+    const input = getByPlaceholderText('Search by postcode…');
+    fireEvent.changeText(input, 'SW1A 1AA');
+    await act(async () => {
+      fireEvent(input, 'submitEditing');
+    });
+
+    await waitFor(() => {
+      expect(getByText('Postcode lookup is temporarily unavailable. Please try again.')).toBeTruthy();
+    });
+
+    expect(mockAnimateToRegion).not.toHaveBeenCalled();
+  });
+
+  it('SERVICE_UNAVAILABLE: a malformed 2xx response (missing coordinates) is never shown as a bad postcode', async () => {
     mockInvoke.mockResolvedValueOnce(makeMalformedResponse() as any);
 
     const { getByPlaceholderText, getByText } = await renderExplore();
@@ -365,13 +490,13 @@ describe('Postcode search — malformed response', () => {
     });
 
     await waitFor(() => {
-      expect(getByText(/Postcode not found/)).toBeTruthy();
+      expect(getByText('Postcode lookup is temporarily unavailable. Please try again.')).toBeTruthy();
     });
 
     expect(mockAnimateToRegion).not.toHaveBeenCalled();
   });
 
-  it('shows "Postcode not found" when the Edge Function returns null data with no error', async () => {
+  it('SERVICE_UNAVAILABLE: null data with no error shows the service-unavailable message', async () => {
     mockInvoke.mockResolvedValueOnce({ data: null, error: null } as any);
 
     const { getByPlaceholderText, getByText } = await renderExplore();
@@ -383,36 +508,13 @@ describe('Postcode search — malformed response', () => {
     });
 
     await waitFor(() => {
-      expect(getByText(/Postcode not found/)).toBeTruthy();
+      expect(getByText('Postcode lookup is temporarily unavailable. Please try again.')).toBeTruthy();
     });
   });
 });
 
 // =============================================================================
-// 4. Network failure (invoke throws) → error message shown
-// =============================================================================
-describe('Postcode search — network failure', () => {
-  it('shows an error message when supabase.functions.invoke throws a network error', async () => {
-    mockInvoke.mockRejectedValueOnce(new TypeError('Network request failed'));
-
-    const { getByPlaceholderText, getByText } = await renderExplore();
-
-    const input = getByPlaceholderText('Search by postcode…');
-    fireEvent.changeText(input, 'SW1A 1AA');
-    await act(async () => {
-      fireEvent(input, 'submitEditing');
-    });
-
-    await waitFor(() => {
-      expect(getByText(/Postcode not found/)).toBeTruthy();
-    });
-
-    expect(mockAnimateToRegion).not.toHaveBeenCalled();
-  });
-});
-
-// =============================================================================
-// 5. Clear button clears input without triggering geocode
+// 3. Clear button clears input without triggering geocode
 // =============================================================================
 describe('Postcode search — clear button', () => {
   it('clears the input and hides the clear button when the clear button is pressed', async () => {
@@ -450,21 +552,22 @@ describe('Postcode search — clear button', () => {
   });
 
   it('clears any existing error message when the clear button is pressed', async () => {
-    // Produce an error state first.
-    mockInvoke.mockResolvedValueOnce(makeErrorResponse());
+    // Produce an error state first (genuine remote not-found — a real
+    // postcode-format input, ZZ99 is not a real UK postcode).
+    mockInvoke.mockResolvedValueOnce(makeGenuineNotFoundResponse());
 
     const { getByPlaceholderText, getByLabelText, getByText, queryByText } =
       await renderExplore();
 
     const input = getByPlaceholderText('Search by postcode…');
-    fireEvent.changeText(input, 'ZZ99');
+    fireEvent.changeText(input, 'ZZ99 9ZZ');
     await act(async () => {
       fireEvent(input, 'submitEditing');
     });
 
     // Confirm error appeared.
     await waitFor(() => {
-      expect(getByText(/Postcode not found/)).toBeTruthy();
+      expect(getByText('Postcode not found. Please check and try again.')).toBeTruthy();
     });
 
     // Type something new so the clear button appears.
@@ -483,25 +586,25 @@ describe('Postcode search — clear button', () => {
 });
 
 // =============================================================================
-// 6. Error message auto-clears after 3-second timeout
+// 4. Error message auto-clears after 3-second timeout
 // =============================================================================
 describe('Postcode search — error auto-clear', () => {
   it('clears the error message after 3 seconds', async () => {
     jest.useFakeTimers();
 
-    mockInvoke.mockResolvedValueOnce(makeErrorResponse());
+    mockInvoke.mockResolvedValueOnce(makeGenuineNotFoundResponse());
 
     const { getByPlaceholderText, getByText, queryByText } = await renderExplore();
 
     const input = getByPlaceholderText('Search by postcode…');
-    fireEvent.changeText(input, 'ZZ99');
+    fireEvent.changeText(input, 'ZZ99 9ZZ');
     await act(async () => {
       fireEvent(input, 'submitEditing');
     });
 
     // Confirm error appeared.
     await waitFor(() => {
-      expect(getByText(/Postcode not found/)).toBeTruthy();
+      expect(getByText('Postcode not found. Please check and try again.')).toBeTruthy();
     });
 
     // Advance timers past the 3-second timeout.
@@ -518,18 +621,18 @@ describe('Postcode search — error auto-clear', () => {
   it('does NOT clear the error before the 3-second timeout elapses', async () => {
     jest.useFakeTimers();
 
-    mockInvoke.mockResolvedValueOnce(makeErrorResponse());
+    mockInvoke.mockResolvedValueOnce(makeGenuineNotFoundResponse());
 
     const { getByPlaceholderText, getByText } = await renderExplore();
 
     const input = getByPlaceholderText('Search by postcode…');
-    fireEvent.changeText(input, 'ZZ99');
+    fireEvent.changeText(input, 'ZZ99 9ZZ');
     await act(async () => {
       fireEvent(input, 'submitEditing');
     });
 
     await waitFor(() => {
-      expect(getByText(/Postcode not found/)).toBeTruthy();
+      expect(getByText('Postcode not found. Please check and try again.')).toBeTruthy();
     });
 
     // Advance only 2 seconds — error should still be visible.
@@ -537,12 +640,12 @@ describe('Postcode search — error auto-clear', () => {
       jest.advanceTimersByTime(2000);
     });
 
-    expect(getByText(/Postcode not found/)).toBeTruthy();
+    expect(getByText('Postcode not found. Please check and try again.')).toBeTruthy();
   });
 });
 
 // =============================================================================
-// 7. Geocoding in list mode updates mapCenter but does NOT call animateToRegion
+// 5. Geocoding in list mode updates mapCenter but does NOT call animateToRegion
 // =============================================================================
 describe('Postcode search — list mode behaviour', () => {
   it('does NOT call animateToRegion when geocoding in list mode (map is unmounted)', async () => {

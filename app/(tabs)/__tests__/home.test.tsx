@@ -18,7 +18,7 @@
  */
 
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 import { render, fireEvent, within } from '@testing-library/react-native';
 
 import { router } from 'expo-router';
@@ -221,9 +221,54 @@ describe('Browse (Home) — chrome (renders identically regardless of consent)',
     expect(getByText(/Good (morning|afternoon|evening|night), Liam/)).toBeTruthy();
   });
 
-  it('renders the hero heading', () => {
+  it('renders the hero heading as a single responsive string (no hardcoded line break)', () => {
+    const { getByTestId } = render(<HomeScreen />);
+    // The heading must wrap naturally at render time, not via an embedded
+    // "\n" — a hardcoded break can't adapt across phone widths/orientations.
+    // (RNTL's text matcher normalizes whitespace, so this is checked against
+    // the raw `children` prop rather than via getByText/queryByText, which
+    // would treat "\n" and " " as equivalent.)
+    const heading = getByTestId('home-hero-heading');
+    expect(heading.props.children).toBe("What's the plan today?");
+    expect(heading.props.children).not.toEqual(expect.stringContaining('\n'));
+  });
+
+  it('centres the hero headline, editorial measure narrower than the full gutter width', () => {
+    const { getByTestId } = render(<HomeScreen />);
+    const heading = getByTestId('home-hero-heading');
+    const style = StyleSheet.flatten(heading.props.style);
+    expect(style.textAlign).toBe('center');
+    expect(style.alignSelf).toBe('center');
+    // A finite measure (not full-bleed) is what lets the 4-word headline
+    // fall into a balanced two-line wrap instead of hugging one edge.
+    expect(style.maxWidth).toBeTruthy();
+    expect(style.maxWidth).not.toBe('100%');
+  });
+
+  it('centres the hero supporting sentence (ctxLine) on its own narrower-than-full-width measure', () => {
+    const { getByTestId } = render(<HomeScreen />);
+    const ctxLine = getByTestId('home-hero-ctxline');
+    const style = StyleSheet.flatten(ctxLine.props.style);
+    expect(style.textAlign).toBe('center');
+    expect(style.alignSelf).toBe('center');
+    expect(style.maxWidth).toBeTruthy();
+  });
+
+  it('centres the greeting + weather-pill row as one balanced group, while still allowing it to wrap gracefully', () => {
+    const { getByTestId } = render(<HomeScreen />);
+    const row = getByTestId('home-hero-greeting-row');
+    const style = StyleSheet.flatten(row.props.style);
+    expect(style.justifyContent).toBe('center');
+    // Must stay wrap-capable — a long first name + long weather label must
+    // never clip or push off-screen, only wrap onto a second centred line.
+    expect(style.flexWrap).toBe('wrap');
+  });
+
+  it('never applies a blanket textAlign:center to the passive "Near you" location control (must stay left-aligned for scanning)', () => {
     const { getByText } = render(<HomeScreen />);
-    expect(getByText("What's the\nplan today?")).toBeTruthy();
+    const nearYou = getByText('Near you');
+    const style = StyleSheet.flatten(nearYou.props.style);
+    expect(style.textAlign).not.toBe('center');
   });
 
   it('renders the search pill and intent rail, with NO section labels (final jsx)', () => {
@@ -299,6 +344,55 @@ describe('Browse (Home) — chrome (renders identically regardless of consent)',
     // Plus breathing room below the final card inside the viewport.
     const content = StyleSheet.flatten(scroll.props.contentContainerStyle);
     expect(content.paddingBottom).toBeGreaterThanOrEqual(32);
+  });
+});
+
+describe('Browse (Home) — hero headline accessibility font scaling (2026-08-11 follow-up)', () => {
+  // useWindowDimensions() reads Dimensions.get('window') on initial render,
+  // so setting it BEFORE render() is enough to control `fontScale` for the
+  // component under test — no need to fire a native 'change' event. Always
+  // restore the real window dims afterwards so this suite's fontScale
+  // override can never leak into any other test file.
+  const realWindow = Dimensions.get('window');
+  afterEach(() => {
+    Dimensions.set({ window: realWindow, screen: realWindow });
+  });
+
+  it('maxFontSizeMultiplier={1.2} is set on the hero heading, greeting text and ctxLine (matches the existing Home convention)', () => {
+    const { getByTestId, getByText } = render(<HomeScreen />);
+    expect(getByTestId('home-hero-heading').props.maxFontSizeMultiplier).toBe(1.2);
+    expect(getByTestId('home-hero-ctxline').props.maxFontSizeMultiplier).toBe(1.2);
+    const greetingText = getByText(/Good (morning|afternoon|evening|night), Liam/);
+    expect(greetingText.props.maxFontSizeMultiplier).toBe(1.2);
+  });
+
+  it('at the default fontScale (1.0), the heading geometry is numerically identical to the accepted default-scale look', () => {
+    Dimensions.set({ window: { ...realWindow, fontScale: 1 }, screen: { ...realWindow, fontScale: 1 } });
+    const { getByTestId } = render(<HomeScreen />);
+    const style = StyleSheet.flatten(getByTestId('home-hero-heading').props.style);
+    expect(style.lineHeight).toBe(38);
+    expect(style.maxWidth).toBe(260);
+  });
+
+  it('clamps the accessibility font scale at 1.2x — lineHeight/maxWidth track the CLAMP, not an unbounded OS multiplier', () => {
+    // A large OS accessibility setting (e.g. 2x) must not stretch the fixed
+    // lineHeight/maxWidth box past 1.2x, or the heading's glyphs would grow
+    // (via maxFontSizeMultiplier, clamped separately by RN itself) faster
+    // than the box that contains them, causing overlap and cramped 3-line
+    // wraps — exactly the regression this follow-up fixes.
+    Dimensions.set({ window: { ...realWindow, fontScale: 2 }, screen: { ...realWindow, fontScale: 2 } });
+    const { getByTestId } = render(<HomeScreen />);
+    const style = StyleSheet.flatten(getByTestId('home-hero-heading').props.style);
+    expect(style.lineHeight).toBeCloseTo(38 * 1.2);
+    expect(style.maxWidth).toBeCloseTo(260 * 1.2);
+  });
+
+  it('scales proportionally (not clamped) for a modest accessibility bump below the 1.2x ceiling', () => {
+    Dimensions.set({ window: { ...realWindow, fontScale: 1.1 }, screen: { ...realWindow, fontScale: 1.1 } });
+    const { getByTestId } = render(<HomeScreen />);
+    const style = StyleSheet.flatten(getByTestId('home-hero-heading').props.style);
+    expect(style.lineHeight).toBeCloseTo(38 * 1.1);
+    expect(style.maxWidth).toBeCloseTo(260 * 1.1);
   });
 });
 

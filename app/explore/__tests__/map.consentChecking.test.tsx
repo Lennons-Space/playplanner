@@ -24,6 +24,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import ExploreScreen from '../map';
 
+// authStore: ExploreScreen's default export is wrapped in RequireSession (see
+// components/auth/RequireSession.tsx) — authenticated + settled so this
+// file's consent-'checking'-state regression test still reaches that state
+// rather than being intercepted by the auth guard first.
+jest.mock('@/store/authStore', () => ({
+  useAuthStore: jest.fn((selector: (s: unknown) => unknown) =>
+    selector({
+      session: { access_token: 'tok', user: { id: 'user-test-id' } },
+      isLoading: false,
+    }),
+  ),
+}));
+
 jest.mock('@/hooks/useLocationConsent', () => ({
   useLocationConsent: () => ({ status: 'checking', grant: jest.fn(), decline: jest.fn() }),
 }));

@@ -16,12 +16,22 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import * as SecureStore from 'expo-secure-store';
+import { useAuthStore } from '@/store/authStore';
 import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import ExploreScreen from '../map';
 import type { Venue } from '@/types';
 import type { WeatherState } from '@/lib/weather';
 
 // ─── Module mocks (same surface as map.test.tsx) ────────────────────────────
+
+// authStore: ExploreScreen's default export is wrapped in RequireSession (see
+// components/auth/RequireSession.tsx) — default to an authenticated, settled
+// session so this file's existing behaviour tests are unaffected. Guard
+// behaviour itself is covered by map.authGuard.test.tsx.
+jest.mock('@/store/authStore', () => ({
+  useAuthStore: jest.fn(),
+}));
+
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn().mockResolvedValue(null),
   setItemAsync: jest.fn().mockResolvedValue(undefined),
@@ -167,6 +177,19 @@ const mockUseNearbyVenues = useNearbyVenues as jest.MockedFunction<
   typeof useNearbyVenues
 >;
 const mockUseCategories = useCategories as jest.MockedFunction<typeof useCategories>;
+const mockUseAuthStore = useAuthStore as jest.MockedFunction<typeof useAuthStore>;
+// Derive the store state type without importing AuthState directly (it is not exported).
+type AuthStoreState = ReturnType<typeof useAuthStore.getState>;
+
+/** Drives RequireSession to its authenticated, settled-loading branch. */
+function mockAuthenticatedSession() {
+  mockUseAuthStore.mockImplementation((selector) =>
+    selector({
+      session: { access_token: 'tok', user: { id: 'user-test-id' } },
+      isLoading: false,
+    } as unknown as AuthStoreState),
+  );
+}
 
 function makeVenue(overrides: Partial<Venue> = {}): Venue {
   return {
@@ -230,6 +253,7 @@ function makeWrapper() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockAuthenticatedSession();
   mockGetItemAsync.mockResolvedValue(null);
   mockUseWeather.mockReturnValue(null);
   mockUseNearbyVenues.mockReturnValue({

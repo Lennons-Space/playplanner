@@ -1,0 +1,74 @@
+# =============================================================================
+# supabase/config.toml — Supabase CLI configuration
+#
+# SCOPE — READ THIS BEFORE RELYING ON THIS FILE
+# ---------------------------------------------
+# This file is consumed by the **Supabase CLI**. It does NOT configure a
+# function deployed by pasting source into the Supabase Dashboard editor —
+# in that flow the Dashboard's own "Verify JWT" toggle is what applies, and
+# this file is inert. It is kept as the declared source of truth for the
+# intended production configuration, so a future CLI deploy cannot silently
+# diverge from what was reviewed.
+#
+# There is also a known CLI issue where verify_jwt settings are not
+# re-applied when an existing function is *updated* (supabase/cli#4059), so
+# always confirm the toggle in the Dashboard after any deploy.
+#
+# ⚠️ CLI FOOTGUN — do not run a bare `supabase functions deploy`
+# --------------------------------------------------------------
+# Only `geocode-postcode` is declared below, deliberately: the instruction
+# for this change was to touch no other Edge Function's auth configuration.
+# The CLI can drop or mis-configure functions that exist on the project but
+# are absent from this file when deploying without an explicit function name.
+# Always deploy one function at a time and by name:
+#
+#     supabase functions deploy geocode-postcode
+#
+# In particular `stripe-webhook` MUST run with verify_jwt = false (Stripe
+# cannot present a Supabase user JWT) — it is intentionally NOT declared
+# here, so do not bulk-deploy against this file until it is.
+# =============================================================================
+
+[functions.geocode-postcode]
+# TRUE is also the platform default; it is stated explicitly because it is a
+# deliberate security decision, not an accident of the default.
+#
+# geocode-postcode is an outbound fetch proxy to postcodes.io. Left open it
+# would let anyone use this project as an anonymising relay, so it is
+# restricted to signed-in PlayPlanner users by TWO independent layers:
+#
+#   1. verify_jwt = true (here) — the Supabase gateway validates the caller's
+#      JWT before the function is invoked at all. Unauthenticated traffic
+#      never reaches our code, so it can never trigger an outbound request.
+#
+#   2. withSupabase({ auth: 'user' }) inside the function — independently
+#      verifies a real Supabase Auth user JWT against the project JWKS
+#      (signature + expiry) and only then runs the handler.
+#
+# Layer 2 is NOT redundant: it is the authoritative check, it is what rejects
+# a valid-but-publishable-key-only request (a publishable key is public app
+# identification, not user authentication), and it keeps the function safe if
+# the platform toggle is ever flipped by accident.
+#
+# This is the configuration Supabase documents for `auth: 'user'`. Only the
+# 'publishable', 'secret' and 'none' auth modes call for verify_jwt = false.
+#
+# ⚠️ KNOWN DIVERGENCE FROM PRODUCTION AS AT 2026-08-11
+# ----------------------------------------------------
+# The function was deployed via the Dashboard with the platform toggle OFF,
+# relying on layer 2 (withSupabase auth:'user') alone. Verified read-only
+# against production on 2026-08-11: both a keyless request and a
+# publishable-key-only request return the FUNCTION's own
+# {"message":"Invalid credentials","code":"INVALID_CREDENTIALS"} rather than
+# the gateway's UNAUTHORIZED_NO_AUTH_HEADER — i.e. requests reach the
+# function and layer 2 rejects them. The endpoint is correctly closed to
+# unauthenticated callers either way.
+#
+# `true` is kept here as the declared intent because it is strictly stronger
+# (bad requests are rejected before any function code runs) and is what the
+# docs prescribe for auth:'user'. Enabling the Dashboard toggle would NOT
+# break signed-in users: they send a real user session JWT, which is exactly
+# what the gateway validates. Flip it when convenient; until then this file
+# and production intentionally differ, and that is recorded here rather than
+# quietly reconciled.
+verify_jwt = true
