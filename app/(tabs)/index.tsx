@@ -536,7 +536,7 @@ export default function HomeScreen() {
                 </View>
               </Pressable>
 
-              <PPBrandMark size={42} onPress={openProfile} accessibilityLabel="Open profile" />
+              <PPBrandMark size={50} onPress={openProfile} accessibilityLabel="Open profile" />
             </View>
           </Animated.View>
 

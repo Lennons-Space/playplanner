@@ -26,12 +26,19 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 import '@testing-library/react-native/extend-expect';
 
+import { Image } from 'react-native';
+import { GlassSurface } from '@/components/ui/GlassSurface';
 import LoginScreen from '../login';
 import RegisterScreen from '../register';
 import PrivacyScreen from '../privacy';
 import TermsScreen from '../terms';
 import WelcomeScreen from '../welcome';
 import { useThemeStore } from '@/store/themeStore';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const PP2_TRANSPARENT_SOURCE = require('../../../assets/design/PP2-transparent.png');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const PP2_RAW_SOURCE = require('../../../assets/design/PP2.png');
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -363,11 +370,83 @@ describe('Welcome — renders in both light and dark (Step 10A Part 2 proof set)
     expect(screen.getByText('Sign in')).toBeTruthy();
   });
 
+  it('hero card keeps the original dark charcoal tint in dark mode (byte-identical to before the fix)', () => {
+    useThemeStore.setState({ preference: 'dark' });
+    render(<WelcomeScreen />);
+    const heroCard = screen.UNSAFE_getAllByType(GlassSurface)[0];
+    expect(heroCard.props.tintColor).toBe('rgba(18,18,26,0.86)');
+  });
+
+  it('hero card gets the warm sand/cream tint in light mode, not the dark charcoal literal (2026-08-13 fix)', () => {
+    useThemeStore.setState({ preference: 'light' });
+    render(<WelcomeScreen />);
+    const heroCard = screen.UNSAFE_getAllByType(GlassSurface)[0];
+    expect(heroCard.props.tintColor).toBe('rgba(246,241,230,0.86)');
+    expect(heroCard.props.tintColor).not.toBe('rgba(18,18,26,0.86)');
+  });
+
   it('renders without crashing in light mode, with real copy intact', () => {
     useThemeStore.setState({ preference: 'light' });
     render(<WelcomeScreen />);
     expect(screen.getByText('Create free account')).toBeTruthy();
     expect(screen.getByText('Sign in')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Welcome hero — PP2 logo sizing (2026-08-12 device-review fix, then the
+// transparency + larger-sizing correction later the same day)
+//
+// Guards against the regression a real device caught: the Image itself must
+// never carry a percentage width + aspectRatio directly (that combination is
+// what made PP2 render huge/cropped on Android — the Image's Yoga box was
+// resolved off the source's raw pixel size instead of the percentage). The
+// safe pattern is a bounded plain View sized by aspectRatio + maxWidth, with
+// the Image filling it at 100%/100% + resizeMode="contain".
+//
+// Asset: explicit instruction to use PP2-transparent.png here (real alpha,
+// so the hero's own background shows through — no checkerboard box), NOT the
+// raw PP2.png (that stays Home-only). Sizing: a later explicit instruction
+// asked for a visibly larger logo filling the hero's top area, so the bound
+// widened from the initial 85%/230dp-capped pass to 95%/420dp-capped.
+// ---------------------------------------------------------------------------
+
+describe('Welcome hero — PP2 logo is a bounded, contained, transparent logo (not a full-card background)', () => {
+  it('renders PP2-transparent.png via <Image> — never the raw PP2.png with the baked checkerboard', () => {
+    render(<WelcomeScreen />);
+    const image = screen.UNSAFE_getByType(Image);
+    expect(image.props.source).toBe(PP2_TRANSPARENT_SOURCE);
+    expect(image.props.source).not.toBe(PP2_RAW_SOURCE);
+  });
+
+  it('uses resizeMode="contain" (no crop, no cover)', () => {
+    render(<WelcomeScreen />);
+    expect(screen.UNSAFE_getByType(Image).props.resizeMode).toBe('contain');
+  });
+
+  it('the Image itself has no percentage width/aspectRatio (the bug pattern) — it just fills its container', () => {
+    render(<WelcomeScreen />);
+    const style = screen.UNSAFE_getByType(Image).props.style;
+    expect(style.width).toBe('100%');
+    expect(style.height).toBe('100%');
+    expect(style.aspectRatio).toBeUndefined();
+  });
+
+  it('the logo sits in a bounded container sized generously off the card width (95%, real aspect ratio) — not stretched full-bleed', () => {
+    render(<WelcomeScreen />);
+    const image = screen.UNSAFE_getByType(Image);
+    const container = image.parent!;
+    expect(container.props.style.width).toBe('95%');
+    expect(container.props.style.maxWidth).toBe(420);
+    expect(container.props.style.aspectRatio).toBeCloseTo(1448 / 1086, 3);
+    // Never 'position: absolute' / full-bleed across the hero card.
+    expect(container.props.style.position).not.toBe('absolute');
+  });
+
+  it('the hero copy ("Family days out...") still renders alongside the logo, not replaced by it', () => {
+    render(<WelcomeScreen />);
+    expect(screen.getByText(/Family days out/)).toBeTruthy();
+    expect(screen.getByText(/Find soft plays, parks and cafés/)).toBeTruthy();
   });
 });
 

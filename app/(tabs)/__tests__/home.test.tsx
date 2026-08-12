@@ -18,8 +18,8 @@
  */
 
 import React from 'react';
-import { Dimensions, StyleSheet } from 'react-native';
-import { render, fireEvent, within } from '@testing-library/react-native';
+import { Dimensions, StyleSheet, Image } from 'react-native';
+import { render, fireEvent, within, screen } from '@testing-library/react-native';
 
 import { router } from 'expo-router';
 import HomeScreen from '../index';
@@ -219,6 +219,42 @@ describe('Browse (Home) — chrome (renders identically regardless of consent)',
   it('renders the time-based greeting with the user first name', () => {
     const { getByText } = render(<HomeScreen />);
     expect(getByText(/Good (morning|afternoon|evening|night), Liam/)).toBeTruthy();
+  });
+
+  // 2026-08-13: reverted back to the compact map-only PP3 icon — the full
+  // PP2 lockup (briefly used here) is Welcome-only now. PP3-transparent.png
+  // has real alpha (an alpha-repaired derivative of the canonical PP3.png),
+  // so no checkerboard/box shows behind it.
+  it('top-right brand mark renders the compact PP3-transparent icon, never PP2 or raw PP3', () => {
+    render(<HomeScreen />);
+    const image = screen.UNSAFE_getByType(Image);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pp3TransparentSource = require('../../../assets/design/PP3-transparent.png');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pp3RawSource = require('../../../assets/design/PP3.png');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pp2Source = require('../../../assets/design/PP2.png');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pp2TransparentSource = require('../../../assets/design/PP2-transparent.png');
+    expect(image.props.source).toBe(pp3TransparentSource);
+    expect(image.props.source).not.toBe(pp3RawSource);
+    expect(image.props.source).not.toBe(pp2Source);
+    expect(image.props.source).not.toBe(pp2TransparentSource);
+    expect(image.props.resizeMode).toBe('contain');
+  });
+
+  it('brand mark is a small square icon (50x50), not the wide PP2 lockup shape', () => {
+    render(<HomeScreen />);
+    const style = screen.UNSAFE_getByType(Image).props.style;
+    expect(style).toEqual({ width: 50, height: 50 });
+  });
+
+  it('brand mark keeps its press behaviour (opens profile)', () => {
+    const { getByLabelText } = render(<HomeScreen />);
+    const mark = getByLabelText('Open profile');
+    expect(mark.props.accessibilityRole).toBe('button');
+    fireEvent.press(mark);
+    expect(router.push).toHaveBeenCalledWith('/(tabs)/profile');
   });
 
   it('renders the hero heading as a single responsive string (no hardcoded line break)', () => {

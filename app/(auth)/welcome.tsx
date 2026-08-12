@@ -21,7 +21,7 @@
  */
 
 import { useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -30,12 +30,12 @@ import { Icon } from '@/components/ui';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
 import { GlassButton } from '@/components/ui/GlassButton';
-import { FontFamily, type ThemeTokens, type AccentPalette } from '@/constants/theme';
+import { FontFamily, type ThemeTokens } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 
 export default function WelcomeScreen() {
   const { tokens: T, accent: ACCENT, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(T, ACCENT), [T, ACCENT]);
+  const styles = useMemo(() => createStyles(T), [T]);
 
   return (
     <View style={styles.root}>
@@ -48,7 +48,16 @@ export default function WelcomeScreen() {
         >
 
           {/* ── Hero card ────────────────────────────────────────────────── */}
-          <GlassSurface style={styles.heroCard} tintColor="rgba(18,18,26,0.86)">
+          {/* tintColor is mode-aware (2026-08-13 fix): the previous hardcoded
+              dark charcoal literal ignored theme mode entirely, so in light
+              mode the card read as a dark navy block sitting on top of the
+              app's warm sand/cream background (V2Background's light-mode
+              base, #F6F1E6 family) instead of belonging to it. Dark mode is
+              byte-identical to before; only light mode changes. */}
+          <GlassSurface
+            style={styles.heroCard}
+            tintColor={mode === 'dark' ? 'rgba(18,18,26,0.86)' : 'rgba(246,241,230,0.86)'}
+          >
             <LinearGradient
               colors={['rgba(76,141,246,0.22)', 'rgba(124,79,204,0.14)', 'transparent']}
               start={{ x: 0, y: 0 }}
@@ -57,27 +66,18 @@ export default function WelcomeScreen() {
               pointerEvents="none"
             />
 
-            <View
-              style={styles.heroIllustration}
-              accessible={false}
-              importantForAccessibility="no-hide-descendants"
-            >
-              {/* Leaf map pin */}
-              <View style={styles.pinLeafOuter}>
-                <View style={styles.pinLeafInner}>
-                  <Icon name="leaf" size={22} color="#FFFFFF" />
-                </View>
-              </View>
-              {/* Sparkle map pin */}
-              <View style={styles.pinAccentOuter}>
-                <View style={styles.pinAccentInner}>
-                  <Icon name="sparkle" size={22} color="#FFFFFF" />
-                </View>
-              </View>
+            <View style={styles.heroLogoBox}>
+              <Image
+                source={require('../../assets/design/PP2-transparent.png')}
+                resizeMode="contain"
+                style={styles.heroLogo}
+                accessibilityIgnoresInvertColors
+                accessible
+                accessibilityLabel="Play Planner"
+              />
             </View>
 
             <View style={styles.heroTextWrap}>
-              <Text style={styles.eyebrow}>Play Planner</Text>
               <Text style={styles.headline}>{"Family days out,\nsorted by parents."}</Text>
               <Text style={styles.subtitle}>
                 Find soft plays, parks and cafés nearby — with honest reviews from real families.
@@ -147,7 +147,7 @@ export default function WelcomeScreen() {
   );
 }
 
-function createStyles(T: ThemeTokens, ACCENT: AccentPalette) {
+function createStyles(T: ThemeTokens) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: 'transparent' },
     safe: { flex: 1, backgroundColor: 'transparent' },
@@ -172,68 +172,42 @@ function createStyles(T: ThemeTokens, ACCENT: AccentPalette) {
       right: 0,
       height: 180,
     },
-    heroIllustration: {
-      position: 'absolute',
-      top: 24,
-      left: 0,
-      right: 0,
-      height: 120,
+    // PP2 brand artwork (folded map + sun + "PlayPlanner" wordmark) — the
+    // alpha-repaired PP2-transparent.png (2026-08-12: explicit instruction —
+    // real transparency here so the hero's own dark/warm background shows
+    // through around the logo; no checkerboard, no image rectangle. The raw
+    // PP2.png with the baked checkerboard stays in use on Home only).
+    //
+    // The aspectRatio + contain sizing lives on this plain View, NOT on the
+    // Image itself. An Image given a percentage width + aspectRatio directly
+    // can size its Yoga box off the SOURCE file's raw pixel dimensions
+    // instead of the percentage on Android (this is what caused the hero to
+    // render PP2 at ~huge size, clipped by heroCard's overflow:hidden — the
+    // original bug). Sizing a bounded plain View first, then filling it with
+    // Image style={width:'100%',height:'100%'} + resizeMode="contain",
+    // removes the ambiguity entirely: the box is fixed by ordinary View
+    // layout math before the Image ever resolves, so contain can only ever
+    // shrink-to-fit inside it, filling the box exactly (the container's
+    // aspect ratio matches the artwork's exactly, so there is no letterbox
+    // gap) — cropping/overflow is still not possible.
+    //
+    // Sized generously (2026-08-12, later): 95% of the card's inner content
+    // width — up from the initial 85%/230dp-capped pass, which read as too
+    // small once real transparency made the logo's own edges the only
+    // visible boundary. maxWidth:420 is a tablet ceiling only; it never
+    // binds on phone-width screens.
+    heroLogoBox: {
+      alignSelf: 'center',
+      width: '95%',
+      maxWidth: 420,
+      aspectRatio: 1448 / 1086,
     },
-    // Teardrop shape: three rounded corners + one sharp corner, rotated -45deg
-    pinLeafOuter: {
-      position: 'absolute',
-      top: 8,
-      left: 36,
-      width: 52,
-      height: 64,
-      borderTopLeftRadius: 34,
-      borderTopRightRadius: 34,
-      borderBottomLeftRadius: 34,
-      borderBottomRightRadius: 0,
-      backgroundColor: '#3AA36A',
-      transform: [{ rotate: '-45deg' }],
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    // Counter-rotate icon so it stays upright inside the pin
-    pinLeafInner: {
-      transform: [{ rotate: '45deg' }],
-      width: 40,
-      height: 40,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    pinAccentOuter: {
-      position: 'absolute',
-      top: 24,
-      right: 44,
-      width: 52,
-      height: 64,
-      borderTopLeftRadius: 34,
-      borderTopRightRadius: 34,
-      borderBottomLeftRadius: 34,
-      borderBottomRightRadius: 0,
-      backgroundColor: ACCENT.accent,
-      transform: [{ rotate: '-45deg' }],
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    pinAccentInner: {
-      transform: [{ rotate: '45deg' }],
-      width: 40,
-      height: 40,
-      alignItems: 'center',
-      justifyContent: 'center',
+    heroLogo: {
+      width: '100%',
+      height: '100%',
     },
     heroTextWrap: {
-      marginTop: 100,
-    },
-    eyebrow: {
-      fontFamily: FontFamily.caption,
-      fontSize: 12,
-      letterSpacing: 1.5,
-      color: ACCENT.tagText,
-      textTransform: 'uppercase',
+      marginTop: 16,
     },
     headline: {
       fontFamily: FontFamily.display,
