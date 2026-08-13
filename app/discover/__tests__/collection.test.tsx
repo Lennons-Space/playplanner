@@ -21,20 +21,11 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
-import { useColorScheme } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import CollectionScreen from '../[collection]';
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 import type { Venue } from '@/types';
-
-// ── Deterministic app theme (overrides jest.setup.js's global 'dark' mock
-// explicitly, so this suite documents its own assumption rather than relying
-// on an implicit global default) ────────────────────────────────────────────
-jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
-  default: jest.fn(),
-}));
-const mockUseColorScheme = useColorScheme as jest.Mock;
 
 // ── expo-router ──────────────────────────────────────────────────────────
 const mockPush = jest.fn();
@@ -156,8 +147,7 @@ function collectCardRoots(node: JsonNode, out: Record<string, unknown>[] = []): 
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockUseColorScheme.mockReturnValue('dark');
-  useThemeStore.setState({ preference: 'system', hasHydrated: true });
+  useAppearanceStore.setState({ mode: 'dark' });
   mockUseNearbyVenues.mockReturnValue({ data: venues, isLoading: false, error: null });
 });
 
@@ -173,7 +163,7 @@ describe('Collection page — VenueCard no longer renders a legacy white card in
   });
 
   it('still renders the correct DARK surface if resolved to light mode (theme still respected, not hardcoded)', () => {
-    mockUseColorScheme.mockReturnValue('light');
+    useAppearanceStore.setState({ mode: 'light' });
     const tree = render(<CollectionScreen />, { wrapper: makeWrapper() }).toJSON() as JsonNode;
     const cards = collectCardRoots(tree);
     expect(cards.length).toBeGreaterThan(0);

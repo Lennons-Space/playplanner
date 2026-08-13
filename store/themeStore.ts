@@ -1,12 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────
-// themeStore — the user's SAVED appearance preference (Step 10A Part 2,
-// dual-theme foundation).
+// themeStore — LEGACY. The user's formerly-SAVED appearance preference (Step
+// 10A Part 2, dual-theme foundation).
+//
+// SUPERSEDED (2026-08-13, automatic day/night theme): PlayPlanner's light/
+// dark appearance is now resolved entirely from local time — see
+// lib/timeAppearance.ts + store/appearanceStore.ts, consumed by
+// hooks/useAppTheme.ts. This store's `preference` value is NO LONGER READ
+// anywhere in the visual-resolution path (useAppTheme no longer imports this
+// file at all). It is kept, unchanged, purely so an already-installed app
+// with a persisted AsyncStorage value doesn't hit a migration/parse error —
+// there is deliberately no reader left to act on it. app/profile/appearance.tsx
+// no longer writes to it either (that screen is now an Automatic-only
+// explainer with no picker). Do not wire this back up to useAppTheme without
+// re-checking that decision — see the CLAUDE.md automatic-theme task notes.
 //
 // This store owns exactly one decision: "system" | "light" | "dark" — never
-// the RESOLVED mode itself (that's useAppTheme's job, since resolving
-// "system" requires the live OS colour scheme via useColorScheme(), which
-// only makes sense to read inside a React hook). Keeping the two separate
-// means this store stays a tiny, pure, testable piece of state with no
+// a RESOLVED mode itself. Keeping the two separate (historically, so
+// resolving "system" could read the live OS colour scheme inside a React
+// hook) means this store stays a tiny, pure, testable piece of state with no
 // dependency on react-native's Appearance module.
 //
 // Privacy: no PII, no auth coupling, no network. A theme preference is not

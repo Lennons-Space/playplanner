@@ -33,7 +33,7 @@ import RegisterScreen from '../register';
 import PrivacyScreen from '../privacy';
 import TermsScreen from '../terms';
 import WelcomeScreen from '../welcome';
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PP2_TRANSPARENT_SOURCE = require('../../../assets/design/PP2-transparent.png');
@@ -107,7 +107,7 @@ beforeEach(() => {
   // Step 10A Part 2 (dual-theme foundation): reset to the default so tests
   // above (written before theming existed) stay unaffected by the
   // light/dark-specific Welcome block added below.
-  useThemeStore.setState({ preference: 'system' });
+  useAppearanceStore.setState({ mode: 'dark' });
 });
 
 // ---------------------------------------------------------------------------
@@ -364,21 +364,21 @@ describe('Terms/Privacy navigation', () => {
 
 describe('Welcome — renders in both light and dark (Step 10A Part 2 proof set)', () => {
   it('renders without crashing in dark mode, with real copy intact', () => {
-    useThemeStore.setState({ preference: 'dark' });
+    useAppearanceStore.setState({ mode: 'dark' });
     render(<WelcomeScreen />);
     expect(screen.getByText('Create free account')).toBeTruthy();
     expect(screen.getByText('Sign in')).toBeTruthy();
   });
 
   it('hero card keeps the original dark charcoal tint in dark mode (byte-identical to before the fix)', () => {
-    useThemeStore.setState({ preference: 'dark' });
+    useAppearanceStore.setState({ mode: 'dark' });
     render(<WelcomeScreen />);
     const heroCard = screen.UNSAFE_getAllByType(GlassSurface)[0];
     expect(heroCard.props.tintColor).toBe('rgba(18,18,26,0.86)');
   });
 
   it('hero card gets the warm sand/cream tint in light mode, not the dark charcoal literal (2026-08-13 fix)', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     render(<WelcomeScreen />);
     const heroCard = screen.UNSAFE_getAllByType(GlassSurface)[0];
     expect(heroCard.props.tintColor).toBe('rgba(246,241,230,0.86)');
@@ -386,7 +386,7 @@ describe('Welcome — renders in both light and dark (Step 10A Part 2 proof set)
   });
 
   it('renders without crashing in light mode, with real copy intact', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     render(<WelcomeScreen />);
     expect(screen.getByText('Create free account')).toBeTruthy();
     expect(screen.getByText('Sign in')).toBeTruthy();

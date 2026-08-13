@@ -25,7 +25,7 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert, Linking, StyleSheet } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 import ProfileScreen from '../profile';
 
 // ── expo / RN shims ─────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ beforeEach(() => {
   // Step 10A Part 2 (dual-theme foundation): reset to the default so the
   // tests above (written before theming existed) stay dark, unaffected by
   // the light/dark-specific block added below.
-  useThemeStore.setState({ preference: 'system' });
+  useAppearanceStore.setState({ mode: 'dark' });
 });
 
 // ── Signed-out guard ─────────────────────────────────────────────────────────
@@ -437,20 +437,30 @@ describe('Profile v2 — sign-out and delete-account stay guarded', () => {
 });
 
 // ── Appearance row stays single-line (polish fix) ──────────────────────────
-// The "Appearance" label must never wrap; the long secondary value ("System,
-// light or dark") truncates with an ellipsis instead, and the label keeps the
-// same font size as every other row.
+// The "Appearance" label must never wrap; the long secondary value
+// ("Automatic by time of day") truncates with an ellipsis instead, and the
+// label keeps the same font size as every other row.
+//
+// 2026-08-13 copy fix: the row used to read "System, light or dark" — stale
+// once appearance became automatic/time-based (no more System/Light/Dark
+// picker, see app/profile/appearance.tsx). Updated to reflect that this is
+// no longer a user choice.
 describe('Profile v2 — Appearance row: label single-line, detail truncates', () => {
   it('the "Appearance" label is single-line (numberOfLines=1) so it cannot wrap', () => {
     const { getByText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
     expect(getByText('Appearance').props.numberOfLines).toBe(1);
   });
 
-  it('the "System, light or dark" secondary value truncates with a tail ellipsis (gives way before the label)', () => {
+  it('the "Automatic by time of day" secondary value truncates with a tail ellipsis (gives way before the label)', () => {
     const { getByText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
-    const detail = getByText('System, light or dark');
+    const detail = getByText('Automatic by time of day');
     expect(detail.props.numberOfLines).toBe(1);
     expect(detail.props.ellipsizeMode).toBe('tail');
+  });
+
+  it('no longer implies a System/Light/Dark choice (stale pre-automatic-theme copy)', () => {
+    const { queryByText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
+    expect(queryByText('System, light or dark')).toBeNull();
   });
 
   it('the label keeps the same font size as sibling rows and never shrinks (flexShrink 0)', () => {
@@ -474,21 +484,21 @@ describe('Profile v2 — tab-safe bottom padding', () => {
 // ── Step 10A Part 2 (dual-theme foundation) — proof-set both-theme render ──
 describe('Profile v2 — renders in both light and dark (Step 10A Part 2 proof set)', () => {
   it('renders without crashing in dark mode, with real content intact', () => {
-    useThemeStore.setState({ preference: 'dark' });
+    useAppearanceStore.setState({ mode: 'dark' });
     const { getByText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
     expect(getByText('Jamie Rivers')).toBeTruthy();
     expect(getByText('Sign out')).toBeTruthy();
   });
 
   it('renders without crashing in light mode, with real content intact', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     const { getByText } = render(<ProfileScreen />, { wrapper: makeWrapper() });
     expect(getByText('Jamie Rivers')).toBeTruthy();
     expect(getByText('Sign out')).toBeTruthy();
   });
 
   it('the skeleton (profile still loading) also renders without crashing in light mode', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     mockUseProfile.mockReturnValue(null);
     expect(() => render(<ProfileScreen />, { wrapper: makeWrapper() })).not.toThrow();
   });
@@ -496,12 +506,12 @@ describe('Profile v2 — renders in both light and dark (Step 10A Part 2 proof s
   it('a theme change never alters auth/admin visibility — admin row stays gated on is_admin in BOTH modes', () => {
     mockUseProfile.mockReturnValue({ ...baseProfile, is_admin: true });
 
-    useThemeStore.setState({ preference: 'dark' });
+    useAppearanceStore.setState({ mode: 'dark' });
     const dark = render(<ProfileScreen />, { wrapper: makeWrapper() });
     expect(dark.getByLabelText('Admin panel')).toBeTruthy();
     dark.unmount();
 
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     const light = render(<ProfileScreen />, { wrapper: makeWrapper() });
     expect(light.getByLabelText('Admin panel')).toBeTruthy();
 

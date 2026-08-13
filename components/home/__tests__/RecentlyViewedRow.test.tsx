@@ -11,9 +11,6 @@ const mockHook = jest.fn();
 jest.mock('@/hooks/useRecentlyViewed', () => ({
   useRecentlyViewed: () => mockHook(),
 }));
-jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
-  default: jest.fn(() => 'light'),
-}));
 // Keep the row test focused — stub the card (it pulls in expo-linear-gradient etc.).
 jest.mock('@/components/home/ExploreCard', () => {
   const { Text } = require('react-native');

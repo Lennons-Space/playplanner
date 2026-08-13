@@ -1,18 +1,20 @@
 /**
- * Appearance settings screen — System / Light / Dark theme preference.
+ * Appearance settings screen (2026-08-13, automatic day/night theme).
  *
- * Step 10A Part 2 (dual-theme foundation): reads + writes
- * store/themeStore.ts's `preference` directly. Changing it updates the whole
- * app immediately via useAppTheme() (plain Zustand reactivity — no reload,
- * no navigation round-trip needed). Works fully signed-out too: the theme
- * store has no auth dependency at all (see store/themeStore.ts), and this
- * screen itself never reads or gates on a user.
+ * SUPERSEDED the old System/Light/Dark picker: PlayPlanner's appearance is
+ * now a fixed, non-configurable rule — light 07:00–18:59, dark 19:00–06:59,
+ * always local device time (lib/timeAppearance.ts, store/appearanceStore.ts,
+ * consumed everywhere via hooks/useAppTheme.ts). There is nothing left for
+ * the user to choose, so this screen no longer renders a picker or writes to
+ * store/themeStore.ts (that store's persisted value is now inert — kept only
+ * for AsyncStorage data compatibility, see its own file header). This screen
+ * exists purely to explain the automatic behaviour so a returning user who
+ * remembers the old System/Light/Dark options isn't confused by their
+ * absence.
  *
  * Builds its own small header instead of mounting the shared <V2Header/>
  * (which is intentionally left hard-coded dark this phase — see the scoping
- * note in app/profile/notifications.tsx). Because this is a brand-new
- * screen, it can be theme-correct in both modes from the start with no
- * shared-component conflict to work around.
+ * note in app/profile/notifications.tsx).
  */
 import { useMemo } from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
@@ -24,25 +26,10 @@ import { GlassSurface } from '@/components/ui/GlassSurface';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { FontFamily, type ThemeTokens, type AccentPalette } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
-import { useThemeStore, type ThemePreference } from '@/store/themeStore';
-
-interface AppearanceOption {
-  value: ThemePreference;
-  label: string;
-  description: string;
-}
-
-const OPTIONS: AppearanceOption[] = [
-  { value: 'system', label: 'System', description: "Match your device's setting" },
-  { value: 'light', label: 'Light', description: 'Always use light mode' },
-  { value: 'dark', label: 'Dark', description: 'Always use dark mode' },
-];
 
 export default function AppearanceScreen() {
   const { tokens: T, accent: ACCENT, mode } = useAppTheme();
   const styles = useMemo(() => createStyles(T, ACCENT), [T, ACCENT]);
-  const preference = useThemeStore((s) => s.preference);
-  const setPreference = useThemeStore((s) => s.setPreference);
 
   return (
     <View style={styles.root}>
@@ -69,40 +56,27 @@ export default function AppearanceScreen() {
 
         <View style={styles.body}>
           <Text style={styles.explainer}>
-            Choose how PlayPlanner looks. &quot;System&quot; follows your device&apos;s own
-            light/dark setting automatically.
+            PlayPlanner automatically switches between light and dark to match the time of day —
+            no setup needed.
           </Text>
 
-          <GlassSurface style={styles.optionGroup}>
-            {OPTIONS.map((option, index) => {
-              const selected = preference === option.value;
-              return (
-                <TouchableOpacity
-                  key={option.value}
-                  style={[
-                    styles.optionRow,
-                    selected && styles.optionRowSelected,
-                    index < OPTIONS.length - 1 ? styles.optionRowBorder : styles.optionRowLast,
-                  ]}
-                  onPress={() => setPreference(option.value)}
-                  activeOpacity={0.7}
-                  accessibilityRole="radio"
-                  accessibilityLabel={option.label}
-                  accessibilityState={{ selected, checked: selected }}
-                >
-                  <View style={styles.optionTextWrap}>
-                    <Text style={styles.optionLabel}>{option.label}</Text>
-                    <Text style={styles.optionDescription}>{option.description}</Text>
-                  </View>
-                  {selected && (
-                    <View style={styles.checkBox}>
-                      <Icon name="check" size={16} color="#FFFFFF" />
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
+          <GlassSurface style={styles.card}>
+            <View style={styles.cardRow}>
+              <View style={styles.iconBox}>
+                <Icon name="clock" size={18} color={ACCENT.accent} />
+              </View>
+              <View style={styles.cardTextWrap}>
+                <Text style={styles.cardTitle}>Automatic</Text>
+                <Text style={styles.cardDescription}>
+                  Light during the day, dark at night — based on your device&apos;s clock.
+                </Text>
+              </View>
+            </View>
           </GlassSurface>
+
+          <Text style={styles.footnote}>
+            Light: 7am – 7pm{'  ·  '}Dark: 7pm – 7am
+          </Text>
         </View>
       </SafeAreaView>
     </View>
@@ -156,47 +130,46 @@ function createStyles(T: ThemeTokens, ACCENT: AccentPalette) {
       paddingHorizontal: 4,
     },
 
-    optionGroup: {
+    card: {
       borderRadius: 18,
     },
-    optionRow: {
+    cardRow: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 16,
-      paddingVertical: 15,
+      paddingVertical: 16,
       gap: 12,
     },
-    optionRowSelected: {
+    iconBox: {
+      width: 36,
+      height: 36,
+      borderRadius: 12,
       backgroundColor: ACCENT.light,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    optionRowBorder: {
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: T.separator,
-    },
-    optionRowLast: {
-      borderBottomWidth: 0,
-    },
-    optionTextWrap: {
+    cardTextWrap: {
       flex: 1,
     },
-    optionLabel: {
+    cardTitle: {
       fontFamily: FontFamily.heading,
       fontSize: 15,
       color: T.label,
     },
-    optionDescription: {
+    cardDescription: {
       fontFamily: FontFamily.body,
       fontSize: 12,
       color: T.label3,
       marginTop: 2,
+      lineHeight: 17,
     },
-    checkBox: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      backgroundColor: ACCENT.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
+
+    footnote: {
+      fontFamily: FontFamily.body,
+      fontSize: 12,
+      color: T.label4,
+      marginTop: 14,
+      textAlign: 'center',
     },
   });
 }

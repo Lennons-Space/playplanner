@@ -20,7 +20,7 @@ import { render } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import VenueDetailScreen from '../[id]';
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 import type { Venue } from '@/types';
 
 // ── expo / RN shims ─────────────────────────────────────────────────────────
@@ -203,11 +203,11 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUseVenue.mockReturnValue({ data: venueFixture, isLoading: false, error: null });
   mockUseWeather.mockReturnValue(null);
-  // jest.setup.js's global useColorScheme mock defaults to 'dark', and every
-  // existing test in this file relies on that implicit default — reset the
-  // theme store explicitly each run so the new light-mode tests below
-  // (which set 'light') can never leak into a later 'dark'-assuming test.
-  useThemeStore.setState({ preference: 'system', hasHydrated: true });
+  // jest.setup.js's global appearanceStore default is 'dark', and every
+  // existing test in this file relies on that implicit default — reset it
+  // explicitly each run so the new light-mode tests below (which set
+  // 'light') can never leak into a later 'dark'-assuming test.
+  useAppearanceStore.setState({ mode: 'dark' });
 });
 
 describe('Venue Detail — shared v2 background', () => {
@@ -295,7 +295,7 @@ const isInfoCardStyle = (style: Record<string, unknown>) =>
 
 describe('Venue Detail — island cards (statTile/infoCard) mode-aware fill', () => {
   it('LIGHT mode: statTile and infoCard use the translucent warm-white fill, not opaque cold grey', () => {
-    useThemeStore.setState({ preference: 'light', hasHydrated: true });
+    useAppearanceStore.setState({ mode: 'light' });
     const tree = render(<VenueDetailScreen />, { wrapper: makeWrapper() }).toJSON();
     const statTile = findStyleByShape(tree, isStatTileStyle);
     const infoCard = findStyleByShape(tree, isInfoCardStyle);
@@ -309,7 +309,7 @@ describe('Venue Detail — island cards (statTile/infoCard) mode-aware fill', ()
   });
 
   it('DARK mode: statTile and infoCard stay byte-identical to the pre-fix opaque T.bg (#0C0C11)', () => {
-    useThemeStore.setState({ preference: 'dark', hasHydrated: true });
+    useAppearanceStore.setState({ mode: 'dark' });
     const tree = render(<VenueDetailScreen />, { wrapper: makeWrapper() }).toJSON();
     const statTile = findStyleByShape(tree, isStatTileStyle);
     const infoCard = findStyleByShape(tree, isInfoCardStyle);

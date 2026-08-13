@@ -1,16 +1,22 @@
 /**
- * Tests for components/ui/ThemedBackground.tsx (Step 10A Part 2, dual-theme
- * foundation) — the background selector contract.
+ * Tests for components/ui/ThemedBackground.tsx — the background selector
+ * contract.
  *
  * Covers: dark mode renders the real, unchanged V2Background (same
  * atmosphere-tagged motion layer, no re-derivation); light mode ALSO renders
- * the real V2Background now (Phase A of the v2 Light-theme correction —
- * V2Background resolves mode internally via useAppTheme, so this wrapper no
- * longer branches or mounts a placeholder); and a source-guard proving
- * neither this component nor useAppTheme ever keys off the current
- * route/pathname (which would break the "atmosphere continuous across
- * navigation" guarantee — see components/ui/V2Background.tsx and the
- * wall-clock loopPhaseAt design).
+ * the real V2Background (V2Background resolves mode internally via
+ * useAppTheme, so this wrapper never branches or mounts a placeholder); a
+ * mounted tree updates LIVE (RTL `rerender`, never a fresh `render`/remount)
+ * when the resolved appearance changes underneath it — e.g. a 07:00/19:00
+ * boundary crossing while the screen stays open (2026-08-13, automatic
+ * day/night theme); and a source-guard proving neither this component nor
+ * useAppTheme ever keys off the current route/pathname (which would break
+ * the "atmosphere continuous across navigation" guarantee — see
+ * components/ui/V2Background.tsx and the wall-clock loopPhaseAt design).
+ *
+ * Mode is forced directly via store/appearanceStore.ts — useAppTheme() no
+ * longer reads the OS colour scheme or the legacy themeStore preference at
+ * all (see hooks/useAppTheme.ts).
  *
  * Uses the same tree-walking testID lookup as V2Background.test.tsx /
  * plan-visit.atmosphereConsistency.test.tsx rather than getByTestId: these
@@ -21,10 +27,9 @@
 import fs from 'fs';
 import path from 'path';
 import React from 'react';
-import { render } from '@testing-library/react-native';
-import { useColorScheme } from 'react-native';
+import { render, act } from '@testing-library/react-native';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 
 jest.mock('expo-linear-gradient', () => {
   const ReactActual = require('react');
@@ -34,12 +39,6 @@ jest.mock('expo-linear-gradient', () => {
       ReactActual.createElement(View, props, children),
   };
 });
-
-jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
-  default: jest.fn(),
-}));
-
-const mockUseColorScheme = useColorScheme as jest.Mock;
 
 // V2Background reads the same coarse, cached weather fetch every v2 screen
 // uses — force a deterministic condition so the dark-path assertions below
@@ -72,19 +71,18 @@ function collectBackgroundColors(node: JsonNode, out: string[] = []): string[] {
 }
 
 beforeEach(() => {
-  mockUseColorScheme.mockReset();
   mockUseWeather.mockReset();
   // 'rain' (unlike 'clear') resolves to the same atmosphere regardless of
   // time-of-day (resolveAtmosphere's night/day split only affects 'clear' and
   // the unknown-condition fallback — see lib/weatherTheme.ts), so these
   // assertions stay deterministic no matter when the test suite runs.
   mockUseWeather.mockReturnValue({ condition: 'rain', temperatureC: 12, precipProbabilityPct: 80, emoji: '', label: '' });
-  useThemeStore.setState({ preference: 'system', hasHydrated: true });
+  useAppearanceStore.setState({ mode: 'dark' });
 });
 
 describe('ThemedBackground — dark mode selects the real V2Background, unchanged', () => {
   it('renders the v2-background layer and its atmosphere-tagged motion layer', () => {
-    mockUseColorScheme.mockReturnValue('dark');
+    useAppearanceStore.setState({ mode: 'dark' });
     const tree = render(<ThemedBackground />).toJSON();
     expect(findTestID(tree as JsonNode, 'v2-background')).toBe(true);
     expect(findTestID(tree as JsonNode, 'v2-weather-motion-rain')).toBe(true);
@@ -92,25 +90,18 @@ describe('ThemedBackground — dark mode selects the real V2Background, unchange
   });
 
   it('forwards an explicit `condition` prop straight through to V2Background, overriding the fetched value', () => {
-    mockUseColorScheme.mockReturnValue('dark');
+    useAppearanceStore.setState({ mode: 'dark' });
     // mockUseWeather is stubbed to 'rain' — if the prop were ignored, this
     // would render the rain motion layer instead of snow.
     const tree = render(<ThemedBackground condition="snow" />).toJSON();
     expect(findTestID(tree as JsonNode, 'v2-weather-motion-snow')).toBe(true);
     expect(findTestID(tree as JsonNode, 'v2-weather-motion-rain')).toBe(false);
   });
-
-  it('does not key off any route/pathname — an explicit "dark" preference renders the same, regardless of OS', () => {
-    useThemeStore.setState({ preference: 'dark' });
-    mockUseColorScheme.mockReturnValue('light'); // irrelevant once preference is explicit
-    const tree = render(<ThemedBackground />).toJSON();
-    expect(findTestID(tree as JsonNode, 'v2-background')).toBe(true);
-  });
 });
 
 describe('ThemedBackground — light mode also renders the real V2Background', () => {
   it('renders the v2-background layer and its atmosphere-tagged motion layer', () => {
-    mockUseColorScheme.mockReturnValue('light');
+    useAppearanceStore.setState({ mode: 'light' });
     const tree = render(<ThemedBackground />).toJSON();
     expect(findTestID(tree as JsonNode, 'v2-background')).toBe(true);
     // mockUseWeather is stubbed to 'rain' in beforeEach.
@@ -119,7 +110,7 @@ describe('ThemedBackground — light mode also renders the real V2Background', (
   });
 
   it('is absolute-fill and non-interactive, same decorative contract as dark', () => {
-    mockUseColorScheme.mockReturnValue('light');
+    useAppearanceStore.setState({ mode: 'light' });
     const root = render(<ThemedBackground />).toJSON() as { props: Record<string, unknown> };
     expect(root.props.pointerEvents).toBe('none');
     expect(root.props.testID).toBe('v2-background');
@@ -127,64 +118,53 @@ describe('ThemedBackground — light mode also renders the real V2Background', (
   });
 
   it('DOES call useWeather in light mode now — V2Background is mounted, not a placeholder', () => {
-    mockUseColorScheme.mockReturnValue('light');
+    useAppearanceStore.setState({ mode: 'light' });
     render(<ThemedBackground />);
     expect(mockUseWeather).toHaveBeenCalled();
   });
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// ISSUE 2 AUDIT (3) — "system" preference: a LIVE device dark↔light flip must
-// update the SAME mounted tree (RTL `rerender`, never a fresh `render`/
-// remount) through the REAL resolution chain: this file does NOT mock
-// useAppTheme — ThemedBackground → V2Background → useAppTheme →
-// useThemeStore + the real react-native useColorScheme are all exercised
-// end-to-end, exactly like a real screen. mockUseWeather stays fixed at
-// 'rain' throughout so 'rain' vs the light warm-ambient set is the
-// mode-differentiating signal: dark rain renders the dark RainStreak
-// (150,186,216); light rain renders the muted blue-grey LightRainStreak
-// (92,112,140) — 2026-07-24 Light-parity ruling, see V2WeatherMotion.tsx.
+// Live boundary crossing: a mounted tree updates on the SAME instance (RTL
+// `rerender`, never a fresh `render`/remount) when the app-wide appearance
+// store recomputes — e.g. the device clock crossing 07:00/19:00 while the
+// screen stays open. This exercises the real resolution chain end-to-end:
+// ThemedBackground → V2Background → useAppTheme → appearanceStore (this file
+// does not mock useAppTheme). mockUseWeather stays fixed at 'rain' throughout
+// so 'rain' vs the light warm-ambient set is the mode-differentiating
+// signal: dark rain renders the dark RainStreak (150,186,216); light rain
+// renders the muted blue-grey LightRainStreak (92,112,140) — 2026-07-24
+// Light-parity ruling, see V2WeatherMotion.tsx.
 // ═════════════════════════════════════════════════════════════════════════
-describe('ThemedBackground / useAppTheme — Issue 2 audit (3): "system" preference follows a LIVE OS flip on the SAME tree', () => {
-  it('dark→light (OS flip, same tree): dark RainStreak disappears, light rain streak appears, no stale dark values', () => {
-    useThemeStore.setState({ preference: 'system' });
-    mockUseColorScheme.mockReturnValue('dark');
+describe('ThemedBackground / useAppTheme — live appearance changes update the SAME mounted tree', () => {
+  it('dark→light boundary crossing: dark RainStreak disappears, light rain streak appears, no stale dark values', () => {
+    useAppearanceStore.setState({ mode: 'dark' });
     const { toJSON, rerender } = render(<ThemedBackground />);
     let colors = collectBackgroundColors(toJSON());
     expect(colors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(true); // dark RainStreak present
 
-    mockUseColorScheme.mockReturnValue('light');
+    act(() => {
+      useAppearanceStore.setState({ mode: 'light' });
+    });
     rerender(<ThemedBackground />);
     colors = collectBackgroundColors(toJSON());
     expect(colors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(false); // no stale dark RainStreak
     expect(colors.some((c) => c.startsWith('rgba(92,112,140,'))).toBe(true); // muted blue-grey light rain streak now present
   });
 
-  it('light→dark (OS flip, same tree): light rain streak disappears, dark RainStreak appears, no stale light values', () => {
-    useThemeStore.setState({ preference: 'system' });
-    mockUseColorScheme.mockReturnValue('light');
+  it('light→dark boundary crossing: light rain streak disappears, dark RainStreak appears, no stale light values', () => {
+    useAppearanceStore.setState({ mode: 'light' });
     const { toJSON, rerender } = render(<ThemedBackground />);
     let colors = collectBackgroundColors(toJSON());
     expect(colors.some((c) => c.startsWith('rgba(92,112,140,'))).toBe(true); // light rain streak present
 
-    mockUseColorScheme.mockReturnValue('dark');
+    act(() => {
+      useAppearanceStore.setState({ mode: 'dark' });
+    });
     rerender(<ThemedBackground />);
     colors = collectBackgroundColors(toJSON());
     expect(colors.some((c) => c.startsWith('rgba(92,112,140,'))).toBe(false); // no stale light rain streak
     expect(colors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(true); // dark RainStreak now present
-  });
-
-  it('an explicit "dark" preference ignores a live OS flip entirely (same tree)', () => {
-    useThemeStore.setState({ preference: 'dark' });
-    mockUseColorScheme.mockReturnValue('light'); // OS says light — must be ignored
-    const { toJSON, rerender } = render(<ThemedBackground />);
-    let colors = collectBackgroundColors(toJSON());
-    expect(colors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(true); // still dark
-
-    mockUseColorScheme.mockReturnValue('dark'); // flip OS again — still irrelevant
-    rerender(<ThemedBackground />);
-    colors = collectBackgroundColors(toJSON());
-    expect(colors.some((c) => c.startsWith('rgba(150,186,216,'))).toBe(true); // unchanged, still dark
   });
 });
 

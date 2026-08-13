@@ -16,7 +16,7 @@ import path from 'path';
 import { render, fireEvent } from '@testing-library/react-native';
 
 import DiscoverScreen from '../discover';
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 
 // ── expo-router ──────────────────────────────────────────────────────────
 const mockPush = jest.fn();
@@ -86,7 +86,7 @@ jest.mock('@/components/discover/CollectionCard', () => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseBottomTabBarHeight.mockReturnValue(74);
-  useThemeStore.setState({ preference: 'system', hasHydrated: true });
+  useAppearanceStore.setState({ mode: 'dark' });
 });
 
 describe('Discover — shared v2 atmosphere', () => {
@@ -175,25 +175,25 @@ describe('Discover — content preserved', () => {
 
 describe('Discover — Light and Dark themes remain readable', () => {
   it('renders without crashing and keeps its content in Light mode', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     const { getByText } = render(<DiscoverScreen />);
     expect(getByText('Discover')).toBeTruthy();
   });
 
   it('renders without crashing and keeps its content in Dark mode', () => {
-    useThemeStore.setState({ preference: 'dark' });
+    useAppearanceStore.setState({ mode: 'dark' });
     const { getByText } = render(<DiscoverScreen />);
     expect(getByText('Discover')).toBeTruthy();
   });
 
   it('the title colour actually changes between Light and Dark (theme-aware, not a fixed literal)', () => {
     const { StyleSheet } = require('react-native');
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     const light = render(<DiscoverScreen />);
     const lightColor = StyleSheet.flatten(light.getByText('Discover').props.style).color;
     light.unmount();
 
-    useThemeStore.setState({ preference: 'dark' });
+    useAppearanceStore.setState({ mode: 'dark' });
     const dark = render(<DiscoverScreen />);
     const darkColor = StyleSheet.flatten(dark.getByText('Discover').props.style).color;
 

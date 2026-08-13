@@ -9,27 +9,19 @@
 //      a light WeatherTheme (sunny) stays solid; a dark WeatherTheme
 //      (rain/night) always becomes frosted glass, regardless of app theme.
 //
-// useColorScheme is mocked locally (overriding jest.setup.js's global 'dark'
-// default) so every case below is deterministic and independent of that
-// global default — same pattern as hooks/__tests__/useAppTheme.test.tsx.
+// Mode is forced directly via store/appearanceStore.ts (2026-08-13,
+// automatic day/night theme) — useAppTheme() no longer reads the OS colour
+// scheme at all, so this file no longer mocks useColorScheme.
 
 import React from 'react';
 import { render } from '@testing-library/react-native';
-import { useColorScheme } from 'react-native';
 import { VenueCard } from '@/components/ui/VenueCard';
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 import { WEATHER_THEMES, type WeatherTheme } from '@/lib/weatherTheme';
 import type { Venue } from '@/types';
 
-jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
-  default: jest.fn(),
-}));
-
-const mockUseColorScheme = useColorScheme as jest.Mock;
-
 beforeEach(() => {
-  mockUseColorScheme.mockReset();
-  useThemeStore.setState({ preference: 'system', hasHydrated: true });
+  useAppearanceStore.setState({ mode: 'dark' });
 });
 
 function makeVenue(): Venue {
@@ -60,31 +52,31 @@ function rootStyle(theme?: WeatherTheme): Record<string, unknown> {
 
 describe('VenueCard — solid card resolves from useAppTheme()', () => {
   it('is the v2 LIGHT surface when the app theme resolves to light (no WeatherTheme)', () => {
-    mockUseColorScheme.mockReturnValue('light');
+    useAppearanceStore.setState({ mode: 'light' });
     expect(rootStyle().backgroundColor).toBe('#FFFFFF');
   });
 
   it('is the v2 DARK surface when the app theme resolves to dark (no WeatherTheme) — the bug this fixes', () => {
-    mockUseColorScheme.mockReturnValue('dark');
+    useAppearanceStore.setState({ mode: 'dark' });
     expect(rootStyle().backgroundColor).toBe('#17171F');
   });
 
   it('stays solid (not glass) on a LIGHT WeatherTheme (sunny), matching the resolved app theme', () => {
-    mockUseColorScheme.mockReturnValue('light');
+    useAppearanceStore.setState({ mode: 'light' });
     expect(rootStyle(WEATHER_THEMES.sunny).backgroundColor).toBe('#FFFFFF');
   });
 });
 
 describe('VenueCard — glass WeatherTheme override always wins', () => {
   it('becomes a frosted glass card on a DARK WeatherTheme (rain) even in a light app theme', () => {
-    mockUseColorScheme.mockReturnValue('light');
+    useAppearanceStore.setState({ mode: 'light' });
     const style = rootStyle(WEATHER_THEMES.rain);
     expect(style.backgroundColor).toBe('rgba(255,255,255,0.12)');
     expect(style.borderColor).toBe('rgba(255,255,255,0.16)');
   });
 
   it('becomes a frosted glass card on a DARK WeatherTheme (night) even in a dark app theme', () => {
-    mockUseColorScheme.mockReturnValue('dark');
+    useAppearanceStore.setState({ mode: 'dark' });
     expect(rootStyle(WEATHER_THEMES.night).backgroundColor).toBe('rgba(255,255,255,0.12)');
   });
 });

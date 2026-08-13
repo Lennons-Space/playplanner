@@ -13,10 +13,6 @@ import { render } from '@testing-library/react-native';
 import type { Venue } from '@/types';
 import { OpenNowRow } from '@/components/home/OpenNowRow';
 
-jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
-  default: jest.fn(() => 'light'),
-}));
-
 jest.mock('@/hooks/location', () => ({
   useLocation: jest.fn(() => ({
     coords: { latitude: 51.5, longitude: -0.1 },

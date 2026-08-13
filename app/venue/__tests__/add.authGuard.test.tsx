@@ -27,7 +27,7 @@ import React from 'react';
 import { render, waitFor } from '@testing-library/react-native';
 import { useUser } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 import AddVenueScreen from '../add';
 
 // ─── Module mocks ────────────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ beforeEach(() => {
     data: { latitude: 51.5, longitude: -0.1, city: 'Manchester' },
     error: null,
   });
-  useThemeStore.setState({ preference: 'system', hasHydrated: true });
+  useAppearanceStore.setState({ mode: 'dark' });
 });
 
 // =============================================================================

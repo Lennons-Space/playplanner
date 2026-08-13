@@ -2,22 +2,19 @@
 // useAppTheme — the SINGLE resolution point for the Play Planner v2 dark/
 // light design-token set (`constants/theme.ts` → `Themes.dark` / `Themes.light`).
 //
-// Step 10A Part 2 (dual-theme foundation): this used to hard-return 'dark'
-// (Play Planner v2 shipped dark-only). It now resolves the ACTUAL mode from
-// two inputs:
-//   1. `themeStore.preference` — the user's saved choice ('system' | 'light'
-//      | 'dark'), read from store/themeStore.ts (AsyncStorage-persisted,
-//      no PII, no auth coupling).
-//   2. `useColorScheme()` (react-native) — the LIVE OS colour scheme, read
-//      ONLY when preference is 'system'. This is the ONLY place in
-//      production code that may call useColorScheme() directly; every other
-//      consumer must go through this hook so there is exactly one
-//      resolution rule for the whole app.
-//
-// Resolution: preference === 'system' ? (OS scheme ?? 'dark') : preference.
-// The 'dark' fallback (when the OS reports no preference at all — some
-// Android/older-OS combinations) matches Play Planner v2's dark-by-default
-// launch stance, it just no longer OVERRIDES an explicit OS or user choice.
+// AUTOMATIC DAY/NIGHT THEME (2026-08-13): the app's light/dark appearance is
+// resolved ENTIRELY from local time — see lib/timeAppearance.ts for the pure
+// 07:00/19:00 rule and store/appearanceStore.ts for the live,
+// boundary-scheduled resolution this hook reads. This is a fixed product
+// rule: it is authoritative over BOTH the OS colour scheme (react-native's
+// useColorScheme/Appearance — never read here, or anywhere else in
+// production code — see the source-guard test in
+// hooks/__tests__/useAppTheme.test.tsx) and the user's old saved
+// System/Light/Dark preference (store/themeStore.ts — kept only for
+// AsyncStorage data compatibility with already-installed copies of the app;
+// no longer consulted for visual resolution — see
+// app/profile/appearance.tsx, now an Automatic-only explainer with no
+// picker).
 //
 // WHY a separate hook from useWeatherTheme:
 // useWeatherTheme drives the WEATHER background + its own light/dark text
@@ -26,9 +23,11 @@
 // so we don't stack two theme systems on top of each other. The weather
 // background remains a purely decorative layer behind the content (see
 // components/ui/ThemedBackground.tsx, a thin pass-through to V2Background,
-// which is now mode-aware and renders the real weather atmosphere in BOTH
-// modes — the earlier light-mode placeholder surface was retired in Phase A
-// of the v2 Light-theme correction).
+// which is mode-aware and renders the real weather atmosphere in BOTH
+// modes) — atmosphere (sunny/cloudy/rain/snow/night) is a RELATED but
+// DISTINCT concept from THEME and keeps its own separate time window
+// (lib/weatherTheme.ts's isNightNow, 20:00–06:00 — see that file's header
+// for why the two windows are intentionally different systems).
 //
 // IMPORTANT — this hook does NOT touch the legacy `Colors` export (still
 // light-only, read directly by Search / Favourites / Venue Detail and most
@@ -37,13 +36,13 @@
 // module-scope `const T = Themes.dark` until a later migration phase.
 //
 // Privacy: this hook does not read location, profile, or any user data — it
-// only resolves a display preference (device-local, non-personal) plus the
-// OS colour scheme (also non-personal), then returns a static token lookup.
+// only resolves the local device clock (device-local, non-personal) into a
+// display preference, then returns a static token lookup.
 // ─────────────────────────────────────────────────────────────────────────
 
-import { useColorScheme } from 'react-native';
+import { useEffect } from 'react';
 import { Themes, ocean, type ThemeTokens, type AccentPalette } from '@/constants/theme';
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore, startAppearanceScheduler } from '@/store/appearanceStore';
 
 export interface AppTheme {
   /** Resolved mode — never null. */
@@ -56,15 +55,16 @@ export interface AppTheme {
 
 /**
  * Returns the active theme tokens + accent palette for the v2 chrome,
- * resolved from the user's saved preference crossed with the live OS colour
- * scheme (see module doc above for the exact resolution rule).
+ * resolved purely from local time (see module doc above). Also ensures the
+ * process-wide boundary/foreground scheduler (store/appearanceStore.ts) is
+ * running — idempotent, safe to call from every screen that uses this hook.
  */
 export function useAppTheme(): AppTheme {
-  const preference = useThemeStore((s) => s.preference);
-  const systemScheme = useColorScheme();
+  const mode = useAppearanceStore((s) => s.mode);
 
-  const mode: 'dark' | 'light' =
-    preference === 'system' ? (systemScheme ?? 'dark') : preference;
+  useEffect(() => {
+    startAppearanceScheduler();
+  }, []);
 
   return {
     mode,

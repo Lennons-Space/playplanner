@@ -8,10 +8,6 @@ import { render, fireEvent } from '@testing-library/react-native';
 import { MoodPicks } from '@/components/home/MoodPicks';
 import { MOODS, type MoodId } from '@/lib/moods';
 
-jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
-  default: jest.fn(() => 'light'),
-}));
-
 describe('MoodPicks', () => {
   it('renders all mood options', () => {
     const { getByText } = render(<MoodPicks selected={null} onSelect={jest.fn()} />);

@@ -13,7 +13,7 @@ import { FunctionsHttpError, FunctionsFetchError } from '@supabase/supabase-js';
 import { useUser } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { GlassButton } from '@/components/ui/GlassButton';
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 import AddVenueScreen from '../add';
 
 // ---------------------------------------------------------------------------
@@ -100,7 +100,7 @@ beforeEach(() => {
     data: { latitude: 51.5, longitude: -0.1, city: 'Manchester' },
     error: null,
   });
-  useThemeStore.setState({ preference: 'system', hasHydrated: true });
+  useAppearanceStore.setState({ mode: 'dark' });
 });
 
 async function fillValidPostcode() {
@@ -479,24 +479,24 @@ describe('AddVenueScreen — footer clearance and keyboard layout', () => {
 
 describe('AddVenueScreen — Light and Dark themes remain readable', () => {
   it('renders in Light mode', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     render(<AddVenueScreen />);
     expect(screen.getByText('Add a venue')).toBeTruthy();
   });
 
   it('renders in Dark mode', () => {
-    useThemeStore.setState({ preference: 'dark' });
+    useAppearanceStore.setState({ mode: 'dark' });
     render(<AddVenueScreen />);
     expect(screen.getByText('Add a venue')).toBeTruthy();
   });
 
   it('the header title colour actually changes between Light and Dark', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     const light = render(<AddVenueScreen />);
     const lightColor = StyleSheet.flatten(light.getByText('Add a venue').props.style).color;
     light.unmount();
 
-    useThemeStore.setState({ preference: 'dark' });
+    useAppearanceStore.setState({ mode: 'dark' });
     const dark = render(<AddVenueScreen />);
     const darkColor = StyleSheet.flatten(dark.getByText('Add a venue').props.style).color;
 

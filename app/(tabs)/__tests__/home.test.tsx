@@ -24,7 +24,7 @@ import { render, fireEvent, within, screen } from '@testing-library/react-native
 import { router } from 'expo-router';
 import HomeScreen from '../index';
 import { pickHeroCollection, getWeatherCta, getHomeContextLine, shouldRestrictToIndoor } from '@/lib/homeIntents';
-import { useThemeStore } from '@/store/themeStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 import type { Venue } from '@/types';
 
 // ── Mocks (hoisted) ─────────────────────────────────────────────────
@@ -212,7 +212,7 @@ beforeEach(() => {
   // backing store to 'system' before every test so the new light-fog pill
   // tests below (which explicitly set 'light'/'dark') can never leak their
   // preference into an unrelated test.
-  useThemeStore.setState({ preference: 'system' });
+  useAppearanceStore.setState({ mode: 'dark' });
 });
 
 describe('Browse (Home) — chrome (renders identically regardless of consent)', () => {
@@ -564,7 +564,7 @@ describe('Browse (Home) — weather pill colour (2026-07-28: LIGHT fog gets its 
   });
 
   it('LIGHT + fog: cool grey-blue background/border tint + readable blue-grey text (never the rain-blue or amber tints)', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     mockUseWeather.mockReturnValue({ condition: 'fog', label: 'Foggy', emoji: '🌫️' });
     const { getByLabelText, getByText } = render(<HomeScreen />);
     const pill = getByLabelText('Weather: Foggy');
@@ -595,7 +595,7 @@ describe('Browse (Home) — weather pill colour (2026-07-28: LIGHT fog gets its 
   });
 
   it('LIGHT + sunny stays the warm amber treatment (unchanged by the new fog branch)', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     mockUseWeather.mockReturnValue({ condition: 'clear', label: 'Sunny', emoji: '☀️' });
     const { getByLabelText, getByText } = render(<HomeScreen />);
     const pill = getByLabelText('Weather: Sunny');
@@ -604,7 +604,7 @@ describe('Browse (Home) — weather pill colour (2026-07-28: LIGHT fog gets its 
   });
 
   it('LIGHT + rain stays the existing blue rain treatment (unchanged by the new fog branch)', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     mockUseWeather.mockReturnValue({ condition: 'rain', label: 'Rainy', emoji: '🌧' });
     const { getByLabelText, getByText } = render(<HomeScreen />);
     const pill = getByLabelText('Weather: Rainy');
@@ -613,7 +613,7 @@ describe('Browse (Home) — weather pill colour (2026-07-28: LIGHT fog gets its 
   });
 
   it('DARK + fog is PROVABLY UNTOUCHED: falls through to the exact same amber treatment as before this change (the new branch is strictly gated on mode === "light")', () => {
-    useThemeStore.setState({ preference: 'dark' });
+    useAppearanceStore.setState({ mode: 'dark' });
     mockUseWeather.mockReturnValue({ condition: 'fog', label: 'Foggy', emoji: '🌫️' });
     const { getByLabelText, getByText } = render(<HomeScreen />);
     const pill = getByLabelText('Weather: Foggy');
@@ -630,13 +630,13 @@ describe('Browse (Home) — StatusBar follows the resolved theme mode (Phase 2 l
   // theme is selected. Must follow `mode` like every other v2 screen
   // (Map, Results, Discover collection).
   it('LIGHT mode: requests dark status-bar glyphs (legible on the cream background)', () => {
-    useThemeStore.setState({ preference: 'light' });
+    useAppearanceStore.setState({ mode: 'light' });
     render(<HomeScreen />);
     expect(mockStatusBar).toHaveBeenCalledWith(expect.objectContaining({ style: 'dark' }));
   });
 
   it('DARK mode: requests light status-bar glyphs, unchanged from before this fix', () => {
-    useThemeStore.setState({ preference: 'dark' });
+    useAppearanceStore.setState({ mode: 'dark' });
     render(<HomeScreen />);
     expect(mockStatusBar).toHaveBeenCalledWith(expect.objectContaining({ style: 'light' }));
   });

@@ -25,20 +25,30 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-// useColorScheme — react-native's OWN jest mock (node_modules/react-native/
-// jest/mocks/useColorScheme.js) defaults to 'light'. Before Step 10A Part 2
-// (dual-theme foundation), useAppTheme() hard-returned 'dark' regardless of
-// the OS, so that RN default was invisible to every existing suite. Now that
-// useAppTheme() actually reads useColorScheme() (via the theme store's
-// default 'system' preference), that RN 'light' default would silently flip
-// every UNMOCKED useAppTheme() consumer's tests to light-mode tokens —
-// breaking dozens of suites that assert dark-token values with no relation
-// to theming. Overriding the global default back to 'dark' here preserves
-// the existing dark-by-default test behaviour everywhere; suites that
-// specifically want to test light/dark switching (e.g.
-// components/home/__tests__/QuickPicks.glass.test.tsx) already register
-// their own local jest.mock() for this same module, which wins over this
-// one for that file.
-jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
-  default: jest.fn(() => 'dark'),
-}));
+// appearanceStore — PlayPlanner's app-wide light/dark THEME (2026-08-13,
+// automatic day/night theme) is resolved purely from local time
+// (lib/timeAppearance.ts via store/appearanceStore.ts), NOT from the OS
+// colour scheme — useAppTheme() no longer reads useColorScheme() at all (see
+// hooks/useAppTheme.ts). Left uncontrolled, every test's resolved mode would
+// depend on the real wall-clock time the CI happens to run at, which is
+// exactly the non-determinism the automatic-theme spec forbids. Forcing
+// 'dark' here preserves the pre-existing dark-by-default test behaviour for
+// the dozens of suites that assert dark-token values with no relation to
+// theming (this mirrors the old global useColorScheme mock it replaces).
+// Suites that specifically want to exercise light/dark rendering override
+// this per-test via `useAppearanceStore.setState({ mode: 'light' | 'dark' })`
+// (e.g. components/home/__tests__/QuickPicks.glass.test.tsx) — they set it
+// again inside their own `it`/`beforeEach`, which always wins since it runs
+// after this file. Real boundary/scheduling behaviour has its own dedicated,
+// real-timer-free coverage in store/__tests__/appearanceStore.test.ts and
+// lib/__tests__/timeAppearance.test.ts — this file only sets the default so
+// unrelated suites stay deterministic.
+//
+// NOTE: this is `setupFiles`, not `setupFilesAfterEach` — Jest's test
+// globals (`beforeEach`, `describe`, ...) are not yet installed at this
+// point, so this must be a plain top-level statement, not a `beforeEach(...)`
+// registration (that would throw "beforeEach is not defined"). Jest resets
+// the module registry — and therefore re-runs every `setupFiles` script,
+// including this assignment — once per test FILE, which is exactly the
+// granularity the old per-file useColorScheme mock had.
+require('./store/appearanceStore').useAppearanceStore.setState({ mode: 'dark' });

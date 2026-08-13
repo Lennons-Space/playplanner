@@ -19,8 +19,10 @@
  * byte-identical — see components/ui/ThemedBackground.tsx). The
  * SectionLabel/MenuItem/MenuGroup helpers below take `styles`/`T` as props
  * so their look also follows the resolved theme, since they render outside
- * ProfileScreen's own component body. Adds a new "Appearance" row (System /
- * Light / Dark) routing to app/profile/appearance.tsx.
+ * ProfileScreen's own component body. Adds an "Appearance" row routing to
+ * app/profile/appearance.tsx — appearance is automatic (light by day, dark
+ * at night, see lib/timeAppearance.ts), not a user picker, so the row's
+ * detail text below is a short hint, not a setting summary.
  *
  * GDPR Art.17 (right to erasure): "Delete account" calls delete_own_account()
  * server-side — never the auth API directly. The function handles cascading
@@ -413,7 +415,7 @@ export default function ProfileScreen() {
             <MenuItem
               icon="settings"
               label="Appearance"
-              detail="System, light or dark"
+              detail="Automatic by time of day"
               onPress={() => router.push('/profile/appearance')}
               styles={styles}
               T={T}
@@ -739,7 +741,7 @@ function createStyles(T: ThemeTokens) {
     },
     menuDetail: {
       // Shrinks + ellipsises (see the Text's numberOfLines/ellipsizeMode) so a
-      // long value like "System, light or dark" gives way before the label does.
+      // long value like "Automatic by time of day" gives way before the label does.
       flexShrink: 1,
       fontFamily: FontFamily.body,
       fontSize: 12,
