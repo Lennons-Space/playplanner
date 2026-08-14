@@ -70,6 +70,8 @@ export interface VenueRunResult {
   pages: PageFetch[];
   note?: string;
   proposals: ProposalDraft[];
+  /** Only populated when OrchestratorDeps.captureHtml=true (Enrichment 2.0 closure-signal scanning) — zero extra network cost, reuses pages already fetched above. */
+  htmlByUrl?: Record<string, string>;
 }
 
 export interface RunSummary {
@@ -95,6 +97,8 @@ export interface OrchestratorDeps {
   retrievedAt: string;
   /** Total pages per venue (landing + hints). Default: 3. */
   maxPages?: number;
+  /** When true, VenueRunResult.htmlByUrl is populated (Enrichment 2.0 closure-signal scanning). Default: false. */
+  captureHtml?: boolean;
 }
 
 // ── Pure: selectBestCandidates ────────────────────────────────────────────────
@@ -213,6 +217,7 @@ export async function orchestrateVenue(
 
   const allPages: PageFetch[] = [];
   let allCandidates: FieldCandidate[] = [];
+  const htmlByUrl: Record<string, string> = {};
 
   // ── Step 1: fetch landing page ────────────────────────────────────────────
 
@@ -246,6 +251,7 @@ export async function orchestrateVenue(
 
   const landingPage = landingResult.page;
   allPages.push(landingPage.page);
+  if (deps.captureHtml) htmlByUrl[landingPage.finalUrl] = landingPage.html;
 
   // Extract candidates from landing page
   const landingExtracted = extractCandidates(landingPage.html, landingPage.finalUrl);
@@ -265,6 +271,7 @@ export async function orchestrateVenue(
         if (hintResult.kind === 'ok') {
           const hintPage = hintResult.page;
           allPages.push(hintPage.page);
+          if (deps.captureHtml) htmlByUrl[hintPage.finalUrl] = hintPage.html;
           const hintExtracted = extractCandidates(hintPage.html, hintPage.finalUrl);
           allCandidates = allCandidates.concat(hintExtracted.candidates);
         }
@@ -297,6 +304,7 @@ export async function orchestrateVenue(
     outcome: 'extracted',
     pages: allPages,
     proposals,
+    ...(deps.captureHtml ? { htmlByUrl } : {}),
   };
 }
 

@@ -250,6 +250,32 @@ describe('orchestrateVenue', () => {
     expect(Array.isArray(result.proposals)).toBe(true);
   });
 
+  it('captureHtml=true populates htmlByUrl with fetched page HTML (Enrichment 2.0 closure scanning)', async () => {
+    const deps: OrchestratorDeps = {
+      fetchPage: async (url) => {
+        if (url === VENUE_URL) return okFetch(url, landingHtml);
+        if (url.includes('opening-times')) return okFetch(url, openingHtml);
+        return { kind: 'fetch_failed', note: 'unexpected url' };
+      },
+      retrievedAt: AT,
+      maxPages: 3,
+      captureHtml: true,
+    };
+    const result = await orchestrateVenue(venue, emptySnapshot(), deps);
+    expect(result.htmlByUrl).toBeDefined();
+    expect(result.htmlByUrl![VENUE_URL]).toBe(landingHtml);
+  });
+
+  it('captureHtml=false (default) never populates htmlByUrl', async () => {
+    const deps: OrchestratorDeps = {
+      fetchPage: async () => okFetch(VENUE_URL, landingHtml),
+      retrievedAt: AT,
+      maxPages: 1,
+    };
+    const result = await orchestrateVenue(venue, emptySnapshot(), deps);
+    expect(result.htmlByUrl).toBeUndefined();
+  });
+
   it('skipped_no_website: returns skip outcome when website is null', async () => {
     const noWebVenue: VenueInput = { venueId: 'v2', name: 'No Website', website: null };
     const deps: OrchestratorDeps = {

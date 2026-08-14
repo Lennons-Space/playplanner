@@ -14,6 +14,7 @@
     "type-check": "tsc --noEmit",
     "enrich:dry-run": "tsx scripts/enrich/enrichVenues.ts --dry-run",
     "enrich:dry-run:single": "tsx scripts/enrich/enrichVenues.ts --dry-run --limit=1",
+    "enrich:autonomous": "tsx scripts/enrich/autonomous.ts",
     "test:db": "node supabase/tests/056_venue_website_enrichment.mjs && node supabase/tests/057_facility_votes_select_own.mjs && node supabase/tests/058_fix_venue_photos_rls_recursion.mjs",
     "test:edge": "node supabase/tests/geocode_postcode_auth.mjs"
   },
