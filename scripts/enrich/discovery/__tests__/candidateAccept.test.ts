@@ -12,6 +12,12 @@ function baseInput(overrides: Partial<CandidateAcceptInput> = {}): CandidateAcce
     hasClosureSignal: false,
     requiredFieldsComplete: true,
     confidenceScore: AUTO_ACCEPT_MIN_SCORE,
+    // The base case is a candidate that IS independently corroborated (its own
+    // record + a VERIFIED official site), matching officialVerification: true
+    // above — so these existing cases keep testing the gate each one is about.
+    // The independence gate itself has its own dedicated block below.
+    independentIdentityEvidenceCount: 2,
+    identityEvidenceSources: ['osm', 'official_website'],
     ...overrides,
   };
 }

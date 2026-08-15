@@ -22,6 +22,7 @@ import { matchByNameHint, resolveStructuralCategorySlug } from './categoryTarget
 import { dedupeAgainstExisting } from './dedupe';
 import { decideCandidateAccept } from './candidateAccept';
 import { isTrustedSourceId, type SourceId } from '../sourceTrust';
+import { buildCrossSourceAgreement, computeIdentityEvidence, type IdentityEvidenceInput } from './identityEvidence';
 import { resolveGeoapifyCategorySlug } from './providers/geoapifyCategoryMap';
 import type { NormalizedCandidate } from './providers/types';
 import type {
@@ -71,6 +72,12 @@ export interface DiscoveryEvaluation {
   dedupe?: DedupeResult;
   acceptInput?: CandidateAcceptInput;
   acceptResult?: CandidateAcceptResult;
+}
+
+/** The two CandidateAcceptInput fields derived from identity evidence, kept together so no call site can set one and forget the other. */
+function identityEvidenceFields(input: IdentityEvidenceInput): Pick<CandidateAcceptInput, 'independentIdentityEvidenceCount' | 'identityEvidenceSources'> {
+  const evidence = computeIdentityEvidence(input);
+  return { independentIdentityEvidenceCount: evidence.count, identityEvidenceSources: evidence.sources };
 }
 
 /** Registrable-ish domain extraction — good enough for a domain-match dedupe signal, not a security boundary. */
@@ -265,7 +272,11 @@ function precheckCandidate(nc: NormalizedCandidate): PrecheckOk | PrecheckFail {
 }
 
 /** Dedupe + score + accept-gate — pure, given an already-narrowed nearby-venue set. Source-agnostic. */
-function finishEvaluation(pre: PrecheckOk, nearby: DedupeExistingVenue[]): DiscoveryEvaluation {
+function finishEvaluation(
+  pre: PrecheckOk,
+  nearby: DedupeExistingVenue[],
+  agreeingSources?: ReadonlySet<SourceId>,
+): DiscoveryEvaluation {
   const candidate: DedupeCandidate = {
     name: pre.name,
     latitude: pre.lat,
@@ -294,6 +305,10 @@ function finishEvaluation(pre: PrecheckOk, nearby: DedupeExistingVenue[]): Disco
     hasClosureSignal: false, // no crawl history exists yet for a brand-new candidate
     requiredFieldsComplete: !!(candidate.name && candidate.postcode),
     confidenceScore: score,
+    // Before corroboration runs, the only witness is this record itself —
+    // plus any INDEPENDENT provider in the same run that resolved to the same
+    // venue. applyCorroboration recomputes this if the official site verifies.
+    ...identityEvidenceFields({ source: pre.source, officialVerification: false, agreeingSources }),
   };
   const acceptResult = decideCandidateAccept(acceptInput);
 
@@ -335,21 +350,26 @@ export function evaluateElement(element: RawOsmElement, opts: EvaluateOptions): 
  * function that makes a second discovery source real rather than merely
  * counted.
  */
-export function evaluateCandidate(nc: NormalizedCandidate, opts: EvaluateOptions): DiscoveryEvaluation {
+export function evaluateCandidate(
+  nc: NormalizedCandidate,
+  opts: EvaluateOptions,
+  agreeingSources?: ReadonlySet<SourceId>,
+): DiscoveryEvaluation {
   const pre = precheckCandidate(nc);
   if (!pre.ok) return { outcome: pre.outcome, source: pre.source, sourceId: pre.sourceId };
-  return finishEvaluation(pre, nearbyExisting(opts.existingVenues, pre.lat, pre.lon));
+  return finishEvaluation(pre, nearbyExisting(opts.existingVenues, pre.lat, pre.lon), agreeingSources);
 }
 
 /** Spatial-RPC (production) counterpart of evaluateCandidate — same relationship as evaluateElementWithLookup has to evaluateElement. */
 export async function evaluateCandidateWithLookup(
   nc: NormalizedCandidate,
   lookupNearby: (lat: number, lon: number) => Promise<DedupeExistingVenue[]>,
+  agreeingSources?: ReadonlySet<SourceId>,
 ): Promise<DiscoveryEvaluation> {
   const pre = precheckCandidate(nc);
   if (!pre.ok) return { outcome: pre.outcome, source: pre.source, sourceId: pre.sourceId };
   const nearby = await lookupNearby(pre.lat, pre.lon);
-  return finishEvaluation(pre, nearby);
+  return finishEvaluation(pre, nearby, agreeingSources);
 }
 
 /**
@@ -391,6 +411,7 @@ const OFFICIAL_VERIFICATION_SCORE_BONUS = 15;
 export function applyCorroboration(
   evaluation: DiscoveryEvaluation,
   corroborationStatus: 'VERIFIED_SAME_VENUE' | 'PROBABLE' | 'AMBIGUOUS' | 'MISMATCH' | 'UNAVAILABLE',
+  agreeingSources?: ReadonlySet<SourceId>,
 ): DiscoveryEvaluation {
   if (evaluation.outcome !== 'candidate' || !evaluation.acceptInput) return evaluation;
   if (corroborationStatus !== 'VERIFIED_SAME_VENUE') return evaluation;
@@ -399,6 +420,11 @@ export function applyCorroboration(
     ...evaluation.acceptInput,
     officialVerification: true,
     confidenceScore: Math.min(100, evaluation.acceptInput.confidenceScore + OFFICIAL_VERIFICATION_SCORE_BONUS),
+    // The venue's own site verifying its identity is a SECOND independent
+    // witness — this is the single most common way a candidate legitimately
+    // reaches auto-accept. Recomputed (not incremented) so the independence
+    // rules stay in one place.
+    ...identityEvidenceFields({ source: evaluation.source, officialVerification: true, agreeingSources }),
   };
   return { ...evaluation, acceptInput, acceptResult: decideCandidateAccept(acceptInput) };
 }
@@ -501,6 +527,7 @@ async function runDiscovery<T>(
   items: Iterable<T>,
   evaluateOne: (item: T) => Promise<DiscoveryEvaluation>,
   deps: DiscoverDeps,
+  agreementFor?: (item: T) => ReadonlySet<SourceId> | undefined,
 ): Promise<DiscoveryCounts> {
   const counts = emptyCounts();
 
@@ -523,7 +550,7 @@ async function runDiscovery<T>(
         // domain dedupe kept. Never invents a URL the source didn't supply.
         const website = evaluation.websiteUrl ?? (c.websiteDomain ? `https://${c.websiteDomain}` : null);
         const corroboration = await deps.corroborate(website, { name: c.name, postcode: c.postcode, city: evaluation.city ?? null, latitude: c.latitude, longitude: c.longitude, phone: c.phone });
-        evaluation = applyCorroboration(evaluation, corroboration.status);
+        evaluation = applyCorroboration(evaluation, corroboration.status, agreementFor?.(item));
       }
     } catch {
       counts.errors += 1;
@@ -607,12 +634,22 @@ export async function discoverFromCandidates(
   candidates: Iterable<NormalizedCandidate>,
   deps: DiscoverDeps,
 ): Promise<DiscoveryCounts> {
+  // Materialised up front because cross-source agreement is a property of the
+  // WHOLE run's candidate set, not of one candidate: a second independent
+  // provider's record can appear anywhere in the stream. Computed once, pure,
+  // no extra network or DB cost.
+  const all = Array.from(candidates);
+  const agreement = buildCrossSourceAgreement(all);
+  const agreementFor = (nc: NormalizedCandidate): ReadonlySet<SourceId> | undefined =>
+    agreement.get(`${nc.source}/${nc.sourceId}`);
+
   return runDiscovery(
-    candidates,
+    all,
     async (nc) =>
       deps.lookupNearby
-        ? evaluateCandidateWithLookup(nc, deps.lookupNearby)
-        : evaluateCandidate(nc, { existingVenues: deps.existingVenues }),
+        ? evaluateCandidateWithLookup(nc, deps.lookupNearby, agreementFor(nc))
+        : evaluateCandidate(nc, { existingVenues: deps.existingVenues }, agreementFor(nc)),
     deps,
+    agreementFor,
   );
 }

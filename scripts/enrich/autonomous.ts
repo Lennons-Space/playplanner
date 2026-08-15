@@ -914,6 +914,10 @@ async function main(): Promise<void> {
           has_valid_address: row.acceptInput.hasValidAddress,
           is_trusted_source: row.acceptInput.isTrustedSource,
           official_verification: row.acceptInput.officialVerification,
+          // Migration 061: the DB re-checks this itself before publishing —
+          // it is the trust boundary, this script is the pre-flight filter.
+          independent_identity_evidence_count: row.acceptInput.independentIdentityEvidenceCount,
+          identity_evidence_sources: row.acceptInput.identityEvidenceSources ?? [],
           has_closure_signal: row.acceptInput.hasClosureSignal,
           required_fields_complete: row.acceptInput.requiredFieldsComplete,
           status: row.acceptResult.decision === 'quarantine' ? 'quarantined' : row.acceptResult.decision === 'reject' ? 'rejected' : 'candidate',

@@ -53,12 +53,19 @@ describe('evaluateElement', () => {
     expect(r.outcome).toBe('skipped_irrelevant_category');
   });
 
-  it('produces a candidate for a structurally-tagged zoo with high confidence', () => {
+  it('produces a candidate for a structurally-tagged zoo with high confidence, but QUARANTINES it as a single source', () => {
     const r = evaluateElement(zooElement(), { existingVenues: NO_EXISTING });
     expect(r.outcome).toBe('candidate');
     expect(r.categorySlug).toBe('animal-attraction');
     expect(r.categoryMatchKind).toBe('structural');
-    expect(r.acceptResult?.decision).toBe('auto_accept');
+    // CHANGED by the 2.1 hardening: this used to expect 'auto_accept'. A
+    // complete OSM record scores a perfect 100 and used to publish a public
+    // venue entirely on its own. It is still a strong candidate — the score is
+    // unchanged — but one community-editable record is one witness, so it now
+    // waits for a human or for independent corroboration.
+    expect(r.acceptInput?.confidenceScore).toBe(100);
+    expect(r.acceptInput?.independentIdentityEvidenceCount).toBe(1);
+    expect(r.acceptResult?.decision).toBe('quarantine');
   });
 
   it('produces a candidate for a name-hint-only farm park, never auto-accepted', () => {
@@ -142,9 +149,15 @@ describe('discoverFromElements', () => {
     expect(counts.elementsScanned).toBe(3);
   });
 
+  // These two are about the write/apply PLUMBING, not the acceptance policy,
+  // so they supply the official-site corroboration a candidate now needs to be
+  // auto-accept-eligible at all (2.1 hardening). Without it the candidate
+  // quarantines and there would be no auto_accept path left to exercise.
+  const verified = async () => ({ status: 'VERIFIED_SAME_VENUE' as const });
+
   it('write mode calls upsertCandidate for a non-duplicate candidate', async () => {
     const upsert = jest.fn().mockResolvedValue({ id: 'cand-1' });
-    const counts = await discoverFromElements([zooElement()], { existingVenues: NO_EXISTING, write: true, apply: false, upsertCandidate: upsert });
+    const counts = await discoverFromElements([zooElement()], { existingVenues: NO_EXISTING, write: true, apply: false, upsertCandidate: upsert, corroborate: verified });
     expect(upsert).toHaveBeenCalledTimes(1);
     expect(counts.autoAccepted).toBe(1);
   });
@@ -153,9 +166,20 @@ describe('discoverFromElements', () => {
     const upsert = jest.fn().mockResolvedValue({ id: 'cand-2' });
     const autoAccept = jest.fn().mockResolvedValue(undefined);
     await discoverFromElements([zooElement()], {
-      existingVenues: NO_EXISTING, write: true, apply: true, upsertCandidate: upsert, autoAcceptCandidate: autoAccept,
+      existingVenues: NO_EXISTING, write: true, apply: true, upsertCandidate: upsert, autoAcceptCandidate: autoAccept, corroborate: verified,
     });
     expect(autoAccept).toHaveBeenCalledWith('cand-2');
+  });
+
+  it('apply mode does NOT call autoAcceptCandidate for an UNCORROBORATED single-source candidate', async () => {
+    // The regression guard for the hole this hardening closed.
+    const upsert = jest.fn().mockResolvedValue({ id: 'cand-solo' });
+    const autoAccept = jest.fn().mockResolvedValue(undefined);
+    await discoverFromElements([zooElement()], {
+      existingVenues: NO_EXISTING, write: true, apply: true, upsertCandidate: upsert, autoAcceptCandidate: autoAccept,
+    });
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(autoAccept).not.toHaveBeenCalled();
   });
 
   it('apply mode does NOT call autoAcceptCandidate for a quarantined candidate', async () => {

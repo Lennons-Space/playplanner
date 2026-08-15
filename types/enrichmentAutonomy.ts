@@ -189,6 +189,21 @@ export interface CandidateAcceptInput {
   hasClosureSignal: boolean;
   requiredFieldsComplete: boolean;
   confidenceScore: number; // 0-100 composite candidate confidence
+  /**
+   * How many GENUINELY INDEPENDENT sources attest to this venue's identity —
+   * the discovery record itself counts as 1, VERIFIED official-site
+   * corroboration adds 1, and each independent trusted provider that resolves
+   * to the same venue adds 1. Mirrors of the same upstream data (Geoapify is
+   * OSM-derived), repeated tags on one record, and multiple pages of one
+   * website are all deliberately NOT independent — see
+   * scripts/enrich/discovery/identityEvidence.ts.
+   *
+   * This is the gate that stops a single structured record publishing a
+   * public venue on numeric confidence alone.
+   */
+  independentIdentityEvidenceCount: number;
+  /** The distinct independent sources counted above, persisted for audit/provenance. */
+  identityEvidenceSources?: string[];
 }
 
 // 'merge_existing' (Enrichment 2.1 Phase H) — an exact dedupe match: the

@@ -2,7 +2,8 @@
 // scripts/enrich/discovery/candidateAccept.ts
 //
 // Enrichment 2.0 — Part 8: the new-venue auto-accept gate. PURE mirror of the
-// `auto_accept_candidate` SQL RPC (supabase/migrations/059_enrichment_autonomy.sql)
+// `auto_accept_candidate` SQL RPC (created in 059_enrichment_autonomy.sql,
+// replaced in 061_enrichment_review_paths.sql to add the independence gate)
 // — every boolean gate and the score threshold here matches that RPC exactly,
 // so a TypeScript 'auto_accept' verdict is never surprised by an RPC rejection
 // (and the RPC re-checks everything server-side regardless — this module is a
@@ -14,9 +15,22 @@
 // gate is deliberately conservative: any single missing signal quarantines,
 // never silently accepts.
 //
+// TWO INDEPENDENT REQUIREMENTS (Enrichment 2.1 hardening): auto-accept needs
+// BOTH a high confidence score AND at least MIN_INDEPENDENT_IDENTITY_EVIDENCE
+// independent identity sources. They are not interchangeable — the score
+// measures extraction quality, the evidence count measures whether more than
+// one witness says the place exists. A perfect-100 single OSM record therefore
+// QUARANTINES; it is a strong candidate, not a publishable one.
+//
+// SCOPE: this applies ONLY to creating a new published venue. Field-level
+// auto-apply on an EXISTING, already-identified venue is unchanged and still
+// governed by web/autoApplyPolicy.ts — the venue's identity is not in question
+// there, so the independence requirement would be pure friction.
+//
 // No I/O, deterministic, no '@/' path alias.
 // =============================================================================
 
+import { MIN_INDEPENDENT_IDENTITY_EVIDENCE } from './identityEvidence';
 import type {
   CandidateAcceptDecision,
   CandidateAcceptInput,
@@ -74,11 +88,38 @@ export function decideCandidateAccept(input: CandidateAcceptInput): CandidateAcc
     );
   }
 
-  // All gates satisfied AND score clears the strict new-venue bar.
+  // ── INDEPENDENT IDENTITY EVIDENCE (Enrichment 2.1 hardening) ─────────────
+  // Deliberately checked LAST and separately from the score, because it is a
+  // different kind of claim. Everything above asks "did we read this record
+  // correctly and completely?"; this asks "does more than one independent
+  // witness say this place exists and is what the record claims?".
+  //
+  // A single structured record — however complete, even at a perfect 100 —
+  // is one community-editable row. Publishing a public family venue from that
+  // alone is not a confidence problem that a higher threshold could fix, so no
+  // score is allowed to substitute for it.
+  const evidence = input.independentIdentityEvidenceCount;
+  if (evidence < MIN_INDEPENDENT_IDENTITY_EVIDENCE) {
+    return quarantine(
+      `only ${evidence} independent identity source(s) (${describeSources(input.identityEvidenceSources)}); ` +
+      `publishing a new venue needs ${MIN_INDEPENDENT_IDENTITY_EVIDENCE} — either VERIFIED official-site ` +
+      `corroboration or a second genuinely independent trusted source. Confidence ${confidenceScore} is ` +
+      'strong, but numeric confidence never substitutes for independent identity evidence',
+    );
+  }
+
+  // All gates satisfied, score clears the strict new-venue bar, AND identity
+  // is independently attested.
   return {
     decision: 'auto_accept',
-    reason: `all gates satisfied, confidence ${confidenceScore} >= ${AUTO_ACCEPT_MIN_SCORE}`,
+    reason:
+      `all gates satisfied, confidence ${confidenceScore} >= ${AUTO_ACCEPT_MIN_SCORE}, ` +
+      `and ${evidence} independent identity sources (${describeSources(input.identityEvidenceSources)})`,
   };
+}
+
+function describeSources(sources: string[] | undefined): string {
+  return sources && sources.length > 0 ? sources.join(' + ') : 'source not recorded';
 }
 
 function reject(reason: string): CandidateAcceptResult {

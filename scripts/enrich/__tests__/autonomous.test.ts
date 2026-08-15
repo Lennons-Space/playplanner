@@ -593,3 +593,47 @@ describe('booking_url identity policy (gap: extracted into permanently unappliab
     expect(r.report.richFacts.bookingUrlsAutoApplied).toBe(0);
   });
 });
+
+describe('Existing Venue F — the new-venue independence rule must NOT touch existing-venue enrichment', () => {
+  const AT = () => new Date('2026-08-14T12:00:00.000Z');
+  let tmpDir: string;
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-enrich-f-')); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  const venue: VenueCandidateRow = { id: 'v1', name: 'Test Venue', website: 'https://v.example/', is_verified: false, operating_status: 'active' };
+
+  // A single official website is the ONLY source here — exactly the situation
+  // that now quarantines a NEW venue. On an EXISTING, already-identified venue
+  // the identity is not in question, so field-level auto-apply is unchanged.
+  const fetchOfficialFacts = async (): Promise<WebFetchResult> => ({
+    kind: 'ok',
+    page: {
+      finalUrl: 'https://v.example/',
+      html: '<html><head><script type="application/ld+json">'
+        + '{"@context":"https://schema.org","@type":"LocalBusiness","name":"Test Venue","telephone":"+441234567890"}'
+        + '</script></head><body>Free parking is available on site.</body></html>',
+      fromCache: false,
+      page: { url: 'https://v.example/', httpStatus: 200, contentSha256: 'x', bytes: 10, fetchedAt: AT().toISOString() },
+    },
+  });
+
+  it('still auto-applies a high-confidence official phone on an existing venue', async () => {
+    const autoApplyProposal = jest.fn();
+    const db = fakeDb({ selectCandidateVenues: async () => [venue], autoApplyProposal });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    const r = await runEnrichExisting(db, fetchOfficialFacts, flags, createCheckpoint('r', 'enrich-existing', AT()), AT, 'r');
+
+    expect(autoApplyProposal).toHaveBeenCalled();
+    expect(r.report.fieldsAutoApplied).toBeGreaterThan(0);
+  });
+
+  it('still publishes a high-confidence official parking facility on an existing venue', async () => {
+    const publishFacility = jest.fn();
+    const db = fakeDb({ selectCandidateVenues: async () => [venue], publishFacility });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    const r = await runEnrichExisting(db, fetchOfficialFacts, flags, createCheckpoint('r', 'enrich-existing', AT()), AT, 'r');
+
+    expect(publishFacility).toHaveBeenCalledWith('v1', 'parking');
+    expect(r.report.richFacts.facilitiesAdded['parking']).toBe(1);
+  });
+});

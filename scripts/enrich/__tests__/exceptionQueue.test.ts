@@ -1,4 +1,4 @@
-import { buildExceptionQueue, renderExceptionQueueHuman } from '../exceptionQueue';
+import { EXCEPTION_RESOLUTIONS, resolutionFor, type ExceptionQueueKind, buildExceptionQueue, renderExceptionQueueHuman } from '../exceptionQueue';
 import type { ClassifiedProposal } from '../autonomousCore';
 import type { CandidateAcceptResult, ClosureAssessment } from '../../../types/enrichmentAutonomy';
 
@@ -147,5 +147,48 @@ describe('buildExceptionQueue — facility conflicts', () => {
       [{ venueId: 'v1', facilitySlug: 'parking', reason: 'conflict' }],
     );
     expect(items[0]!.kind).toBe('facility_conflict');
+  });
+});
+
+// ── Enrichment 2.1 hardening: every exception must be resolvable ────────────
+// The review found two kinds that could be RAISED but never CLOSED. This block
+// fails if a new kind is ever added without a resolution path, which is the
+// only durable way to stop that recurring.
+describe('exception resolvability', () => {
+  const ALL_KINDS: ExceptionQueueKind[] = [
+    'proposal_exception',
+    'candidate_quarantine',
+    'closure_confirmation',
+    'facility_conflict',
+    'booking_url_review',
+  ];
+
+  it('every exception kind declares BOTH an approve and a dismiss path', () => {
+    for (const kind of ALL_KINDS) {
+      const r = resolutionFor(kind);
+      expect([kind, typeof r?.approve]).toEqual([kind, 'string']);
+      expect([kind, (r?.approve ?? '').length > 0]).toEqual([kind, true]);
+      expect([kind, (r?.dismiss ?? '').length > 0]).toEqual([kind, true]);
+    }
+  });
+
+  it('the resolution table covers exactly the kinds that exist — no extras, none missing', () => {
+    expect(Object.keys(EXCEPTION_RESOLUTIONS).sort()).toEqual([...ALL_KINDS].sort());
+  });
+
+  it('every resolution path names an admin-authorised action, never an anonymous one', () => {
+    for (const kind of ALL_KINDS) {
+      const r = resolutionFor(kind);
+      expect([kind, /admin/.test(r.approve)]).toEqual([kind, true]);
+      expect([kind, /admin/.test(r.dismiss)]).toEqual([kind, true]);
+    }
+  });
+
+  it('the human report tells the operator how to close each item it lists', () => {
+    const rendered = renderExceptionQueueHuman(
+      buildExceptionQueue([], [], [], [{ venueId: 'v1', facilitySlug: 'parking', reason: 'conflict' }], []),
+    );
+    expect(rendered).toMatch(/How to resolve:/);
+    expect(rendered).toMatch(/resolve_facility_conflict/);
   });
 });

@@ -118,6 +118,61 @@ export type ExceptionQueueItem =
   | ExceptionQueueFacilityConflictItem
   | ExceptionQueueBookingUrlItem;
 
+export type ExceptionQueueKind = ExceptionQueueItem['kind'];
+
+/**
+ * How an operator actually RESOLVES each exception kind — the approve path and
+ * the dismiss path, named as concrete RPCs.
+ *
+ * This table exists because an exception queue whose items have no terminal
+ * action is not a queue, it is a leak: the 2.1 review found two kinds
+ * (quarantined candidates, and facility conflicts) that could be raised but
+ * never closed, plus booking_url proposals that could be surfaced but not
+ * approved. Every kind is now required to name both paths, and
+ * exceptionQueue.test.ts fails if a new kind is added without them — so this
+ * class of gap cannot silently reappear.
+ */
+export interface ExceptionResolution {
+  /** Move the item forward (accept the finding / publish the change). */
+  approve: string;
+  /** Close the item without applying it. */
+  dismiss: string;
+  /** Migration that introduced the resolution path, for reviewers checking what is deployed. */
+  since: string;
+}
+
+export const EXCEPTION_RESOLUTIONS: Record<ExceptionQueueKind, ExceptionResolution> = {
+  proposal_exception: {
+    approve: 'apply_venue_proposal(proposal_id, applied_text?) — admin',
+    dismiss: 'reject_venue_proposal(proposal_id, notes) — admin',
+    since: '056',
+  },
+  candidate_quarantine: {
+    approve: "resolve_discovery_candidate(candidate_id, 'approve', notes) — admin; publishes the venue",
+    dismiss: "resolve_discovery_candidate(candidate_id, 'reject'|'dismiss', notes) — admin",
+    since: '061',
+  },
+  closure_confirmation: {
+    approve: 'confirm_venue_closure(venue_id, notes) — admin',
+    dismiss: 'reactivate_venue(venue_id) — admin',
+    since: '059',
+  },
+  facility_conflict: {
+    approve: "resolve_facility_conflict(venue_id, slug, 'remove_official', notes) — admin; only ever removes official-enrichment rows, never community votes",
+    dismiss: "resolve_facility_conflict(venue_id, slug, 'keep', notes) — admin",
+    since: '061',
+  },
+  booking_url_review: {
+    approve: 'apply_booking_url_proposal(proposal_id, expected_current_value?, notes) — admin',
+    dismiss: 'reject_venue_proposal(proposal_id, notes) — admin (already field-agnostic)',
+    since: '061',
+  },
+};
+
+export function resolutionFor(kind: ExceptionQueueKind): ExceptionResolution {
+  return EXCEPTION_RESOLUTIONS[kind];
+}
+
 /**
  * Build the exception queue from one run's classified proposals, quarantined
  * candidates, strong-closure-signal venues, and facility-evidence conflicts.
@@ -236,6 +291,7 @@ export function renderExceptionQueueHuman(items: ExceptionQueueItem[]): string {
   if (items.length === 0) return 'Exception queue: empty — nothing needs your review this run.';
 
   const lines: string[] = [`Exception queue: ${items.length} item(s) need your review`, ''];
+  const kinds = Array.from(new Set(items.map((i) => i.kind)));
   for (const item of items) {
     if (item.kind === 'proposal_exception') {
       lines.push(
@@ -261,6 +317,17 @@ export function renderExceptionQueueHuman(items: ExceptionQueueItem[]): string {
         `  [FACILITY CONFLICT] venue=${item.venueId}${item.venueName ? ` (${item.venueName})` : ''} facility=${item.facilitySlug} — ${item.reason}`,
       );
     }
+  }
+
+  // Print the resolution path for exactly the kinds present, so an operator
+  // reading this report never has to go looking for how to close an item.
+  lines.push('');
+  lines.push('How to resolve:');
+  for (const kind of kinds) {
+    const r = resolutionFor(kind);
+    lines.push(`  ${kind}`);
+    lines.push(`    approve: ${r.approve}`);
+    lines.push(`    dismiss: ${r.dismiss}`);
   }
   return lines.join('\n');
 }
