@@ -191,7 +191,11 @@ export interface CandidateAcceptInput {
   confidenceScore: number; // 0-100 composite candidate confidence
 }
 
-export type CandidateAcceptDecision = 'auto_accept' | 'quarantine' | 'reject';
+// 'merge_existing' (Enrichment 2.1 Phase H) — an exact dedupe match: the
+// candidate IS an already-known venue, so the correct action is enriching
+// that existing venue, never creating a duplicate. Distinct from 'reject'
+// (which means the candidate itself is not worth pursuing at all).
+export type CandidateAcceptDecision = 'merge_existing' | 'auto_accept' | 'quarantine' | 'reject';
 
 export interface CandidateAcceptResult {
   decision: CandidateAcceptDecision;

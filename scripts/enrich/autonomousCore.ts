@@ -163,6 +163,56 @@ export interface AutonomyRunReport {
   robotsDeniedRequests: number;
   cacheHitRate: number | null;
   byField: Partial<Record<WebField, { extracted: number; autoApplied: number }>>;
+  /** Enrichment 2.1 Phase Q — "how much richer did PlayPlanner become". */
+  richFacts: RichFactsSummary;
+}
+
+/**
+ * "How much richer did PlayPlanner become" — and, in a dry run, how much
+ * richer it WOULD have become.
+ *
+ * Every count below is a CHANGE IDENTIFIED, computed by the exact same
+ * classification code in both modes. `mode` says which run this was, and
+ * `writesPerformed` is the independent proof: a dry run identifies changes and
+ * performs zero writes, so writesPerformed is always 0 there. (Before this was
+ * fixed, all of these were structurally zero in dry-run because the
+ * classification itself sat inside the --apply branch — the report couldn't
+ * tell you anything about a run you hadn't already committed to.)
+ */
+export interface RichFactsSummary {
+  mode: 'dry_run' | 'apply';
+  indoorOutdoorAdded: number;
+  facilitiesAdded: Partial<Record<string, number>>; // keyed by facility slug
+  admissionStateAdded: number;
+  descriptionsGenerated: number;
+  /** Venues that gained at least one of min/max age evidence (never venues.min_age/max_age — see migration 060 §D). */
+  ageEvidenceAdded: number;
+  heightEvidenceAdded: number;
+  /** Booking links whose host matched the venue's own domain (bookingUrlPolicy.ts). */
+  bookingUrlsAutoApplied: number;
+  /** Booking links that could not be tied to the venue — routed to the exception queue, never published unattended. */
+  bookingUrlsExceptioned: number;
+  factsExtractedTotal: number;
+  facilityConflicts: number; // routed to the exception queue, never auto-resolved
+  /** Actual write calls made. ALWAYS 0 in dry-run — the machine-checkable proof of zero writes. */
+  writesPerformed: number;
+}
+
+export function emptyRichFactsSummary(mode: RichFactsSummary['mode'] = 'dry_run'): RichFactsSummary {
+  return {
+    mode,
+    indoorOutdoorAdded: 0,
+    facilitiesAdded: {},
+    admissionStateAdded: 0,
+    descriptionsGenerated: 0,
+    ageEvidenceAdded: 0,
+    heightEvidenceAdded: 0,
+    bookingUrlsAutoApplied: 0,
+    bookingUrlsExceptioned: 0,
+    factsExtractedTotal: 0,
+    facilityConflicts: 0,
+    writesPerformed: 0,
+  };
 }
 
 export interface AutonomyRunReportInputs {
@@ -182,6 +232,7 @@ export interface AutonomyRunReportInputs {
   failedRequests: number;
   robotsDeniedRequests: number;
   cacheHitRate: number | null;
+  richFacts: RichFactsSummary;
 }
 
 export function buildAutonomyReport(inputs: AutonomyRunReportInputs): AutonomyRunReport {
@@ -228,6 +279,7 @@ export function buildAutonomyReport(inputs: AutonomyRunReportInputs): AutonomyRu
     robotsDeniedRequests: inputs.robotsDeniedRequests,
     cacheHitRate: inputs.cacheHitRate,
     byField,
+    richFacts: inputs.richFacts,
   };
 }
 
@@ -259,6 +311,30 @@ export function renderHumanSummary(report: AutonomyRunReport): string {
   lines.push('By field:');
   for (const [field, counts] of Object.entries(report.byField)) {
     lines.push(`  ${field.padEnd(14)} extracted=${counts.extracted} autoApplied=${counts.autoApplied}`);
+  }
+  lines.push('');
+  const rf = report.richFacts;
+  const dry = rf.mode === 'dry_run';
+  // Labels say what actually happened, so a dry-run report can never be
+  // mistaken for a record of changes that were made.
+  const verb = dry ? 'would add' : 'added';
+  lines.push(`Rich facts (Enrichment 2.1) — ${dry ? 'DRY RUN: changes identified, nothing written' : 'APPLIED'}:`);
+  lines.push(`  Facts extracted total   : ${rf.factsExtractedTotal}`);
+  lines.push(`  Indoor/outdoor ${verb.padEnd(9)}: ${rf.indoorOutdoorAdded}`);
+  lines.push(`  Admission state ${verb.padEnd(8)}: ${rf.admissionStateAdded}`);
+  lines.push(`  Age evidence ${verb.padEnd(11)}: ${rf.ageEvidenceAdded}`);
+  lines.push(`  Height evidence ${verb.padEnd(8)}: ${rf.heightEvidenceAdded}`);
+  lines.push(`  Descriptions ${dry ? 'would generate' : 'generated'} : ${rf.descriptionsGenerated}`);
+  lines.push(`  Booking URLs ${dry ? 'would auto-apply' : 'auto-applied'}: ${rf.bookingUrlsAutoApplied} (host matched the venue's own domain)`);
+  lines.push(`  Booking URLs for review : ${rf.bookingUrlsExceptioned} (could not be tied to the venue — never published unattended)`);
+  lines.push(`  Facility conflicts      : ${rf.facilityConflicts} (routed to exception queue, never auto-resolved)`);
+  lines.push(`  Writes performed        : ${rf.writesPerformed}${dry ? ' (dry run — must be 0)' : ''}`);
+  const facilitySlugs = Object.keys(rf.facilitiesAdded);
+  if (facilitySlugs.length > 0) {
+    lines.push(`  Facilities ${verb}:`);
+    for (const slug of facilitySlugs) {
+      lines.push(`    ${slug.padEnd(20)} ${rf.facilitiesAdded[slug]}`);
+    }
   }
   return lines.join('\n');
 }

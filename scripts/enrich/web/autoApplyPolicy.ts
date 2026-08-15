@@ -28,8 +28,17 @@
 //                         an admin-authored rewrite distinct from scraped text
 //                         (copyright) — there is no proposed_value an automation
 //                         could ever apply verbatim, by design.
-//   booking_url     —    NEVER auto-applies. No venues.booking_url column exists
-//                         yet (deferred in the 056 spec) — structurally inert.
+//   booking_url     —    Never auto-applies THROUGH THIS GENERIC PATH, and that
+//                         is now a deliberate routing decision rather than the
+//                         old "there is no column" one (migration 060 §B adds
+//                         venues.booking_url). A booking link needs a check no
+//                         confidence score can express — does the link belong
+//                         to THIS venue — so it is decided by
+//                         web/bookingUrlPolicy.ts against the venue's own
+//                         website host and applied via migration 060 §F's
+//                         dedicated auto_apply_booking_url RPC. Keeping it in
+//                         NEVER_AUTO_APPLY here keeps this module in lockstep
+//                         with migration 059's SQL, which also still blocks it.
 //
 // Bands below the auto-apply threshold (Part 3's suggested 95-100/80-94/<80,
 // adapted per-field since the ceiling above already encodes field risk):

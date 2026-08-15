@@ -14,6 +14,7 @@ import {
   filterUnprocessed,
   markComplete,
   buildAutonomyReport,
+  emptyRichFactsSummary,
   renderHumanSummary,
 } from '../autonomousCore';
 import type { ProposalDraft } from '../../../types/webEnrichment';
@@ -135,6 +136,7 @@ describe('buildAutonomyReport / renderHumanSummary', () => {
       failedRequests: 0,
       robotsDeniedRequests: 0,
       cacheHitRate: 0.5,
+      richFacts: emptyRichFactsSummary(),
     });
     expect(report.fieldsExtracted).toBe(3);
     expect(report.fieldsAutoApplied).toBe(1);

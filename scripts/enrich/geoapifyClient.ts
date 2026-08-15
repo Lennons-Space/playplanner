@@ -26,6 +26,7 @@ import type { GeoapifyResponse } from '../../types/enrichment';
 
 const GEOCODE_URL       = 'https://api.geoapify.com/v1/geocode/search';
 const PLACE_DETAILS_URL = 'https://api.geoapify.com/v2/place-details';
+const PLACES_URL        = 'https://api.geoapify.com/v2/places';
 
 export interface GeoapifyClientOptions {
   apiKey:             string;
@@ -43,6 +44,16 @@ export interface GeocodeParams {
   biasLat?:   number;        // proximity bias (our venue coords)
   biasLon?:   number;
   limit?:     number;        // default 5
+}
+
+export interface PlacesSearchParams {
+  categories:  string[];     // Geoapify category codes, e.g. ['leisure.playground']
+  filterCircleLat: number;
+  filterCircleLon: number;
+  filterCircleRadiusM: number;
+  limit?:      number;       // default 100, API max 500
+  offset?:     number;       // default 0
+  conditions?: string[];     // e.g. ['wheelchair']
 }
 
 export interface PlaceDetailsParams {
@@ -107,6 +118,33 @@ export class GeoapifyClient {
     }
     url.searchParams.set('apiKey', this.apiKey);
     return this.request(url, `geocode "${params.text}"`);
+  }
+
+  /**
+   * Places (category/radius) search — v2/places. Enrichment 2.1 Phase D3: NOT
+   * called by any default-enabled code path — see
+   * discovery/providers/geoapifyPlacesProvider.ts's own header for why (the
+   * "production phase" commercial-use limitation in Geoapify's own terms is
+   * not fully specified without contacting their support, so this stays
+   * config-gated and disabled by default per instruction: "if anything is
+   * uncertain, implement behind configuration and disable by default").
+   * Cost: 1 credit per 20 places returned (Geoapify's own docs), so a capped
+   * `limit` directly controls spend — never call with an unbounded limit.
+   */
+  async placesSearch(params: PlacesSearchParams): Promise<GeoapifyCallResult> {
+    const url = new URL(PLACES_URL);
+    url.searchParams.set('categories', params.categories.join(','));
+    url.searchParams.set(
+      'filter',
+      `circle:${params.filterCircleLon},${params.filterCircleLat},${params.filterCircleRadiusM}`,
+    );
+    url.searchParams.set('limit', String(Math.min(params.limit ?? 100, 500)));
+    if (params.offset) url.searchParams.set('offset', String(params.offset));
+    if (params.conditions && params.conditions.length > 0) {
+      url.searchParams.set('conditions', params.conditions.join(','));
+    }
+    url.searchParams.set('apiKey', this.apiKey);
+    return this.request(url, `places categories=[${params.categories.join(',')}]`);
   }
 
   /** Place Details — used to pull the rich facts once a match is found. */

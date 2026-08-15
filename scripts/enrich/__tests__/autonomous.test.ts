@@ -159,6 +159,13 @@ function fakeDb(overrides: Partial<EnrichExistingDb> = {}): EnrichExistingDb {
     setProposalScore: async () => {},
     autoApplyProposal: async () => {},
     flagSuspectedClosure: async () => {},
+    getFacilityRow: async () => null,
+    publishFacility: async () => {},
+    fillVenueEnrichmentIfEmpty: async () => {},
+    getVenueEnrichmentSnapshot: async () => ({ indoor_outdoor: null, admission_status: null, min_age_evidence: null, max_age_evidence: null, min_height_cm_evidence: null }),
+    proposeGeneratedDescription: async () => null,
+    autoApplyGeneratedDescription: async () => {},
+    autoApplyBookingUrl: async () => {},
     ...overrides,
   };
 }
@@ -228,6 +235,107 @@ describe('runEnrichExisting', () => {
     const result = await runEnrichExisting(db, fetchPageClosed, flags, checkpoint, AT, 'run-1');
     expect(result.report.suspectedClosures).toBe(1);
     expect(flagSuspectedClosure).toHaveBeenCalledWith('v1', expect.any(String));
+  });
+
+  it('publishes a facility fact via facilitySync in apply mode', async () => {
+    const fetchPageWithFacts = async (): Promise<WebFetchResult> => ({
+      kind: 'ok',
+      page: {
+        finalUrl: 'https://v.example/',
+        html: '<html><body>Free parking is available on site. Fully indoor soft play.</body></html>',
+        fromCache: false,
+        page: { url: 'https://v.example/', httpStatus: 200, contentSha256: 'x', bytes: 10, fetchedAt: AT().toISOString() },
+      },
+    });
+    const publishFacility = jest.fn();
+    const getFacilityRow = jest.fn().mockResolvedValue(null);
+    const db = fakeDb({ selectCandidateVenues: async () => [venue], publishFacility, getFacilityRow });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    const checkpoint = createCheckpoint('run-1', 'enrich-existing', AT());
+
+    const result = await runEnrichExisting(db, fetchPageWithFacts, flags, checkpoint, AT, 'run-1');
+    expect(publishFacility).toHaveBeenCalledWith('v1', 'parking');
+    expect(result.report.richFacts.facilitiesAdded['parking']).toBe(1);
+  });
+
+  it('fills indoor_outdoor only when currently empty, and generates a description', async () => {
+    const fetchPageWithFacts = async (): Promise<WebFetchResult> => ({
+      kind: 'ok',
+      page: {
+        finalUrl: 'https://v.example/',
+        html: '<html><body>Fully indoor soft play with free parking available on site.</body></html>',
+        fromCache: false,
+        page: { url: 'https://v.example/', httpStatus: 200, contentSha256: 'x', bytes: 10, fetchedAt: AT().toISOString() },
+      },
+    });
+    const fillVenueEnrichmentIfEmpty = jest.fn();
+    const proposeGeneratedDescription = jest.fn().mockResolvedValue('desc-proposal-1');
+    const autoApplyGeneratedDescription = jest.fn();
+    const db = fakeDb({
+      selectCandidateVenues: async () => [venue],
+      getSnapshot: async () => ({ description: null, price_range: null, website: null, phone: null, email: null, opening_hours: [] }),
+      getVenueEnrichmentSnapshot: async () => ({ indoor_outdoor: null, admission_status: null, min_age_evidence: null, max_age_evidence: null, min_height_cm_evidence: null }),
+      fillVenueEnrichmentIfEmpty, proposeGeneratedDescription, autoApplyGeneratedDescription,
+    });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    const checkpoint = createCheckpoint('run-1', 'enrich-existing', AT());
+
+    const result = await runEnrichExisting(db, fetchPageWithFacts, flags, checkpoint, AT, 'run-1');
+    expect(fillVenueEnrichmentIfEmpty).toHaveBeenCalledWith('v1', 'indoor_outdoor', 'indoor');
+    expect(proposeGeneratedDescription).toHaveBeenCalled();
+    expect(autoApplyGeneratedDescription).toHaveBeenCalledWith('desc-proposal-1');
+    expect(result.report.richFacts.indoorOutdoorAdded).toBe(1);
+    expect(result.report.richFacts.descriptionsGenerated).toBe(1);
+  });
+
+  it('never overwrites an existing indoor_outdoor value', async () => {
+    const fetchPageWithFacts = async (): Promise<WebFetchResult> => ({
+      kind: 'ok',
+      page: { finalUrl: 'https://v.example/', html: '<html><body>Fully indoor soft play.</body></html>', fromCache: false, page: { url: 'https://v.example/', httpStatus: 200, contentSha256: 'x', bytes: 10, fetchedAt: AT().toISOString() } },
+    });
+    const fillVenueEnrichmentIfEmpty = jest.fn();
+    const db = fakeDb({
+      selectCandidateVenues: async () => [venue],
+      getVenueEnrichmentSnapshot: async () => ({ indoor_outdoor: 'mixed', admission_status: null, min_age_evidence: null, max_age_evidence: null, min_height_cm_evidence: null }),
+      fillVenueEnrichmentIfEmpty,
+    });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    const checkpoint = createCheckpoint('run-1', 'enrich-existing', AT());
+    const result = await runEnrichExisting(db, fetchPageWithFacts, flags, checkpoint, AT, 'run-1');
+    expect(fillVenueEnrichmentIfEmpty).not.toHaveBeenCalled();
+    expect(result.report.richFacts.indoorOutdoorAdded).toBe(0);
+  });
+
+  it('never generates a description over an existing meaningful one', async () => {
+    const fetchPageWithFacts = async (): Promise<WebFetchResult> => ({
+      kind: 'ok',
+      page: { finalUrl: 'https://v.example/', html: '<html><body>Fully indoor soft play.</body></html>', fromCache: false, page: { url: 'https://v.example/', httpStatus: 200, contentSha256: 'x', bytes: 10, fetchedAt: AT().toISOString() } },
+    });
+    const proposeGeneratedDescription = jest.fn();
+    const db = fakeDb({
+      selectCandidateVenues: async () => [venue],
+      getSnapshot: async () => ({ description: 'A wonderful family farm with animals, a cafe and seasonal events all year round.', price_range: null, website: null, phone: null, email: null, opening_hours: [] }),
+      proposeGeneratedDescription,
+    });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    const checkpoint = createCheckpoint('run-1', 'enrich-existing', AT());
+    await runEnrichExisting(db, fetchPageWithFacts, flags, checkpoint, AT, 'run-1');
+    expect(proposeGeneratedDescription).not.toHaveBeenCalled();
+  });
+
+  it('dry run (apply=false) never publishes facilities or generates descriptions', async () => {
+    const fetchPageWithFacts = async (): Promise<WebFetchResult> => ({
+      kind: 'ok',
+      page: { finalUrl: 'https://v.example/', html: '<html><body>Free parking available on site. Fully indoor.</body></html>', fromCache: false, page: { url: 'https://v.example/', httpStatus: 200, contentSha256: 'x', bytes: 10, fetchedAt: AT().toISOString() } },
+    });
+    const publishFacility = jest.fn();
+    const proposeGeneratedDescription = jest.fn();
+    const db = fakeDb({ selectCandidateVenues: async () => [venue], publishFacility, proposeGeneratedDescription });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--limit=5', '--report-dir=' + tmpDir]); // no --apply
+    const checkpoint = createCheckpoint('run-1', 'enrich-existing', AT());
+    await runEnrichExisting(db, fetchPageWithFacts, flags, checkpoint, AT, 'run-1');
+    expect(publishFacility).not.toHaveBeenCalled();
+    expect(proposeGeneratedDescription).not.toHaveBeenCalled();
   });
 
   it('--resume skips venues already in the checkpoint', async () => {
@@ -303,5 +411,185 @@ describe('checkpoint persistence', () => {
     fs.mkdirSync(tmpDir, { recursive: true });
     fs.writeFileSync(path.join(tmpDir, 'checkpoint-enrich-existing.json'), 'not json{{{');
     expect(loadCheckpoint(tmpDir, 'enrich-existing')).toBeNull();
+  });
+});
+
+// =============================================================================
+// Enrichment 2.1 review fixes. Each block below pins one gap found in the
+// pre-commit review, where a feature was built but not actually wired.
+// =============================================================================
+describe('rich facts in DRY RUN (gap: classification used to sit inside the --apply branch)', () => {
+  const AT = () => new Date('2026-08-14T12:00:00.000Z');
+  let tmpDir: string;
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-enrich-dry-')); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  const venue: VenueCandidateRow = { id: 'v1', name: 'Test Venue', website: 'https://v.example/', is_verified: false, operating_status: 'active' };
+  const richHtml = '<html><body>Fully indoor soft play. Free parking is available on site. '
+    + 'Baby changing facilities are provided. Admission is free. Suitable for children 2 to 11 years. '
+    + 'Minimum height 90cm. Booking is recommended.</body></html>';
+  const fetchRich = async (): Promise<WebFetchResult> => ({
+    kind: 'ok',
+    page: { finalUrl: 'https://v.example/', html: richHtml, fromCache: false, page: { url: 'https://v.example/', httpStatus: 200, contentSha256: 'x', bytes: 10, fetchedAt: AT().toISOString() } },
+  });
+
+  async function run(apply: boolean, dbOverrides = {}) {
+    const argv = ['n', 's', '--enrich-existing', '--limit=5', '--report-dir=' + tmpDir];
+    if (apply) argv.push('--apply');
+    const db = fakeDb({ selectCandidateVenues: async () => [venue], ...dbOverrides });
+    return runEnrichExisting(db, fetchRich, parseFlags(argv), createCheckpoint('run-1', 'enrich-existing', AT()), AT, 'run-1');
+  }
+
+  it('reports REAL would-change counts in dry run, not structural zeroes', async () => {
+    const r = await run(false);
+    const rf = r.report.richFacts;
+    expect(rf.mode).toBe('dry_run');
+    expect(rf.factsExtractedTotal).toBeGreaterThan(0);
+    expect(rf.indoorOutdoorAdded).toBe(1);
+    expect(rf.admissionStateAdded).toBe(1);
+    expect(rf.ageEvidenceAdded).toBe(1);
+    expect(rf.heightEvidenceAdded).toBe(1);
+    expect(rf.facilitiesAdded['parking']).toBe(1);
+    expect(rf.descriptionsGenerated).toBe(1);
+  });
+
+  it('performs ZERO writes in dry run — every write method uncalled and writesPerformed 0', async () => {
+    const spies = {
+      proposeField: jest.fn(), setProposalScore: jest.fn(), autoApplyProposal: jest.fn(),
+      flagSuspectedClosure: jest.fn(), publishFacility: jest.fn(), fillVenueEnrichmentIfEmpty: jest.fn(),
+      proposeGeneratedDescription: jest.fn(), autoApplyGeneratedDescription: jest.fn(), autoApplyBookingUrl: jest.fn(),
+    };
+    const r = await run(false, spies);
+    for (const [name, spy] of Object.entries(spies)) {
+      expect([name, spy.mock.calls.length]).toEqual([name, 0]);
+    }
+    expect(r.report.richFacts.writesPerformed).toBe(0);
+  });
+
+  it('identifies the SAME changes in dry run and apply — only writesPerformed differs', async () => {
+    const dry = (await run(false)).report.richFacts;
+    const applied = (await run(true, { proposeGeneratedDescription: async () => 'p1' })).report.richFacts;
+
+    const comparable = (rf: typeof dry) => ({
+      indoorOutdoorAdded: rf.indoorOutdoorAdded, admissionStateAdded: rf.admissionStateAdded,
+      ageEvidenceAdded: rf.ageEvidenceAdded, heightEvidenceAdded: rf.heightEvidenceAdded,
+      descriptionsGenerated: rf.descriptionsGenerated, facilitiesAdded: rf.facilitiesAdded,
+      factsExtractedTotal: rf.factsExtractedTotal,
+    });
+    expect(comparable(dry)).toEqual(comparable(applied));
+    expect(dry.writesPerformed).toBe(0);
+    expect(applied.writesPerformed).toBeGreaterThan(0);
+    expect(applied.mode).toBe('apply');
+  });
+});
+
+describe('age/height evidence (gap: extracted with nowhere provenance-safe to go)', () => {
+  const AT = () => new Date('2026-08-14T12:00:00.000Z');
+  let tmpDir: string;
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-enrich-age-')); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  const venue: VenueCandidateRow = { id: 'v1', name: 'Test Venue', website: 'https://v.example/', is_verified: false, operating_status: 'active' };
+  const fetchAges = async (): Promise<WebFetchResult> => ({
+    kind: 'ok',
+    page: { finalUrl: 'https://v.example/', html: '<html><body>Suitable for children 2 to 11 years. Minimum height 90cm.</body></html>', fromCache: false, page: { url: 'https://v.example/', httpStatus: 200, contentSha256: 'x', bytes: 10, fetchedAt: AT().toISOString() } },
+  });
+
+  it('writes ONLY to venue_enrichment evidence columns, never to venues.min_age/max_age', async () => {
+    const fillVenueEnrichmentIfEmpty = jest.fn();
+    const db = fakeDb({ selectCandidateVenues: async () => [venue], fillVenueEnrichmentIfEmpty });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    await runEnrichExisting(db, fetchAges, flags, createCheckpoint('r', 'enrich-existing', AT()), AT, 'r');
+
+    const fields = fillVenueEnrichmentIfEmpty.mock.calls.map((c) => c[1]);
+    expect(fields).toContain('min_age_evidence');
+    expect(fields).toContain('max_age_evidence');
+    expect(fields).toContain('min_height_cm_evidence');
+    // The whole point: admin-owned published columns are never touched here.
+    expect(fields).not.toContain('min_age');
+    expect(fields).not.toContain('max_age');
+    expect(fillVenueEnrichmentIfEmpty).toHaveBeenCalledWith('v1', 'min_age_evidence', 2);
+    expect(fillVenueEnrichmentIfEmpty).toHaveBeenCalledWith('v1', 'min_height_cm_evidence', 90);
+  });
+
+  it('never overwrites age evidence that is already recorded', async () => {
+    const fillVenueEnrichmentIfEmpty = jest.fn();
+    const db = fakeDb({
+      selectCandidateVenues: async () => [venue],
+      getVenueEnrichmentSnapshot: async () => ({ indoor_outdoor: null, admission_status: null, min_age_evidence: 5, max_age_evidence: 8, min_height_cm_evidence: 100 }),
+      fillVenueEnrichmentIfEmpty,
+    });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    const r = await runEnrichExisting(db, fetchAges, flags, createCheckpoint('r', 'enrich-existing', AT()), AT, 'r');
+    expect(fillVenueEnrichmentIfEmpty).not.toHaveBeenCalled();
+    expect(r.report.richFacts.ageEvidenceAdded).toBe(0);
+    expect(r.report.richFacts.heightEvidenceAdded).toBe(0);
+  });
+});
+
+describe('booking_url identity policy (gap: extracted into permanently unappliable proposals)', () => {
+  const AT = () => new Date('2026-08-14T12:00:00.000Z');
+  let tmpDir: string;
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-enrich-book-')); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  const venue: VenueCandidateRow = { id: 'v1', name: 'Test Venue', website: 'https://v.example/', is_verified: false, operating_status: 'active', booking_url: null };
+  const snapshotWithSite = { description: null, price_range: null, website: 'https://v.example/', phone: null, email: null, opening_hours: [] };
+
+  function fetchWithBookingLink(href: string) {
+    return async (): Promise<WebFetchResult> => ({
+      kind: 'ok',
+      page: { finalUrl: 'https://v.example/', html: `<html><body><a href="${href}">Book tickets online</a></body></html>`, fromCache: false, page: { url: 'https://v.example/', httpStatus: 200, contentSha256: 'x', bytes: 10, fetchedAt: AT().toISOString() } },
+    });
+  }
+
+  it('auto-applies a booking link on the venue own host via the dedicated identity-checked RPC', async () => {
+    const autoApplyBookingUrl = jest.fn();
+    const autoApplyProposal = jest.fn();
+    const db = fakeDb({ selectCandidateVenues: async () => [venue], getSnapshot: async () => snapshotWithSite, autoApplyBookingUrl, autoApplyProposal });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    const r = await runEnrichExisting(db, fetchWithBookingLink('https://v.example/book'), flags, createCheckpoint('r', 'enrich-existing', AT()), AT, 'r');
+
+    expect(r.report.richFacts.bookingUrlsAutoApplied).toBe(1);
+    expect(autoApplyBookingUrl).toHaveBeenCalledWith('proposal-1');
+    // Never through 059's generic path, which still blocks booking_url.
+    expect(autoApplyProposal).not.toHaveBeenCalled();
+  });
+
+  it('routes a third-party booking host to the exception queue instead of publishing it', async () => {
+    const autoApplyBookingUrl = jest.fn();
+    const db = fakeDb({ selectCandidateVenues: async () => [venue], getSnapshot: async () => snapshotWithSite, autoApplyBookingUrl });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    const r = await runEnrichExisting(db, fetchWithBookingLink('https://bookwhen.com/testvenue'), flags, createCheckpoint('r', 'enrich-existing', AT()), AT, 'r');
+
+    expect(autoApplyBookingUrl).not.toHaveBeenCalled();
+    expect(r.report.richFacts.bookingUrlsExceptioned).toBe(1);
+    const item = r.exceptionItems.find((i) => i.kind === 'booking_url_review');
+    expect(item).toBeDefined();
+  });
+
+  it('classifies the booking link in dry run without proposing or applying anything', async () => {
+    const proposeField = jest.fn();
+    const autoApplyBookingUrl = jest.fn();
+    const db = fakeDb({ selectCandidateVenues: async () => [venue], getSnapshot: async () => snapshotWithSite, proposeField, autoApplyBookingUrl });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--limit=5', '--report-dir=' + tmpDir]);
+    const r = await runEnrichExisting(db, fetchWithBookingLink('https://v.example/book'), flags, createCheckpoint('r', 'enrich-existing', AT()), AT, 'r');
+
+    expect(r.report.richFacts.bookingUrlsAutoApplied).toBe(1);
+    expect(proposeField).not.toHaveBeenCalled();
+    expect(autoApplyBookingUrl).not.toHaveBeenCalled();
+  });
+
+  it('never overwrites a booking_url the venue already has', async () => {
+    const autoApplyBookingUrl = jest.fn();
+    const db = fakeDb({
+      selectCandidateVenues: async () => [{ ...venue, booking_url: 'https://v.example/existing' }],
+      getSnapshot: async () => snapshotWithSite, autoApplyBookingUrl,
+    });
+    const flags = parseFlags(['n', 's', '--enrich-existing', '--apply', '--limit=5', '--report-dir=' + tmpDir]);
+    const r = await runEnrichExisting(db, fetchWithBookingLink('https://v.example/book'), flags, createCheckpoint('r', 'enrich-existing', AT()), AT, 'r');
+
+    expect(autoApplyBookingUrl).not.toHaveBeenCalled();
+    expect(r.report.richFacts.bookingUrlsAutoApplied).toBe(0);
   });
 });

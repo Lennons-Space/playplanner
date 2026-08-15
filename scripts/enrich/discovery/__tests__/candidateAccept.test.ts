@@ -32,9 +32,9 @@ describe('decideCandidateAccept', () => {
     expect(r.decision).toBe('reject');
   });
 
-  it('rejects an exact duplicate — never creates a second venue', () => {
+  it('routes an exact duplicate to merge_existing — never creates a second venue', () => {
     const r = decideCandidateAccept(baseInput({ dedupeDecision: 'duplicate' }));
-    expect(r.decision).toBe('reject');
+    expect(r.decision).toBe('merge_existing');
     expect(r.reason).toMatch(/enrich the existing venue/);
   });
 

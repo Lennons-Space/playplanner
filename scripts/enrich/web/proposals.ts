@@ -103,7 +103,14 @@ function currentScalarFor(field: WebField, snap: CurrentVenueSnapshot): string |
     case 'email':
       return snap.email;
     case 'booking_url':
-      return null; // no venues.booking_url column yet (deferred) → always "new"
+      // Returns null because CurrentVenueSnapshot carries no booking_url, so
+      // this layer cannot see the live value — NOT because the column is
+      // missing (migration 060 §B adds it). The consequence is only that a
+      // booking_url draft is never deduped/conflict-flagged HERE; the two
+      // places that actually matter both read the live value themselves:
+      // bookingUrlPolicy.ts (fill-if-empty) and migration 060 §F's RPC
+      // (fill-if-empty + the stale-value guard, server-side).
+      return null;
     case 'opening_hours':
     default:
       return null;

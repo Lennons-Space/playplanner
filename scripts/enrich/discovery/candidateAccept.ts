@@ -49,7 +49,7 @@ export function decideCandidateAccept(input: CandidateAcceptInput): CandidateAcc
     return reject('coordinates are not valid UK coordinates');
   }
   if (dedupeDecision === 'duplicate') {
-    return reject('matches an existing venue — enrich the existing venue, never create a duplicate');
+    return { decision: 'merge_existing', reason: 'matches an existing venue — enrich the existing venue, never create a duplicate' };
   }
 
   // ── Quarantine: plausible, but automation cannot safely decide alone ─────────

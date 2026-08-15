@@ -156,7 +156,8 @@ function collectFromJsonLd(html: string, add: AddFn): void {
   }
 }
 
-function parseJsonLdObjects(html: string): unknown[] {
+/** Exported for officialCorroboration.ts (Enrichment 2.1 Phase D4) — reuses this exact JSON-LD block finder rather than a second regex. */
+export function parseJsonLdObjects(html: string): unknown[] {
   const out: unknown[] = [];
   const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let m: RegExpExecArray | null;

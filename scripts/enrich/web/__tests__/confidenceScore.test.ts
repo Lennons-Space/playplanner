@@ -110,9 +110,17 @@ describe('scoreFieldConfidence — field ceilings (lossy/legal fields)', () => {
     expect(r.score).toBeLessThanOrEqual(60);
   });
 
-  it('booking_url scores 0 — no target column exists yet', () => {
+  it('caps booking_url below every auto-apply threshold, so the generic score path can never publish one', () => {
     const r = scoreFieldConfidence({ field: 'booking_url', method: 'jsonld', conflictsExisting: false });
-    expect(r.score).toBe(0);
+    expect(r.score).toBe(84);
+    expect(r.score).toBeLessThan(88); // the lowest FIELD_THRESHOLDS entry (phone)
+  });
+
+  it('keeps booking_url above the defer floor, so a real booking link is retained as evidence rather than discarded', () => {
+    // It used to be pinned at 0 ("no target column yet"), which silently threw
+    // away every booking link before identity could ever be checked.
+    const r = scoreFieldConfidence({ field: 'booking_url', method: 'jsonld', conflictsExisting: false });
+    expect(r.score).toBeGreaterThanOrEqual(80);
   });
 });
 

@@ -44,6 +44,13 @@ export interface ClosureConfirmationInput {
   assessment: ClosureAssessment;
 }
 
+export interface FacilityConflictInput {
+  venueId: string;
+  venueName?: string;
+  facilitySlug: string;
+  reason: string; // from facilitySync.ts's decideFacilitySync 'exception' reason
+}
+
 export interface ExceptionQueueProposalItem {
   kind: 'proposal_exception';
   key: string;
@@ -73,25 +80,66 @@ export interface ExceptionQueueClosureItem {
   reason: string;
 }
 
-export type ExceptionQueueItem = ExceptionQueueProposalItem | ExceptionQueueCandidateItem | ExceptionQueueClosureItem;
+export interface ExceptionQueueFacilityConflictItem {
+  kind: 'facility_conflict';
+  key: string;
+  venueId: string;
+  venueName: string | null;
+  facilitySlug: string;
+  reason: string;
+}
+
+export interface BookingUrlReviewInput {
+  venueId: string;
+  venueName?: string;
+  proposedUrl: string;
+  reason: string; // from bookingUrlPolicy.ts's decideBookingUrl 'exception' reason
+}
+
+/**
+ * A booking link we extracted but will not publish unattended because it
+ * could not be tied to the venue's own domain (most often a legitimate
+ * third-party booking provider). Surfaced rather than silently dropped —
+ * these are usually correct and worth a human's 5 seconds.
+ */
+export interface ExceptionQueueBookingUrlItem {
+  kind: 'booking_url_review';
+  key: string;
+  venueId: string;
+  venueName: string | null;
+  proposedUrl: string;
+  reason: string;
+}
+
+export type ExceptionQueueItem =
+  | ExceptionQueueProposalItem
+  | ExceptionQueueCandidateItem
+  | ExceptionQueueClosureItem
+  | ExceptionQueueFacilityConflictItem
+  | ExceptionQueueBookingUrlItem;
 
 /**
  * Build the exception queue from one run's classified proposals, quarantined
- * candidates, and strong-closure-signal venues. Only 'exception'-decision
- * proposals, 'quarantine'-decision candidates, and 'confirmed_closed'-
- * recommended venues are included — everything else is filtered out here,
- * not by the caller, so no call site can accidentally widen this into a full
- * inbox. A 'confirmed_closed' recommendation ALWAYS lands here rather than
- * being auto-applied: confirm_venue_closure is admin-only by design (Part 9
- * — a destructive change needs stronger proof than an additive one), so
+ * candidates, strong-closure-signal venues, and facility-evidence conflicts.
+ * Only 'exception'-decision proposals, 'quarantine'-decision candidates,
+ * 'confirmed_closed'-recommended venues, and 'exception'-decision facility
+ * syncs are included — everything else is filtered out here, not by the
+ * caller, so no call site can accidentally widen this into a full inbox. A
+ * 'confirmed_closed' recommendation ALWAYS lands here rather than being
+ * auto-applied: confirm_venue_closure is admin-only by design (Part 9 — a
+ * destructive change needs stronger proof than an additive one), so
  * automation can never publish this decision on its own, only surface it.
- * De-duplicated by key so a caller accidentally passing the same item twice
- * in one run never doubles it up in the report.
+ * Likewise a facility conflict (explicit negative evidence vs. an existing
+ * published row) NEVER auto-deletes — see facilitySync.ts. De-duplicated by
+ * key so a caller accidentally passing the same item twice in one run never
+ * doubles it up in the report.
  */
 export function buildExceptionQueue(
   proposals: ProposalExceptionInput[],
   candidates: CandidateQuarantineInput[],
   closures: ClosureConfirmationInput[] = [],
+  facilityConflicts: FacilityConflictInput[] = [],
+  bookingUrlReviews: BookingUrlReviewInput[] = [],
 ): ExceptionQueueItem[] {
   const seen = new Set<string>();
   const items: ExceptionQueueItem[] = [];
@@ -143,10 +191,43 @@ export function buildExceptionQueue(
     });
   }
 
+  for (const c of facilityConflicts) {
+    const key = `facility:${c.venueId}:${c.facilitySlug}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({
+      kind: 'facility_conflict',
+      key,
+      venueId: c.venueId,
+      venueName: c.venueName ?? null,
+      facilitySlug: c.facilitySlug,
+      reason: c.reason,
+    });
+  }
+
+  for (const b of bookingUrlReviews) {
+    const key = `booking:${b.venueId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({
+      kind: 'booking_url_review',
+      key,
+      venueId: b.venueId,
+      venueName: b.venueName ?? null,
+      proposedUrl: b.proposedUrl,
+      reason: b.reason,
+    });
+  }
+
   // Most-actionable first: higher score = closer to a confident human decision
-  // either way. Closure confirmations have no numeric score — treated as
-  // maximally actionable (100) since strong closure evidence is high-stakes.
-  const scoreOf = (i: ExceptionQueueItem): number => (i.kind === 'closure_confirmation' ? 100 : i.score);
+  // either way. Closure confirmations and facility conflicts have no numeric
+  // score — treated as maximally actionable (100) since both are high-stakes.
+  // A booking-URL review sits just below them: worth a look, but a link left
+  // unpublished is not a correctness or safety problem in the meantime.
+  const scoreOf = (i: ExceptionQueueItem): number =>
+    i.kind === 'closure_confirmation' || i.kind === 'facility_conflict' ? 100
+      : i.kind === 'booking_url_review' ? 90
+        : i.score;
   items.sort((a, b) => scoreOf(b) - scoreOf(a));
   return items;
 }
@@ -166,10 +247,18 @@ export function renderExceptionQueueHuman(items: ExceptionQueueItem[]): string {
         `  [CANDIDATE] "${item.candidateName}" (${item.categorySlug}, source=${item.sourceId}) ` +
         `score=${item.score} — ${item.reason}`,
       );
-    } else {
+    } else if (item.kind === 'closure_confirmation') {
       lines.push(
         `  [CLOSURE?] venue=${item.venueId}${item.venueName ? ` (${item.venueName})` : ''} — ${item.reason} ` +
         `(admin confirm_venue_closure required — automation cannot publish this)`,
+      );
+    } else if (item.kind === 'booking_url_review') {
+      lines.push(
+        `  [BOOKING URL] venue=${item.venueId}${item.venueName ? ` (${item.venueName})` : ''} url=${item.proposedUrl} — ${item.reason}`,
+      );
+    } else {
+      lines.push(
+        `  [FACILITY CONFLICT] venue=${item.venueId}${item.venueName ? ` (${item.venueName})` : ''} facility=${item.facilitySlug} — ${item.reason}`,
       );
     }
   }

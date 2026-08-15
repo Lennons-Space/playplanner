@@ -122,4 +122,30 @@ describe('renderExceptionQueueHuman', () => {
     expect(text).toMatch(/Closed Venue/);
     expect(text).toMatch(/admin confirm_venue_closure required/);
   });
+
+  it('renders a facility conflict line', () => {
+    const items = buildExceptionQueue([], [], [], [{ venueId: 'v1', venueName: 'Test Venue', facilitySlug: 'parking', reason: 'official says no parking, existing row says present' }]);
+    const text = renderExceptionQueueHuman(items);
+    expect(text).toMatch(/FACILITY CONFLICT/);
+    expect(text).toMatch(/Test Venue/);
+    expect(text).toMatch(/parking/);
+  });
+});
+
+describe('buildExceptionQueue — facility conflicts', () => {
+  it('includes facility conflicts and de-duplicates by (venue, slug)', () => {
+    const input = { venueId: 'v1', venueName: 'Test Venue', facilitySlug: 'parking', reason: 'conflict' };
+    const items = buildExceptionQueue([], [], [], [input, input]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: 'facility_conflict', facilitySlug: 'parking' });
+  });
+
+  it('sorts a facility conflict ahead of a lower-scored proposal exception', () => {
+    const items = buildExceptionQueue(
+      [{ venueId: 'low', classified: classified('exception', { score: 10 }) }],
+      [], [],
+      [{ venueId: 'v1', facilitySlug: 'parking', reason: 'conflict' }],
+    );
+    expect(items[0]!.kind).toBe('facility_conflict');
+  });
 });

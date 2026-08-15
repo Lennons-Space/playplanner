@@ -44,7 +44,15 @@ const FIELD_SCORE_CEILING: Partial<Record<WebField, number>> = {
   // so this ceiling only controls the defer-vs-ignore split, never eligibility.
   price_range: 84,   // lossy £-text -> 4-bucket enum mapping; never "high enough" alone
   description: 60,   // apply always requires an admin rewrite (legal/copyright) — see 056 RPC
-  booking_url: 0,    // no venues.booking_url column yet — never actionable
+  // 84, for the same reason as price_range: above the 80 defer-floor so a real
+  // booking link is KEPT as an evidence candidate rather than dropped into
+  // 'ignore', but below every auto-apply threshold so the generic score path
+  // can never publish one. Was 0 ("no venues.booking_url column yet — never
+  // actionable"); migration 060 §B adds that column, so a 0 ceiling would now
+  // silently discard every booking link before anything could look at it.
+  // What actually decides a booking link is venue IDENTITY, not this score —
+  // see web/bookingUrlPolicy.ts.
+  booking_url: 84,
 };
 
 function clamp(n: number): number {
