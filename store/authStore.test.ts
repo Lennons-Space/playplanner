@@ -36,6 +36,13 @@ jest.mock('@/lib/supabase', () => {
       eq:     _mockEq,
       single: _mockSingle,
     })),
+    // fetchProfile reads the caller's own row through the get_my_profile()
+    // SECURITY DEFINER RPC (migration 064), not through .from('profiles').
+    // It resolves via the same _mockSingle, so every existing expectation
+    // that sets a profile result keeps working unchanged.
+    rpc: jest.fn(() => ({
+      single: _mockSingle,
+    })),
     _mockSignOut,
     _mockSingle,
   };
@@ -161,17 +168,19 @@ describe('setSession', () => {
 
     useAuthStore.getState().setSession(fakeSession);
 
-    // fetchProfile is called internally — it queries 'profiles'
-    expect(supabase.from).toHaveBeenCalledWith('profiles');
+    // fetchProfile is called internally — since migration 064 it reads the
+    // caller's own row through the get_my_profile() SECURITY DEFINER RPC
+    // rather than selecting from the profiles table directly.
+    expect(_s.rpc).toHaveBeenCalledWith('get_my_profile');
   });
 
   // setSession(null) should NOT trigger fetchProfile
   it('does not call fetchProfile when session is null', () => {
-    (supabase.from as jest.Mock).mockClear();
+    (_s.rpc as jest.Mock).mockClear();
 
     useAuthStore.getState().setSession(null);
 
-    expect(supabase.from).not.toHaveBeenCalled();
+    expect(_s.rpc).not.toHaveBeenCalled();
   });
 });
 

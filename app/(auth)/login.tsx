@@ -39,6 +39,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/lib/supabase';
+import { beginExplicitSignIn, completeExplicitSignIn } from '@/lib/authTombstone';
 import { useUser } from '@/hooks/useAuth';
 import { Icon } from '@/components/ui/Icon';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
@@ -126,10 +127,21 @@ export default function LoginScreen() {
       return;
     }
     setLoading(true);
+    // Record the INTENT to sign in. This deliberately does NOT lift the
+    // sign-out tombstone: doing that before the await left the app unprotected
+    // for the whole network round-trip, and auth-js does not serialise a
+    // concurrent token refresh against this call (its React Native lock is
+    // lockNoOp, and signInWithPassword takes no lock at all). Only the
+    // SIGNED_IN this call emits may establish a new identity — see
+    // lib/authTombstone.ts.
+    beginExplicitSignIn();
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
+    // Report the OUTCOME. On failure the tombstone stays armed, so the
+    // previously signed-out account cannot slip back in behind a failed login.
+    completeExplicitSignIn(!error);
     setLoading(false);
     if (error) {
       // Sanitised message — never show raw Supabase error text to the user

@@ -66,16 +66,27 @@ export default function WelcomeScreen() {
               pointerEvents="none"
             />
 
-            <View style={styles.heroLogoBox}>
-              <Image
-                source={require('../../assets/design/PP2-transparent.png')}
-                resizeMode="contain"
-                style={styles.heroLogo}
-                accessibilityIgnoresInvertColors
-                accessible
-                accessibilityLabel="Play Planner"
-              />
+            {/* Brand icon only — the artwork's baked-in wordmark is clipped
+                off (see heroLogoClip) and re-rendered as live text below. */}
+            <View style={styles.heroLogoClip}>
+              <View style={styles.heroLogoBox}>
+                <Image
+                  source={require('../../assets/design/PP2-transparent.png')}
+                  resizeMode="contain"
+                  style={styles.heroLogo}
+                  accessibilityIgnoresInvertColors
+                  accessible={false}
+                  importantForAccessibility="no"
+                />
+              </View>
             </View>
+
+            {/* Live wordmark. Replaces the raster's baked-in text, whose "Play"
+                is near-black and went muddy against the night background. */}
+            <Text style={styles.wordmark} accessibilityRole="header">
+              <Text style={styles.wordmarkPlay}>Play</Text>
+              <Text style={styles.wordmarkPlanner}>Planner</Text>
+            </Text>
 
             <View style={styles.heroTextWrap}>
               <Text style={styles.headline}>{"Family days out,\nsorted by parents."}</Text>
@@ -196,15 +207,60 @@ function createStyles(T: ThemeTokens) {
     // small once real transparency made the logo's own edges the only
     // visible boundary. maxWidth:420 is a tablet ceiling only; it never
     // binds on phone-width screens.
-    heroLogoBox: {
+    // WORDMARK CLIP (2026-08-20). PP2-transparent.png is a single raster
+    // holding BOTH the map/sun icon AND a baked-in "PlayPlanner" wordmark. In
+    // that artwork "Play" is near-black (#2E2E2E) and "Planner" is amber — fine
+    // on the light background it was drawn for, but on this screen's night
+    // background "Play" reads as muddy and low-contrast, and the whole wordmark
+    // is a scaled raster so its edges are soft next to real text.
+    //
+    // Rather than ship a second binary or restyle the screen, the artwork is
+    // clipped to its ICON REGION and the wordmark is re-rendered as live text.
+    // 760/1086 is the horizontal cut line in the source artwork: the icon ends
+    // at y≈735 and the baked wordmark starts at y≈785, so the cut falls in the
+    // gap between them and can never clip the icon itself.
+    //
+    // The clip lives on an OUTER plain View, and the inner box keeps the exact
+    // structure documented above — a plain View sized by aspectRatio, with the
+    // Image filling it at 100%/100%. That is deliberate: giving an Image a
+    // percentage width plus aspectRatio makes Android size its Yoga box from
+    // the SOURCE file's pixel dimensions instead (the original hero bug), so
+    // the Image must never be the element carrying the ratio.
+    heroLogoClip: {
       alignSelf: 'center',
       width: '95%',
       maxWidth: 420,
+      aspectRatio: 1448 / 760,
+      overflow: 'hidden',
+    },
+    heroLogoBox: {
+      width: '100%',
       aspectRatio: 1448 / 1086,
     },
     heroLogo: {
       width: '100%',
       height: '100%',
+    },
+    // Live wordmark — sharp at any density and theme-aware.
+    // "Play" uses the theme label colour so it is light on the night background
+    // and dark in light mode (the raster could only ever be one of those).
+    // "Planner" keeps the brand amber, which already has strong contrast on
+    // both backgrounds and preserves the two-tone PlayPlanner identity.
+    wordmark: {
+      alignSelf: 'center',
+      marginTop: 6,
+      fontFamily: FontFamily.display,
+      fontSize: 34,
+      lineHeight: 42,
+      letterSpacing: -0.5,
+      textAlign: 'center',
+    },
+    wordmarkPlay: {
+      color: T.label,
+    },
+    wordmarkPlanner: {
+      // Sampled from the brand artwork's own "Planner".
+      color: '#F5A623',
     },
     heroTextWrap: {
       marginTop: 16,

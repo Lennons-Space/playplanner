@@ -38,6 +38,7 @@ import { shareAsync } from 'expo-sharing';
 import { format } from 'date-fns';
 import { useAuthStore } from '@/store/authStore';
 import { buildDataExport } from '@/hooks/useDataRights';
+import { logDbError, devErrorLabel } from '@/lib/dbError';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
 import { GlassButton } from '@/components/ui/GlassButton';
@@ -48,7 +49,92 @@ import { FontFamily, ocean } from '@/constants/theme';
 
 const ACCENT = ocean;
 
-const STORAGE_KEY   = 'playplanner.last_data_export';
+/**
+ * The last-export timestamp is PER ACCOUNT.
+ *
+ * Real-device failure, 2026-08-21: Account A requested an export, signed out,
+ * and Account B then opened this screen and was told "You downloaded your data
+ * recently. You can request another download after 21 Aug 2026 at 22:53." The
+ * key was a single device-global string, so B inherited A's cooldown — and with
+ * it the knowledge that a previous account on this device had exported their
+ * data, which is exactly the kind of metadata a GDPR export screen must not
+ * disclose about another data subject.
+ *
+ * The user id is appended to the key so one account's export history is
+ * unreachable from another. SecureStore keys allow alphanumerics, '.', '-' and
+ * '_', so a UUID appends safely.
+ */
+const STORAGE_KEY_PREFIX = 'playplanner.last_data_export';
+
+/** Per-account SecureStore key for the last-export timestamp. */
+export function exportCooldownKey(userId: string): string {
+  return `${STORAGE_KEY_PREFIX}.${userId}`;
+}
+
+/**
+ * The stored record — a timestamp PLUS the account it belongs to.
+ *
+ * Real-device failure, 2026-08-21 (second report): Account B was still shown a
+ * cooldown after switching from Account A, even though the per-account key had
+ * shipped and its tests passed. Every ordering of the per-account logic is
+ * provably sound (see dataDownloadStaleRead.test.tsx), which leaves only one
+ * possibility: a value readable under B's key that B never earned.
+ *
+ * A bare numeric timestamp cannot be attributed to anyone. Any build before the
+ * per-account change wrote exactly that, and a value can also land under the
+ * wrong key during an account-confusion episode — which is precisely what the
+ * session-resurrection bug produced on this device. The screen had no way to
+ * tell such a value from one the current user legitimately earned.
+ *
+ * So the record now names its owner. Anything that does not — a bare number, a
+ * malformed value, or a record naming a different account — is unattributable
+ * and is discarded rather than displayed. The privacy-safe failure mode is that
+ * one user may get one extra export (their right under GDPR Art.15 anyway),
+ * never that someone sees another account's export history.
+ */
+interface CooldownRecord {
+  userId: string;
+  ts: number;
+}
+
+/**
+ * Parse a stored value, returning the timestamp ONLY if the record positively
+ * identifies itself as belonging to `userId`. Null means "unusable" — the
+ * caller deletes it.
+ */
+export function parseCooldownRecord(raw: string | null, userId: string): number | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as CooldownRecord).userId === userId &&
+      typeof (parsed as CooldownRecord).ts === 'number' &&
+      Number.isFinite((parsed as CooldownRecord).ts)
+    ) {
+      return (parsed as CooldownRecord).ts;
+    }
+  } catch {
+    // Not JSON at all — a bare legacy timestamp. Unattributable by definition.
+  }
+  return null;
+}
+
+/** Serialise a self-identifying record for `userId`. */
+export function buildCooldownRecord(userId: string, ts: number): string {
+  return JSON.stringify({ userId, ts } satisfies CooldownRecord);
+}
+
+/**
+ * The pre-2026-08-21 device-global key. It holds one account's timestamp and is
+ * served to every account, so it is deleted on sight rather than migrated —
+ * there is no way to know which account wrote it, and the privacy-safe failure
+ * mode is that one user may request one extra export (which is their right
+ * under GDPR Art.15 anyway), never that someone sees another account's history.
+ */
+const LEGACY_GLOBAL_KEY = STORAGE_KEY_PREFIX;
+
 const COOLDOWN_MS   = 86_400_000; // 24 hours
 
 // ---------------------------------------------------------------------------
@@ -67,21 +153,64 @@ export default function DataDownloadScreen() {
   const [isLoading,    setIsLoading]    = useState(false);
   const [success,      setSuccess]      = useState(false);
   const [error,        setError]        = useState(false);
-  const [lastExportTs, setLastExportTs] = useState<number | null>(null);
+  // The cooldown is held together with the identity it belongs to, and is only
+  // ever rendered when that identity is still the signed-in one. This makes a
+  // cross-account frame structurally impossible rather than merely unlikely:
+  // no ordering of renders, effects or late promises can produce state that
+  // belongs to somebody else and still be displayed.
+  const [lastExport, setLastExport] = useState<CooldownRecord | null>(null);
+  const lastExportTs = lastExport && lastExport.userId === userId ? lastExport.ts : null;
 
-  // On mount: read the last-export timestamp from SecureStore.
+  // Read THIS ACCOUNT's last-export timestamp from SecureStore.
+  //
   // WHY SecureStore: the cooldown key indirectly signals when a GDPR export was
   // requested — that is sensitive metadata. AsyncStorage is plaintext on-disk;
   // SecureStore encrypts at rest via the device keychain / keystore.
+  //
+  // Keyed on userId and re-run whenever the signed-in account changes, so an
+  // account switch on a shared device can never show the previous account's
+  // cooldown. The state is reset to null FIRST — before any await — so there is
+  // no frame in which the outgoing account's timestamp is still on screen.
   useEffect(() => {
-    SecureStore.getItemAsync(STORAGE_KEY)
-      .then((raw) => {
-        if (raw) setLastExportTs(parseInt(raw, 10));
-      })
-      .catch(() => {
+    let cancelled = false;
+    setLastExport(null);
+
+    (async () => {
+      // Remove the pre-2026-08-21 device-global entry wherever it is still
+      // present, so it can no longer be served to whoever signs in next.
+      await SecureStore.deleteItemAsync(LEGACY_GLOBAL_KEY).catch(() => {});
+
+      if (!userId) return;
+      const key = exportCooldownKey(userId);
+      try {
+        const raw = await SecureStore.getItemAsync(key);
+        const ts = parseCooldownRecord(raw, userId);
+
+        if (raw !== null && ts === null) {
+          // Present but unattributable: a bare legacy timestamp, a malformed
+          // value, or a record naming another account. Delete it so it cannot
+          // be shown on a later visit either, and show no cooldown now.
+          await SecureStore.deleteItemAsync(key).catch(() => {});
+          if (__DEV__) {
+            console.log('[export-cooldown] discarded an unattributable record');
+          }
+          return;
+        }
+
+        // The identity guard still matters: this resolves asynchronously, and
+        // the signed-in account may have changed while it was in flight. The
+        // record carries its own owner, so the render guard would catch it too
+        // — this simply avoids a pointless state update.
+        if (!cancelled && ts !== null) {
+          setLastExport({ userId, ts });
+        }
+      } catch {
         // Non-fatal — user just won't see a cooldown if storage read fails.
-      });
-  }, []);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [userId]);
 
   const isOnCooldown =
     lastExportTs !== null && Date.now() - lastExportTs < COOLDOWN_MS;
@@ -121,8 +250,12 @@ export default function DataDownloadScreen() {
       });
 
       const now = Date.now();
-      await SecureStore.setItemAsync(STORAGE_KEY, now.toString());
-      setLastExportTs(now);
+      // Self-identifying record — see parseCooldownRecord. `userId` is the one
+      // captured when this handler was created, and it is stamped into both the
+      // stored value and the state, so a write that lands after an account
+      // switch can neither be read by nor rendered for the new account.
+      await SecureStore.setItemAsync(exportCooldownKey(userId), buildCooldownRecord(userId, now));
+      setLastExport({ userId, ts: now });
       setSuccess(true);
     } catch {
       setError(true);

@@ -4,6 +4,9 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore, consumeDeliberateSignOut } from '@/store/authStore';
 import { useMapStore } from '@/store/mapStore';
 import { migratePendingLocationConsent } from '@/services/consent/locationConsent';
+import { isTombstonedSession, noteAdoptedIdentity, tombstoneIdentity } from '@/lib/authTombstone';
+import { purgeLocalAuthSession, resolveAuthStorageKey } from '@/lib/authSession';
+import { logAuthEvent } from '@/lib/authDiagnostics';
 import type { QueryClient } from '@tanstack/react-query';
 
 /**
@@ -27,6 +30,58 @@ export function useAuthListener(queryClient: QueryClient) {
     // if getSession() resolves after onAuthStateChange and its catch fires setSession(null),
     // the user is ejected to the welcome screen while already on the home tab.
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      // ───────────────────────────────────────────────────────────────────
+      // RESURRECTION GATE (2026-08-21, second real-device failure).
+      //
+      // auth-js's _callRefreshToken() calls _saveSession() UNCONDITIONALLY on
+      // success and then emits TOKEN_REFRESHED. A refresh that started before
+      // a sign-out therefore completes after it, rewrites the terminated
+      // session to disk, and arrives here as a perfectly ordinary event —
+      // which is how the phone became Liam again with no credentials entered,
+      // online as well as offline. stopAutoRefresh() cannot cancel an
+      // in-flight refresh, and no purge can outrun a write that happens later.
+      //
+      // So the adoption decision is made HERE: a session belonging to an
+      // identity that has been signed out, with no explicit sign-in since, is
+      // refused and the bytes it just wrote are purged again. Only
+      // clearAuthTombstone() — called by the real sign-in screens — reopens
+      // the door. See lib/authTombstone.ts.
+      // ───────────────────────────────────────────────────────────────────
+      if (session && isTombstonedSession(session, event)) {
+        logAuthEvent(event, session, 'REJECTED (tombstoned)');
+        // The SDK has already written this session to storage; take it back
+        // out, and make sure nothing is scheduled to write it again.
+        void supabase.auth.stopAutoRefresh();
+        void purgeLocalAuthSession(resolveAuthStorageKey(supabase));
+        // Belt and braces: the store is usually already signed out here, but
+        // clearing the cache again costs nothing and closes any window where
+        // an observer re-fetched during the resurrection.
+        queryClient.clear();
+
+        // FAIL CLOSED when somebody else was signed in.
+        //
+        // If the app currently has a user, this rejected event belonged to a
+        // DIFFERENT identity — and _saveSession() has already overwritten the
+        // current user's session on disk with it, which the purge above has
+        // just removed. There is no longer a valid session for the signed-in
+        // user, so leaving them "signed in" would recreate exactly the
+        // store/SDK divergence this whole fix exists to eliminate.
+        //
+        // Signing the device out is an availability cost paid to guarantee the
+        // app never serves the wrong identity. It is deliberate.
+        const current = useAuthStore.getState().user;
+        if (current) {
+          tombstoneIdentity(current.id);
+          setSession(null);
+        }
+        noteAdoptedIdentity(null);
+        return;
+      }
+      logAuthEvent(event, session, 'accepted');
+      // Record what the app is adopting, so a later event carrying a different
+      // identity can be recognised as one (rule 2 of the gate).
+      noteAdoptedIdentity(session?.user?.id ?? null);
+
       if (event === 'SIGNED_OUT') {
         // Auth Session Recovery: this event fires for BOTH a deliberate
         // "Sign out" tap AND an involuntary terminal session loss — e.g. the
@@ -57,6 +112,20 @@ export function useAuthListener(queryClient: QueryClient) {
         // directly; we reach in via getState() which is safe outside React.
         useMapStore.getState().setPendingPostcode(null);
       }
+      // ACCOUNT SWITCH SAFETY. A SIGNED_IN for a DIFFERENT user than the one
+      // currently in the store means the identity changed without this listener
+      // having seen a SIGNED_OUT (token swap, deep-link sign-in, a sign-in that
+      // races the sign-out event). Clear before the store is updated so no
+      // observer can read the previous user's cached rows in the interim.
+      // Identity-scoped query keys (hooks/useAuthIdentity.ts) already make that
+      // unreadable; this drops it from memory as well.
+      const previousUserId = useAuthStore.getState().user?.id;
+      const nextUserId = session?.user?.id;
+      if (previousUserId && nextUserId && previousUserId !== nextUserId) {
+        queryClient.clear();
+        useMapStore.getState().setPendingPostcode(null);
+      }
+
       setSession(session);
       if (event === 'SIGNED_IN' && session?.user?.id) {
         // Migrate any pre-auth location consent that was stored locally before

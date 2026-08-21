@@ -15,6 +15,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { Review } from '@/types';
 import { useUser } from '@/hooks/useAuth';
+import { logDbError } from '@/lib/dbError';
+import { useAuthIdentity, useIsAuthenticated } from '@/hooks/useAuthIdentity';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -80,8 +82,16 @@ interface SubmitReviewPayload {
 // ---------------------------------------------------------------------------
 
 export function useVenueReviews(venueId: string) {
+  // The result of this query depends on WHO is asking, so the identity is part
+  // of the cache key. Without it, a screen still mounted at sign-out keeps
+  // rendering the authenticated result: queryClient.clear() removes the entry,
+  // the immediate re-fetch fails for an anonymous caller, and React Query falls
+  // back to the last successful data. See hooks/useAuthIdentity.ts.
+  const identity = useAuthIdentity();
+  const isAuthed = useIsAuthenticated();
+
   return useQuery({
-    queryKey: ['reviews', venueId],
+    queryKey: ['reviews', venueId, identity],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('reviews')
@@ -112,13 +122,20 @@ export function useVenueReviews(venueId: string) {
 
       // Only log safe metadata on error — never the query or its variables
       if (error) {
-        console.error('useVenueReviews error:', error.code, error.hint);
+        logDbError('useVenueReviews', error);
         throw new Error('Could not load reviews. Please try again.');
       }
 
       return (data ?? []) as Review[];
     },
-    enabled: !!venueId,
+    // Anonymous callers currently see zero reviews: the RLS policy
+    // "Approved reviews are public" (migration 067) requires auth.uid() to be
+    // non-null, and `anon` additionally holds no privilege on public_profiles
+    // (065/066) which this query embeds — so an anonymous request cannot
+    // succeed, it is REFUSED. Skipping it avoids firing a request that is
+    // guaranteed to 42501 and lets the screen show its ordinary empty state
+    // rather than an error. RLS remains the enforcement; this only mirrors it.
+    enabled: !!venueId && isAuthed,
     // Reviews are fetched on every venue-detail visit. Without staleTime React
     // Query treats data as stale immediately, refetching on every navigation.
     // 60 seconds matches useVenue and useVenuePhotos. Explicit invalidation in
@@ -350,8 +367,13 @@ export function useModerateReview() {
 // ---------------------------------------------------------------------------
 
 export function usePublicProfileReviews(userId: string | undefined) {
+  // Identity-scoped: this result depends on who is asking (see
+  // hooks/useAuthIdentity.ts). Keeps one identity's cached rows unreachable
+  // from another identity, including after sign-out.
+  const identity = useAuthIdentity();
+
   return useQuery<PublicReviewItem[]>({
-    queryKey: ['publicReviews', userId],
+    queryKey: ['publicReviews', userId, identity],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('reviews')

@@ -29,6 +29,21 @@ jest.mock('@/lib/supabase', () => {
   return {
     supabase: {
       from: jest.fn(() => builder),
+      // buildDataExport reads the caller's own profile through the
+      // get_my_profile() SECURITY DEFINER RPC (migration 064) rather than
+      // .from('profiles'). It returns the same chainable builder so the
+      // existing single()-based expectations keep working.
+      rpc: jest.fn(() => builder),
+      // buildDataExport now resolves the exporting identity from the live
+      // session rather than trusting its argument (2026-08-21), so the mock
+      // needs the auth boundary too. Individual tests override this to
+      // exercise the identity-mismatch and no-session paths.
+      auth: {
+        getSession: jest.fn(async () => ({
+          data: { session: { user: { id: 'user-123' } } },
+          error: null,
+        })),
+      },
     },
     _builder: builder,
   };
@@ -48,6 +63,8 @@ process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { _builder } = require('@/lib/supabase') as { _builder: any };
 const mockFrom      = supabase.from as jest.MockedFunction<typeof supabase.from>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockRpc       = (supabase as any).rpc as jest.Mock;
 const mockAuditLog  = writeAuditLog as jest.MockedFunction<typeof writeAuditLog>;
 
 function makeWrapper() {
@@ -68,6 +85,8 @@ beforeEach(() => {
   _builder.single.mockReset();
   _builder.delete.mockReturnThis();
   mockFrom.mockReturnValue(_builder);
+  // Same restoration for the get_my_profile() RPC path (migration 064).
+  mockRpc.mockReturnValue(_builder);
 });
 
 // ---------------------------------------------------------------------------
@@ -201,7 +220,7 @@ describe('buildDataExport', () => {
   /** Helper: set up `from()` to return different resolved values per table. */
   function mockQueries(overrides: Record<string, any> = {}) {
     const defaults: Record<string, any> = {
-      profiles:             { data: { username: 'jane', full_name: 'Jane Doe', bio: null, postcode: 'SW1A', children_ages: ['3-5'], show_in_search: false, show_reviews_publicly: true, marketing_consent: false, terms_accepted_at: null, created_at: '2024-01-01', stripe_customer_id: 'cus_HIDDEN', avatar_url: 'https://example.com/avatar.jpg' }, error: null },
+      profiles:             { data: { id: 'user-123', username: 'jane', full_name: 'Jane Doe', bio: null, postcode: 'SW1A', children_ages: ['3-5'], show_in_search: false, show_reviews_publicly: true, marketing_consent: false, terms_accepted_at: null, created_at: '2024-01-01', stripe_customer_id: 'cus_HIDDEN', avatar_url: 'https://example.com/avatar.jpg' }, error: null },
       reviews:              { data: [], error: null },
       favourites:           { data: [], error: null },
       venues:               { data: [], error: null },
@@ -211,7 +230,14 @@ describe('buildDataExport', () => {
 
     const tables = { ...defaults, ...overrides };
     let callIndex = 0;
-    const tableOrder = ['profiles', 'reviews', 'favourites', 'venues', 'location_consent_log', 'gdpr_audit_log'];
+    // `profiles` is no longer fetched via from() — migration 064 moved the
+    // caller's own row to the get_my_profile() RPC, so it is served by
+    // mockRpc below and is absent from this positional order.
+    const tableOrder = ['reviews', 'favourites', 'venues', 'location_consent_log', 'gdpr_audit_log'];
+
+    mockRpc.mockImplementation(() => ({
+      single: jest.fn().mockResolvedValue(tables.profiles),
+    }));
 
     mockFrom.mockImplementation((_table: string) => {
       // Return a fresh builder for each table call, resolving with the right fixture.
@@ -239,14 +265,22 @@ describe('buildDataExport', () => {
     });
   }
 
-  it('excludes stripe_customer_id and ip_hash from the export bundle', async () => {
+  // The export is the user's own copy of the data held about them, so profile
+  // fields are INCLUDED even when they are deliberately kept out of ordinary
+  // app state (migration 064 splits get_my_profile from get_my_profile_export
+  // for exactly this reason). Audit-log internals stay excluded — they are
+  // integrity/attribution fields, not profile data.
+  it('includes the full profile record, and still excludes audit-log internals', async () => {
     mockQueries({
       profiles: {
         data: {
-          username: 'jane', full_name: 'Jane', bio: null, postcode: null,
-          children_ages: [], show_in_search: false, show_reviews_publicly: true,
-          marketing_consent: false, terms_accepted_at: null, created_at: '2024-01-01',
-          stripe_customer_id: 'cus_secret', ip_hash: 'abc123',
+          id: 'user-123', username: 'jane', full_name: 'Jane', avatar_url: 'https://x/a.png',
+          bio: null, postcode: null, children_ages: [], show_in_search: false,
+          show_reviews_publicly: true, marketing_consent: false, terms_accepted_at: null,
+          created_at: '2024-01-01', updated_at: '2024-02-01',
+          is_business_owner: false, is_admin: false,
+          subscription_tier: 'premium', subscription_expires_at: '2025-01-01',
+          stripe_customer_id: 'cus_secret',
         },
         error: null,
       },
@@ -259,19 +293,35 @@ describe('buildDataExport', () => {
     const json = await buildDataExport('user-123');
     const parsed = JSON.parse(json);
 
-    // Excluded at profile level
-    expect(parsed.profile).not.toHaveProperty('stripe_customer_id');
-    expect(parsed.profile).not.toHaveProperty('avatar_url');
-    // Excluded at audit log level
+    // Included at profile level — the user's own data, in full.
+    expect(parsed.profile.stripe_customer_id).toBe('cus_secret');
+    expect(parsed.profile.subscription_tier).toBe('premium');
+    expect(parsed.profile.subscription_expires_at).toBe('2025-01-01');
+    expect(parsed.profile.account_id).toBe('user-123');
+    expect(parsed.profile.avatar_url).toBe('https://x/a.png');
+    expect(parsed.profile.is_business_owner).toBe(false);
+    expect(parsed.profile.updated_at).toBe('2024-02-01');
+    // Still excluded at audit log level
     expect(parsed.audit_log[0]).not.toHaveProperty('ip_hash');
     expect(parsed.audit_log[0]).not.toHaveProperty('record_id');
     expect(parsed.audit_log[0]).not.toHaveProperty('performed_by');
+  });
+
+  it('sources the profile from get_my_profile_export(), never a user-id query', async () => {
+    mockQueries();
+    await buildDataExport('user-123');
+    // The export RPC takes no argument: no caller-supplied UUID can influence
+    // whose data is returned.
+    expect(mockRpc).toHaveBeenCalledWith('get_my_profile_export');
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    expect(mockFrom).not.toHaveBeenCalledWith('profiles');
   });
 
   it('maps children_ages DB column to children_age_groups in the export', async () => {
     mockQueries({
       profiles: {
         data: {
+          id: 'user-123',
           username: 'jane', full_name: 'Jane', bio: null, postcode: null,
           children_ages: ['3-5', '6-8'], show_in_search: false,
           show_reviews_publicly: true, marketing_consent: false,
@@ -312,13 +362,15 @@ describe('buildDataExport', () => {
     mockQueries();
 
     const callOrder: string[] = [];
-    mockFrom.mockImplementationOnce((_table) => {
-      // Track when the first DB query runs
+    // The first DB call is now the get_my_profile() RPC (migration 064),
+    // not a from('profiles') select.
+    mockRpc.mockImplementationOnce(() => {
       callOrder.push('first_query');
-      const r = { data: { username: 'x', full_name: null, bio: null, postcode: null, children_ages: [], show_in_search: false, show_reviews_publicly: true, marketing_consent: false, terms_accepted_at: null, created_at: '2024-01-01' }, error: null };
+      // `id` is part of get_my_profile_export()'s declared return list, so a
+      // faithful fixture carries it — buildDataExport now cross-checks it
+      // against the signed-in account before building the bundle.
+      const r = { data: { id: 'user-123', username: 'x', full_name: null, bio: null, postcode: null, children_ages: [], show_in_search: false, show_reviews_publicly: true, marketing_consent: false, terms_accepted_at: null, created_at: '2024-01-01' }, error: null };
       return {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
         single: jest.fn().mockResolvedValue(r),
       } as any;
     });
@@ -352,14 +404,13 @@ describe('buildDataExport', () => {
   });
 
   it('throws immediately if any Supabase query returns an error — does not call writeAuditLog', async () => {
-    // profiles query returns an error
-    let callCount = 0;
+    // The profile read (now the get_my_profile() RPC) returns an error.
+    mockRpc.mockImplementation(() => ({
+      single: jest.fn().mockResolvedValue({ data: null, error: { message: 'DB connection failed' } }),
+    }));
+
     mockFrom.mockImplementation(() => {
-      callCount++;
-      const isFirst = callCount === 1;
-      const result = isFirst
-        ? { data: null, error: { message: 'DB connection failed' } }
-        : { data: [], error: null };
+      const result = { data: [], error: null };
       return {
         select: jest.fn().mockReturnThis(),
         eq:     jest.fn().mockReturnThis(),
@@ -372,5 +423,130 @@ describe('buildDataExport', () => {
 
     await expect(buildDataExport('user-123')).rejects.toBeTruthy();
     expect(mockAuditLog).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// Account isolation of the export itself.
+//
+// Real-device failure, 2026-08-21: Account B inherited Account A's data-download
+// cooldown after an account switch. The cooldown was a client-side SecureStore
+// bug (covered by app/profile/__tests__/dataDownloadAccountBoundary.test.tsx),
+// but it raised the sharper question: is the GENERATED EXPORT itself bound to
+// the account that is actually signed in?
+//
+// It is now. buildDataExport resolves the identity from the live session and
+// refuses to build a bundle when the caller's id, the session, and the id the
+// DATABASE resolved for get_my_profile_export() do not all agree. These tests
+// pin that down — including that no audit-log entry is written for a refused
+// export, since that entry is itself personal data about a data subject.
+// ===========================================================================
+describe('buildDataExport — account isolation', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mockGetSession = (supabase as any).auth.getSession as jest.Mock;
+
+  function mockTables(profile: Record<string, unknown> | null) {
+    mockRpc.mockImplementation(() => ({
+      single: jest.fn().mockResolvedValue({ data: profile, error: null }),
+    }));
+    mockFrom.mockImplementation(() => {
+      const result = { data: [], error: null };
+      const localBuilder: any = {
+        select: jest.fn().mockReturnThis(),
+        order:  jest.fn().mockImplementation(() => ({
+          then: (resolve: any) => Promise.resolve(result).then(resolve),
+        })),
+        single: jest.fn().mockResolvedValue(result),
+      };
+      localBuilder.eq = jest.fn().mockImplementation(() => ({
+        ...localBuilder,
+        then: (resolve: any) => Promise.resolve(result).then(resolve),
+      }));
+      return localBuilder;
+    });
+  }
+
+  it('refuses to build an export for an id that is not the signed-in account', async () => {
+    // Account B is signed in; the caller asks for Account A's export.
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'user-b' } } },
+      error: null,
+    });
+    mockTables({ id: 'user-b' });
+
+    await expect(buildDataExport('user-a')).rejects.toThrow(/account changed/i);
+    // No profile, review, favourite, venue or consent row is fetched at all,
+    // and nothing is recorded against either account.
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockFrom).not.toHaveBeenCalled();
+    expect(mockAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the DATABASE resolves a different account than the client', async () => {
+    // The session says user-123, but auth.uid() server-side resolved someone
+    // else — the two disagree, so no bundle may be produced.
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'user-123' } } },
+      error: null,
+    });
+    mockTables({ id: 'someone-else' });
+
+    await expect(buildDataExport('user-123')).rejects.toThrow(/account changed/i);
+    expect(mockAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('refuses to build an export when there is no session at all', async () => {
+    mockGetSession.mockResolvedValueOnce({ data: { session: null }, error: null });
+    mockTables({ id: 'user-123' });
+
+    await expect(buildDataExport('user-123')).rejects.toThrow(/session has expired/i);
+    expect(mockAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('filters every section on the signed-in account id', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'user-b' } } },
+      error: null,
+    });
+
+    const eqCalls: [string, unknown][] = [];
+    mockRpc.mockImplementation(() => ({
+      single: jest.fn().mockResolvedValue({ data: { id: 'user-b' }, error: null }),
+    }));
+    mockFrom.mockImplementation(() => {
+      const result = { data: [], error: null };
+      const localBuilder: any = {
+        select: jest.fn().mockReturnThis(),
+        order:  jest.fn().mockImplementation(() => ({
+          then: (resolve: any) => Promise.resolve(result).then(resolve),
+        })),
+        single: jest.fn().mockResolvedValue(result),
+      };
+      localBuilder.eq = jest.fn().mockImplementation((column: string, value: unknown) => {
+        eqCalls.push([column, value]);
+        return {
+          ...localBuilder,
+          then: (resolve: any) => Promise.resolve(result).then(resolve),
+        };
+      });
+      return localBuilder;
+    });
+
+    const json = await buildDataExport('user-b');
+    const bundle = JSON.parse(json);
+
+    // Reviews, favourites, submitted venues, location consent and the audit log
+    // are all filtered — and every one of them on user-b, never another id.
+    expect(eqCalls.length).toBeGreaterThanOrEqual(5);
+    for (const [, value] of eqCalls) {
+      expect(value).toBe('user-b');
+    }
+    expect(bundle.profile.account_id).toBe('user-b');
+    expect(bundle.reviews).toEqual([]);
+    expect(bundle.favourites).toEqual([]);
+    expect(bundle.submitted_venues).toEqual([]);
+    expect(bundle.location_consent_history).toEqual([]);
+    expect(bundle.audit_log).toEqual([]);
+    expect(mockAuditLog).toHaveBeenCalledWith('user-b', 'data_export_requested');
   });
 });

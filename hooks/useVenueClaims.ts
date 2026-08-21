@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { VenueClaim } from '@/types';
+import { useAuthIdentity } from '@/hooks/useAuthIdentity';
 
 export function useVenueClaimStatus(venueId: string | undefined, userId: string | undefined) {
   return useQuery({
@@ -47,8 +48,13 @@ export function useMyVenueClaims(userId: string | undefined) {
 }
 
 export function useAdminVenueClaims() {
+  // Identity-scoped: this result depends on who is asking (see
+  // hooks/useAuthIdentity.ts). Keeps one identity's cached rows unreachable
+  // from another identity, including after sign-out.
+  const identity = useAuthIdentity();
+
   return useQuery({
-    queryKey: ['venue-claims', 'admin'],
+    queryKey: ['venue-claims', 'admin', identity],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('venue_claims')

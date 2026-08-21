@@ -172,11 +172,19 @@ export default function ProfileScreen() {
         text: 'Sign out',
         style: 'destructive',
         onPress: async () => {
-          // Await signOut so the Supabase token is invalidated before we
-          // clear the React Query cache. If signOut throws (e.g. offline),
-          // local state is still wiped — the session token is useless on
-          // a device that has lost connectivity anyway.
-          try { await signOut(); } catch { /* local state cleared regardless */ }
+          // Await signOut so the session is ended before we clear the React
+          // Query cache.
+          //
+          // This comment used to claim "local state is cleared regardless" —
+          // it was not true, and the gap it hid caused the 2026-08-21
+          // real-device leak (a review stayed visible after signing out).
+          // store/authStore.ts's signOut() now genuinely guarantees it: every
+          // step is individually guarded, it purges the persisted session
+          // itself when the SDK's server-side revoke fails (which leaves the
+          // session on disk — see lib/authSession.ts), and it VERIFIES with
+          // getSession() before returning. The catch here is now only a
+          // belt-and-braces guard against an unexpected throw.
+          try { await signOut(); } catch { /* store state is cleared on every path */ }
           queryClient.clear();
           router.replace('/(auth)/welcome');
         },

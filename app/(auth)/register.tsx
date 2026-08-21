@@ -52,6 +52,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/lib/supabase';
+import { beginExplicitSignIn, completeExplicitSignIn } from '@/lib/authTombstone';
 import { writeAuditLog } from '@/services/audit/gdprAuditLog';
 import { migratePendingLocationConsent } from '@/services/consent/locationConsent';
 import { Icon } from '@/components/ui/Icon';
@@ -200,6 +201,9 @@ export default function RegisterScreen() {
     setLoading(true);
 
     try {
+      // Explicit account creation — record the INTENT only. Protection is not
+      // lifted before the outcome is known (see lib/authTombstone.ts).
+      beginExplicitSignIn();
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -210,6 +214,7 @@ export default function RegisterScreen() {
           },
         },
       });
+      completeExplicitSignIn(!error);
 
       if (error) {
         Alert.alert('Sign up failed', getFriendlySignUpError(error.message));

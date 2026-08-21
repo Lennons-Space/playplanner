@@ -14,6 +14,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { WebField, ExtractionMethod, Confidence } from '@/types/webEnrichment';
+import { useAuthIdentity } from '@/hooks/useAuthIdentity';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -60,8 +61,11 @@ export interface ProposalRow {
  *   Short staleTime is enough for a human-paced review session.
  */
 export function useReviewableProposals(isAdmin: boolean) {
+  // Identity-scoped: admin-only queue. See hooks/useAuthIdentity.ts.
+  const identity = useAuthIdentity();
+
   return useQuery<ProposalRow[]>({
-    queryKey: ['enrichment', 'pending-proposals'],
+    queryKey: ['enrichment', 'pending-proposals', identity],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('venue_field_proposals')

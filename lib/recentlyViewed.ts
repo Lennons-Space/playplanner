@@ -108,3 +108,21 @@ export async function addRecentlyViewed(
   }
   return next;
 }
+
+/**
+ * Erase the locally stored "recently viewed" list.
+ *
+ * Called on sign-out (store/authStore.ts). The list is a record of which
+ * venues a specific parent opened — personal data about the outgoing user, and
+ * on a shared device it would otherwise be shown to whoever signs in next.
+ * The key is device-global rather than per-account by design (it also serves
+ * signed-out browsing), so clearing on sign-out is what keeps it from crossing
+ * an identity boundary. Never throws — recents are a convenience only.
+ */
+export async function clearRecentlyViewed(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(RECENTLY_VIEWED_KEY);
+  } catch {
+    // Non-fatal.
+  }
+}

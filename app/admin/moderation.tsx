@@ -41,6 +41,7 @@ import { useModeratePhoto } from '@/hooks/useVenuePhotos';
 import { useModerateReview } from '@/hooks/useReviews';
 import { useAdminVenueClaims, useReviewClaim } from '@/hooks/useVenueClaims';
 import type { Venue, PendingPhotoWithVenue } from '@/types';
+import { useAuthIdentity } from '@/hooks/useAuthIdentity';
 
 // ---------------------------------------------------------------------------
 // Keyword lists — defined outside the component so they are stable references
@@ -98,6 +99,11 @@ type AdminVenue = Venue & {
 
 export default function ModerationScreen() {
   const isAdmin    = useIsAdmin();
+  // Every admin query below is identity-scoped. `enabled: isAdmin` stops a new
+  // FETCH after sign-out but does NOT stop a still-mounted observer rendering
+  // the rows it already holds — putting the identity in the key means the
+  // observer moves to an entry that never held them. See hooks/useAuthIdentity.ts.
+  const identity   = useAuthIdentity();
   const user       = useAuthStore((s) => s.user);
   const profile    = useAuthStore((s) => s.profile);
   const authIsLoading = useAuthStore((s) => s.isLoading);
@@ -161,7 +167,7 @@ export default function ModerationScreen() {
   // used as a server-side .eq('category_id', id) filter so PostgREST can use
   // the index rather than filtering on a joined column.
   const { data: resolvedCategoryId = null } = useQuery<string | null>({
-    queryKey: ['admin', 'category-id', categorySlug],
+    queryKey: ['admin', 'category-id', categorySlug, identity],
     queryFn: async () => {
       if (!categorySlug) return null;
       const { data, error } = await supabase
@@ -193,7 +199,7 @@ export default function ModerationScreen() {
       unknownAreaFilter,
       sortBy,
       page,
-    }],
+    }, identity],
     queryFn: async () => {
       let q = supabase
         .from('venues')
@@ -266,7 +272,7 @@ export default function ModerationScreen() {
       hasWebsiteFilter,
       hasPostcodeFilter,
       unknownAreaFilter,
-    }],
+    }, identity],
     queryFn: async () => {
       let q = supabase
         .from('venues')
@@ -310,7 +316,7 @@ export default function ModerationScreen() {
   // ── Bulk approve count ───────────────────────────────────────────────────
   // Only runs when the modal is open to avoid a background COUNT on every render.
   const { data: bulkCount = 0 } = useQuery({
-    queryKey: ['admin', 'bulk-count', bulkSource],
+    queryKey: ['admin', 'bulk-count', bulkSource, identity],
     queryFn: async () => {
       let q = supabase
         .from('venues')
@@ -327,7 +333,7 @@ export default function ModerationScreen() {
 
   // ── Bulk reject count (reuses bulkSource selection from approve modal) ───
   const { data: bulkRejectCount = 0 } = useQuery({
-    queryKey: ['admin', 'bulk-reject-count', bulkSource],
+    queryKey: ['admin', 'bulk-reject-count', bulkSource, identity],
     queryFn: async () => {
       let q = supabase
         .from('venues')
@@ -346,7 +352,7 @@ export default function ModerationScreen() {
   // B9 — Filter orphaned photos (.not('venue', 'is', null)) so we never render
   // a card with a null venue.
   const { data: pendingPhotos = [], isLoading: photosLoading } = useQuery({
-    queryKey: ['pendingPhotos'],
+    queryKey: ['pendingPhotos', identity],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('venue_photos')
@@ -367,7 +373,7 @@ export default function ModerationScreen() {
   //   Using the view was silently hiding pending reviews for users with
   //   show_in_search=false. Only non-sensitive columns are selected.
   const { data: pendingReviews = [], isLoading: reviewsLoading, error: reviewsError } = useQuery({
-    queryKey: ['admin', 'pending-reviews'],
+    queryKey: ['admin', 'pending-reviews', identity],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('reviews')

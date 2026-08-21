@@ -433,14 +433,32 @@ describe('Welcome hero — PP2 logo is a bounded, contained, transparent logo (n
   });
 
   it('the logo sits in a bounded container sized generously off the card width (95%, real aspect ratio) — not stretched full-bleed', () => {
+    // 2026-08-20: the wordmark clip added an OUTER box, so the properties this
+    // test guards now live one level up. Every original assertion is kept and
+    // both levels are checked, so the guarantee is unchanged (and stronger):
+    //   heroLogoClip  -> the 95% / maxWidth 420 bound, plus overflow hidden
+    //   heroLogoBox   -> the artwork's true 1448/1086 ratio
     render(<WelcomeScreen />);
     const image = screen.UNSAFE_getByType(Image);
-    const container = image.parent!;
-    expect(container.props.style.width).toBe('95%');
-    expect(container.props.style.maxWidth).toBe(420);
-    expect(container.props.style.aspectRatio).toBeCloseTo(1448 / 1086, 3);
-    // Never 'position: absolute' / full-bleed across the hero card.
-    expect(container.props.style.position).not.toBe('absolute');
+    const innerBox = image.parent!;
+
+    // Walk up to the clipping box rather than assuming a fixed depth — the
+    // test renderer inserts wrapper nodes that are not stable across versions.
+    let clipBox: any = innerBox.parent;
+    while (clipBox && clipBox.props?.style?.overflow !== 'hidden') clipBox = clipBox.parent;
+    expect(clipBox).toBeTruthy();
+
+    // The bounded container.
+    expect(clipBox.props.style.width).toBe('95%');
+    expect(clipBox.props.style.maxWidth).toBe(420);
+    expect(clipBox.props.style.overflow).toBe('hidden');
+    expect(clipBox.props.style.position).not.toBe('absolute');
+
+    // The artwork still keeps its own real aspect ratio — it is clipped, never
+    // squashed or stretched to fit.
+    expect(innerBox.props.style.aspectRatio).toBeCloseTo(1448 / 1086, 3);
+    expect(innerBox.props.style.width).toBe('100%');
+    expect(innerBox.props.style.position).not.toBe('absolute');
   });
 
   it('the hero copy ("Family days out...") still renders alongside the logo, not replaced by it', () => {
@@ -604,5 +622,92 @@ describe('Auth ecosystem — primary CTAs use the shared GlassButton, not a soli
     const { StyleSheet } = require('react-native');
     const style = StyleSheet.flatten(signInBtn.props.style);
     expect(style.minHeight).toBe(44);
+  });
+});
+
+// ===========================================================================
+// Welcome hero wordmark (2026-08-20)
+//
+// PP2-transparent.png bakes a "PlayPlanner" wordmark into the artwork in which
+// "Play" is near-black. On this screen's night background that read as muddy and
+// low-contrast, and being a scaled raster its edges were soft next to real text.
+// The artwork is now clipped to its icon region and the wordmark is rendered as
+// live text, so it stays sharp and theme-aware.
+// ===========================================================================
+describe('Welcome hero — the wordmark is live text, not baked raster', () => {
+  it('renders "Play" and "Planner" as real text nodes', () => {
+    render(<WelcomeScreen />);
+    expect(screen.getByText('Play')).toBeTruthy();
+    expect(screen.getByText('Planner')).toBeTruthy();
+  });
+
+  it('keeps the existing map/sun brand icon — the artwork is not replaced', () => {
+    render(<WelcomeScreen />);
+    expect(screen.UNSAFE_getByType(Image).props.source).toBe(PP2_TRANSPARENT_SOURCE);
+  });
+
+  it('clips the artwork above its baked-in wordmark so the text is not duplicated', () => {
+    const { StyleSheet } = require('react-native');
+    render(<WelcomeScreen />);
+    const image = screen.UNSAFE_getByType(Image);
+
+    // The Image still fills a plain box at 100%/100% — it must never be the
+    // element carrying aspectRatio (Android sizes such an Image from the source
+    // file's pixel dimensions instead, which is the original hero-size bug).
+    const imgStyle = StyleSheet.flatten(image.props.style);
+    expect(imgStyle.width).toBe('100%');
+    expect(imgStyle.height).toBe('100%');
+    expect(imgStyle.aspectRatio).toBeUndefined();
+
+    // Somewhere above it there is a clipping box whose ratio is shorter than the
+    // artwork's own 1448/1086, i.e. the baked wordmark is cropped away.
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'welcome.tsx'), 'utf8');
+    expect(src).toMatch(/heroLogoClip:\s*{[^}]*overflow:\s*'hidden'/s);
+    expect(src).toMatch(/aspectRatio:\s*1448\s*\/\s*760/);
+    expect(1448 / 760).toBeGreaterThan(1448 / 1086); // shorter box => wordmark clipped
+  });
+
+  it('"Play" uses the theme label colour so it has contrast in BOTH themes', () => {
+    const { StyleSheet } = require('react-native');
+
+    useAppearanceStore.setState({ mode: 'dark' });
+    render(<WelcomeScreen />);
+    const darkPlay = StyleSheet.flatten(screen.getByText('Play').props.style);
+    screen.unmount();
+
+    useAppearanceStore.setState({ mode: 'light' });
+    render(<WelcomeScreen />);
+    const lightPlay = StyleSheet.flatten(screen.getByText('Play').props.style);
+
+    // The whole point: the raster could only ever be one colour. Live text
+    // changes with the theme, so "Play" is never dark-on-dark.
+    expect(darkPlay.color).toBeTruthy();
+    expect(lightPlay.color).toBeTruthy();
+    expect(darkPlay.color).not.toBe(lightPlay.color);
+  });
+
+  it('"Planner" keeps the brand amber in both themes', () => {
+    const { StyleSheet } = require('react-native');
+
+    useAppearanceStore.setState({ mode: 'dark' });
+    render(<WelcomeScreen />);
+    const darkPlanner = StyleSheet.flatten(screen.getByText('Planner').props.style);
+    screen.unmount();
+
+    useAppearanceStore.setState({ mode: 'light' });
+    render(<WelcomeScreen />);
+    const lightPlanner = StyleSheet.flatten(screen.getByText('Planner').props.style);
+
+    expect(darkPlanner.color).toBe('#F5A623');
+    expect(lightPlanner.color).toBe('#F5A623');
+  });
+
+  it('the clipped artwork is hidden from screen readers so the name is announced once', () => {
+    render(<WelcomeScreen />);
+    const image = screen.UNSAFE_getByType(Image);
+    expect(image.props.accessible).toBe(false);
+    // The live text carries the brand name for assistive tech instead.
+    expect(screen.getByText('Play')).toBeTruthy();
   });
 });

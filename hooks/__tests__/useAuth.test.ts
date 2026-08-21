@@ -32,6 +32,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { useAuthListener } from '../useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { useMapStore } from '@/store/mapStore';
+import { __resetAuthTombstoneForTests } from '@/lib/authTombstone';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -50,10 +51,22 @@ jest.mock('@/lib/supabase', () => ({
       onAuthStateChange: (...args: [(event: string, session: unknown) => void]) =>
         mockOnAuthStateChange(...args),
       signOut: jest.fn().mockResolvedValue({ error: null }),
+      // Surface used by the resurrection gate and by authStore.signOut()'s
+      // verify step (2026-08-21). Behaviour of both is covered in
+      // hooks/__tests__/authResurrection.test.tsx.
+      stopAutoRefresh: jest.fn().mockResolvedValue(undefined),
+      startAutoRefresh: jest.fn().mockResolvedValue(undefined),
+      getSession: jest.fn().mockResolvedValue({ data: { session: null }, error: null }),
+      storageKey: 'sb-test-auth-token',
     },
     from: jest.fn(() => ({
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })),
+    // authStore.fetchProfile reads the caller's own row through the
+    // get_my_profile() SECURITY DEFINER RPC (migration 064).
+    rpc: jest.fn(() => ({
       single: jest.fn().mockResolvedValue({ data: null, error: null }),
     })),
   },
@@ -77,6 +90,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   useMapStore.setState({ pendingPostcode: null });
   useAuthStore.setState({ session: null, user: null, profile: null, isLoading: true });
+  __resetAuthTombstoneForTests();
 });
 
 function fireAuthEvent(event: string, session: unknown) {

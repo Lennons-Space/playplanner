@@ -24,6 +24,7 @@ import { StatusBar } from 'expo-status-bar';
 import { format } from 'date-fns';
 import { useAuthStore } from '@/store/authStore';
 import { useMyReviews, useDeleteReview } from '@/hooks/useDataRights';
+import { devErrorLabel } from '@/lib/dbError';
 import { ModerationBadge } from '@/components/profile/ModerationBadge';
 import { GlassSurface } from '@/components/ui/GlassSurface';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
@@ -92,7 +93,7 @@ export default function MyReviewsScreen() {
   // mode default.
   const cardTint = mode === 'dark' ? 'rgba(14,14,20,0.55)' : 'rgba(255,255,255,0.55)';
   const userId  = useAuthStore((s) => s.user?.id);
-  const { data: reviews, isLoading, isError, refetch } = useMyReviews(userId);
+  const { data: reviews, isLoading, isError, error, refetch } = useMyReviews(userId);
   const { mutate: deleteReview } = useDeleteReview();
 
   function handleDelete(reviewId: string, venueName: string | null) {
@@ -142,6 +143,14 @@ export default function MyReviewsScreen() {
             <Text style={[styles.errorText, { color: T.label2 }]}>
               Could not load your reviews. Please check your connection and try again.
             </Text>
+            {/* __DEV__-ONLY — never rendered in a production build. Tells a
+                device smoke test whether this was a permissions failure
+                (an RLS/grant problem) or a genuine connectivity failure. */}
+            {__DEV__ && devErrorLabel(error) && (
+              <Text style={[styles.errorText, { color: T.label2 }]}>
+                {devErrorLabel(error)}
+              </Text>
+            )}
             <GlassButton
               label="Try again"
               onPress={() => refetch()}

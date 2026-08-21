@@ -29,6 +29,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
+import { useAuthIdentity } from '@/hooks/useAuthIdentity';
 import type { Profile, PublicProfile } from '@/types';
 import { recordLocationConsentWithdrawn } from '@/services/consent/locationConsent';
 
@@ -186,8 +187,13 @@ export function useUploadAvatar() {
 // ---------------------------------------------------------------------------
 
 export function usePublicProfile(userId: string | undefined) {
+  // Identity-scoped: public_profiles is readable by `authenticated` only
+  // (migrations 065/066 leave `anon` with zero privileges on it), so this
+  // result depends on who is asking. See hooks/useAuthIdentity.ts.
+  const identity = useAuthIdentity();
+
   return useQuery<PublicProfile | null>({
-    queryKey: ['publicProfile', userId],
+    queryKey: ['publicProfile', userId, identity],
     queryFn: async () => {
       if (!userId) return null;
 

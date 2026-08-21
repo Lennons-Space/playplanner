@@ -11,7 +11,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import * as SecureStore from 'expo-secure-store';
 import { buildDataExport } from '@/hooks/useDataRights';
-import DataDownloadScreen from '../data-download';
+import DataDownloadScreen, { buildCooldownRecord } from '../data-download';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -64,9 +64,15 @@ jest.mock('expo-sharing', () => ({
 }), { virtual: true });
 
 // The component uses SecureStore — mock at the SecureStore boundary.
+// deleteItemAsync is required since 2026-08-21: the screen removes the
+// pre-existing device-GLOBAL cooldown key on mount so it can no longer be
+// served to whichever account signs in next (see the per-account key in
+// app/profile/data-download.tsx). Account-boundary behaviour has its own
+// dedicated suite in dataDownloadAccountBoundary.test.tsx.
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn().mockResolvedValue(null),
   setItemAsync: jest.fn().mockResolvedValue(undefined),
+  deleteItemAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('date-fns', () => ({
@@ -118,9 +124,10 @@ describe('DataDownloadScreen', () => {
   });
 
   it('shows cooldown message when last export was within 24h', async () => {
-    // Set last export timestamp to 1 hour ago
-    const oneHourAgo = (Date.now() - 3_600_000).toString();
-    mockGetItemAsync.mockResolvedValue(oneHourAgo);
+    // Last export 1 hour ago. The stored value is a SELF-IDENTIFYING record —
+    // a bare timestamp is deliberately no longer honoured, because it cannot be
+    // attributed to an account (see parseCooldownRecord in the screen).
+    mockGetItemAsync.mockResolvedValue(buildCooldownRecord('user-123', Date.now() - 3_600_000));
 
     render(<DataDownloadScreen />);
 
@@ -130,9 +137,9 @@ describe('DataDownloadScreen', () => {
   });
 
   it('does not show cooldown message when last export was over 24h ago', async () => {
-    // Set last export timestamp to 25 hours ago
-    const twentyFiveHoursAgo = (Date.now() - 90_000_000).toString();
-    mockGetItemAsync.mockResolvedValue(twentyFiveHoursAgo);
+    // A VALID record for this account, but older than the 24h window — so this
+    // test exercises the cooldown arithmetic rather than the attribution check.
+    mockGetItemAsync.mockResolvedValue(buildCooldownRecord('user-123', Date.now() - 90_000_000));
 
     render(<DataDownloadScreen />);
 
