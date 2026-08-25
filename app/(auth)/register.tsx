@@ -24,7 +24,7 @@
  * opt-in NOT pre-ticked; age-affirmation checkbox; terms checkbox; the
  * `canSubmit` gate requiring BOTH required boxes), the signUp call +
  * marketing_consent metadata, terms_accepted_at profile update,
- * writeAuditLog, migratePendingLocationConsent, submitLocked duplicate-
+ * writeAuditLog, retirePendingLocationConsent, submitLocked duplicate-
  * submit guard, the post-signup "Almost there!" confirmation Alert →
  * router.replace('/(auth)/login'), and all error/finally handling are
  * byte-identical to the pre-restyle version. Only the JSX/styling changed:
@@ -54,7 +54,7 @@ import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@/lib/supabase';
 import { beginExplicitSignIn, completeExplicitSignIn } from '@/lib/authTombstone';
 import { writeAuditLog } from '@/services/audit/gdprAuditLog';
-import { migratePendingLocationConsent } from '@/services/consent/locationConsent';
+import { retirePendingLocationConsent } from '@/services/consent/locationConsent';
 import { Icon } from '@/components/ui/Icon';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
 import { GlassSurface } from '@/components/ui/GlassSurface';
@@ -243,13 +243,15 @@ export default function RegisterScreen() {
           console.error('Audit log write failed (non-blocking):', auditError);
         }
 
-        // Migrate any pre-auth location consent stored locally before account creation.
-        // useAuthListener handles this on SIGNED_IN, but the session may not fire
-        // until after email confirmation — we do it here too as a belt-and-braces.
+        // PP-018: a pre-auth consent record is retired here, never migrated onto
+        // the new account. Even at signup we cannot prove the person who granted
+        // it is the person creating this account — a guest may have granted it
+        // and walked away from a shared device. The new account is asked again
+        // the next time location is genuinely required.
         try {
-          await migratePendingLocationConsent(data.user.id);
+          await retirePendingLocationConsent();
         } catch {
-          // Non-blocking — migration will be retried on next login.
+          // Non-blocking — nothing reads this key any more.
         }
       }
 

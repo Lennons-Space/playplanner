@@ -23,6 +23,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import { useAuthListener, useProfileForegroundRefresh } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
+import { LocationConsentIdentityProvider } from '@/lib/locationConsentIdentity';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useThemeStore } from '@/store/themeStore';
 
@@ -52,12 +53,21 @@ function RootLayoutInner({ queryClient }: { queryClient: QueryClient }) {
   const isLoading = useAuthStore((s) => s.isLoading);
   const { mode } = useAppTheme();
 
+  // PP-018: location consent is scoped to the signed-in account, and the two
+  // hooks that read it (useLocationConsent, useResolvedWeather) must be told
+  // WHOSE consent applies. This layer already owns auth state, so the identity
+  // is injected from here rather than each hook importing store/authStore —
+  // which would drag lib/supabase into every <V2Background/> instance. Null
+  // when signed out, which every consumer treats as "no precise location".
+  // See lib/locationConsentIdentity.tsx.
+  const consentIdentity = useAuthStore((s) => s.user?.id) ?? null;
+
   useEffect(() => {
     if (!isLoading) SplashScreen.hideAsync();
   }, [isLoading]);
 
   return (
-    <>
+    <LocationConsentIdentityProvider userId={consentIdentity}>
       {/* Root default status bar, driven by the resolved theme mode — a
           harmless default (dark mode -> light bars, light mode -> dark
           bars). Per-screen <StatusBar/> instances (Profile, Notifications,
@@ -77,7 +87,7 @@ function RootLayoutInner({ queryClient }: { queryClient: QueryClient }) {
         {/* Business upgrade — modal sheet for the subscription upsell flow */}
         <Stack.Screen name="business/upgrade" options={{ headerShown: false, presentation: 'modal' }} />
       </Stack>
-    </>
+    </LocationConsentIdentityProvider>
   );
 }
 

@@ -8,8 +8,9 @@
  * - On sign-out, pendingPostcode must be cleared from the map store so it is
  *   never visible to the next user on a shared or family device (GDPR / ICO
  *   Children's Code shared-device data isolation).
- * - On sign-in, migratePendingLocationConsent must be called so any pre-auth
- *   location consent stored in SecureStore is linked to the new account.
+ * - On sign-in, any pre-auth location consent must be RETIRED, never linked to
+ *   the account that happens to be signing in (PP-018). The old behaviour
+ *   attributed one person's consent to another on a shared device.
  * - Auth Session Recovery checkpoint: the Supabase SDK already self-heals
  *   from a terminal stale-refresh-token error internally (clears its own
  *   session, fires SIGNED_OUT) — this hook's job is to react correctly to
@@ -72,9 +73,9 @@ jest.mock('@/lib/supabase', () => ({
   },
 }));
 
-const mockMigrate = jest.fn().mockResolvedValue(undefined);
+const mockRetire = jest.fn().mockResolvedValue(undefined);
 jest.mock('@/services/consent/locationConsent', () => ({
-  migratePendingLocationConsent: (...args: unknown[]) => mockMigrate(...args),
+  retirePendingLocationConsent: (...args: unknown[]) => mockRetire(...args),
 }));
 
 const mockQueryClientClear = jest.fn();
@@ -350,18 +351,27 @@ describe('useAuthListener — temporary conditions do not force logout', () => {
 
 describe('useAuthListener — SIGNED_IN', () => {
   /**
-   * BUG C fix: migratePendingLocationConsent must be called on SIGNED_IN.
+   * PP-018: pre-auth consent is RETIRED on SIGNED_IN, never attributed.
+   *
+   * This replaces the original "BUG C" behaviour, which called
+   * migratePendingLocationConsent(userId) here. Because this listener fires on
+   * EVERY sign-in — not just the signup it was designed for — that wrote a
+   * guest's consent into the consent log of whichever account signed in next on
+   * a shared device. The retire call takes no user id precisely so it cannot
+   * attribute anything to anybody.
    */
-  it('calls migratePendingLocationConsent with the user id on SIGNED_IN', () => {
+  it('retires pre-auth location consent on SIGNED_IN without naming an account', () => {
     renderHook(() => useAuthListener(fakeQueryClient));
     fireAuthEvent('SIGNED_IN', fakeSession);
-    expect(mockMigrate).toHaveBeenCalledWith('user-abc');
+    expect(mockRetire).toHaveBeenCalled();
+    // The user id must NOT be passed — nothing may be attributed to this account.
+    expect(mockRetire).toHaveBeenCalledWith();
   });
 
-  it('does not call migratePendingLocationConsent if session has no user', () => {
+  it('does not touch pre-auth location consent if the session has no user', () => {
     renderHook(() => useAuthListener(fakeQueryClient));
     fireAuthEvent('SIGNED_IN', null);
-    expect(mockMigrate).not.toHaveBeenCalled();
+    expect(mockRetire).not.toHaveBeenCalled();
   });
 
   it('a normal sign-in updates the store to the signed-in user', () => {

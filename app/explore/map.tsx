@@ -1845,10 +1845,15 @@ const LocationFallbackMap = memo(function LocationFallbackMap({
 // ─── ExploreScreen ──────────────────────────────────────────────────────────
 // Consent states come from the shared useLocationConsent hook (single source of
 // truth for the location flag — see hooks/useLocationConsent.ts):
-//   'checking'  → still reading SecureStore, render a neutral splash
-//   'undecided' → show the plain-English consent prompt
-//   'declined'  → fallback map (London, no GPS)
-//   'granted'   → live map with GPS
+//   'checking'    → still reading SecureStore, render a neutral splash
+//   'undecided'   → show the plain-English consent prompt
+//   'declined'    → fallback map (London, no GPS). PERSISTED per account since
+//                   PP-018, so a returning account that said no is not
+//                   re-prompted; they change it in Privacy & data.
+//   'unavailable' → nobody signed in. Also the fallback map, never a prompt.
+//                   Unreachable in practice (this screen is behind
+//                   RequireSession) but it must still fail safe.
+//   'granted'     → live map with GPS
 function ExploreScreenContent() {
   const { tokens: T, mode } = useAppTheme();
   const statusBarStyle = mode === 'dark' ? 'light' : 'dark';

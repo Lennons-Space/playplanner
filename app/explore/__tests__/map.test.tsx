@@ -17,7 +17,7 @@
  *
  * We drive consent state entirely through the SecureStore mock:
  *   - getItemAsync returns null  → no stored consent → prompt shown (state 2)
- *   - getItemAsync returns '1'   → stored consent → map shown immediately (state 3)
+ *   - getItemAsync returns an account-scoped consent record → map shown (state 3)
  *
  * WHY MOCKING useNearbyVenues (not supabase directly):
  * The component imports useNearbyVenues from @/hooks/useVenues. Mocking at the
@@ -33,6 +33,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
+import {
+  buildLocationConsentRecord,
+  locationConsentKey,
+} from '@/lib/locationConsentStorage';
 import { useNearbyVenues } from '@/hooks/useVenues';
 import ExploreScreen from '../map';
 import type { Venue } from '@/types';
@@ -49,6 +53,15 @@ import type { Venue } from '@/types';
 // separately in app/explore/__tests__/map.authGuard.test.tsx.
 jest.mock('@/store/authStore', () => ({
   useAuthStore: jest.fn(),
+}));
+
+// PP-018: consent is per-account, and the identity is INJECTED via
+// lib/locationConsentIdentity.tsx (app/_layout.tsx supplies it in the real
+// app). These tests render the screen directly, without that provider, so the
+// identity is mocked here — otherwise every render would read as signed-out
+// ('unavailable'), which deliberately never prompts.
+jest.mock('@/lib/locationConsentIdentity', () => ({
+  useLocationConsentIdentity: () => 'user-test-id',
 }));
 
 // SecureStore: default to no stored consent (null) so most tests start at the
@@ -233,11 +246,24 @@ const mockUseAuthStore = useAuthStore as jest.MockedFunction<typeof useAuthStore
 // Derive the store state type without importing AuthState directly (it is not exported).
 type AuthStoreState = ReturnType<typeof useAuthStore.getState>;
 
+/** The signed-in account these tests run as. */
+const TEST_USER_ID = 'user-test-id';
+
+/**
+ * A location-consent record belonging to TEST_USER_ID (PP-018). Consent is
+ * per-account now, so seeding a bare '1' no longer grants anything — that is
+ * precisely the device-global value the fix refuses to attribute to anyone.
+ */
+const CONSENT_RECORD = buildLocationConsentRecord(TEST_USER_ID, 'v1.0');
+
 /** Drives RequireSession to its authenticated, settled-loading branch. */
 function mockAuthenticatedSession() {
   mockUseAuthStore.mockImplementation((selector) =>
     selector({
-      session: { access_token: 'tok', user: { id: 'user-test-id' } },
+      session: { access_token: 'tok', user: { id: TEST_USER_ID } },
+      // `user` is read directly by hooks/useLocationConsent.ts to scope consent
+      // to the signed-in account — the real store sets both fields together.
+      user: { id: TEST_USER_ID },
       isLoading: false,
     } as unknown as AuthStoreState),
   );
@@ -321,7 +347,7 @@ async function renderAndWaitForConsent(options: { consentStored?: boolean } = {}
   // A stable value is also the faithful model: SecureStore returns the same
   // stored value to every reader.
   if (options.consentStored) {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(CONSENT_RECORD);
   } else {
     // Explicit null ensures the consent prompt is shown (default mock returns null,
     // but we set it explicitly here to document intent).
@@ -446,7 +472,13 @@ describe('ExploreScreen — consent gate', () => {
   // GDPR requirement: declining must NOT persist a "declined" flag to SecureStore.
   // The ICO guidance says users should be re-asked on next app open. If we persisted
   // "declined", returning users could never be asked again — permanently blocking GPS.
-  it('does NOT write to SecureStore when the user declines consent', async () => {
+  // PP-018 tri-state ruling (2026-08-25) REVERSES the old expectation here.
+  // A decline used to be deliberately unpersisted so the prompt returned next
+  // launch. It is now recorded per account, because re-asking someone who has
+  // already said no on every new session is nagging (ICO Standard 7) — and
+  // because "declined" and "never asked" are genuinely different states. The
+  // decision remains changeable in Privacy & data.
+  it('persists a DECLINE under this account’s key, as a declined decision', async () => {
     const mockSetItemAsync = SecureStore.setItemAsync as jest.Mock;
     const { getByLabelText } = await renderAndWaitForConsent();
 
@@ -454,15 +486,18 @@ describe('ExploreScreen — consent gate', () => {
       fireEvent.press(getByLabelText('Browse without location'));
     });
 
-    // Only getItemAsync should have been called (the initial check).
-    // setItemAsync must not have been called — declining is not persisted.
-    expect(mockSetItemAsync).not.toHaveBeenCalled();
+    expect(mockSetItemAsync).toHaveBeenCalledWith(
+      locationConsentKey(TEST_USER_ID),
+      expect.stringContaining('"decision":"declined"'),
+    );
+    // Never under the old device-global key, which every account could read.
+    expect(mockSetItemAsync).not.toHaveBeenCalledWith('location_consent_granted', '1');
   });
 
   // Confirming the recording side: accepting DOES persist the consent flag.
   // Without this write, the consent would work only for the current session —
   // the user would be asked again every time they open the app.
-  it('writes "1" to SecureStore under location_consent_granted when the user accepts', async () => {
+  it('persists consent under THIS ACCOUNT’s key, in a record naming its owner', async () => {
     const mockSetItemAsync = SecureStore.setItemAsync as jest.Mock;
     const { getByLabelText } = await renderAndWaitForConsent();
 
@@ -470,10 +505,14 @@ describe('ExploreScreen — consent gate', () => {
       fireEvent.press(getByLabelText('Allow location access'));
     });
 
+    // PP-018: not the old device-global 'location_consent_granted' / '1' pair.
+    // The key is per-account AND the record names its owner, so no other
+    // account on this device can read this grant as its own.
     expect(mockSetItemAsync).toHaveBeenCalledWith(
-      'location_consent_granted',
-      '1',
+      locationConsentKey(TEST_USER_ID),
+      expect.stringContaining(`"userId":"${TEST_USER_ID}"`),
     );
+    expect(mockSetItemAsync).not.toHaveBeenCalledWith('location_consent_granted', '1');
   });
 });
 

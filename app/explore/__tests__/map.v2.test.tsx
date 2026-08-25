@@ -17,6 +17,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '@/store/authStore';
+import { buildLocationConsentRecord } from '@/lib/locationConsentStorage';
 import { useNearbyVenues, useCategories } from '@/hooks/useVenues';
 import ExploreScreen from '../map';
 import type { Venue } from '@/types';
@@ -30,6 +31,15 @@ import type { WeatherState } from '@/lib/weather';
 // behaviour itself is covered by map.authGuard.test.tsx.
 jest.mock('@/store/authStore', () => ({
   useAuthStore: jest.fn(),
+}));
+
+// PP-018: consent is per-account, and the identity is INJECTED via
+// lib/locationConsentIdentity.tsx (app/_layout.tsx supplies it in the real
+// app). These tests render the screen directly, without that provider, so the
+// identity is mocked here — otherwise every render would read as signed-out
+// ('unavailable'), which deliberately never prompts.
+jest.mock('@/lib/locationConsentIdentity', () => ({
+  useLocationConsentIdentity: () => 'user-test-id',
 }));
 
 jest.mock('expo-secure-store', () => ({
@@ -186,6 +196,8 @@ function mockAuthenticatedSession() {
   mockUseAuthStore.mockImplementation((selector) =>
     selector({
       session: { access_token: 'tok', user: { id: 'user-test-id' } },
+      // PP-018: hooks/useLocationConsent.ts scopes consent by `user.id`.
+      user: { id: 'user-test-id' },
       isLoading: false,
     } as unknown as AuthStoreState),
   );
@@ -270,7 +282,7 @@ beforeEach(() => {
 
 describe('Map v2 — shared background atmosphere', () => {
   it('mounts <V2Background/> behind the map feed once consent is stored', async () => {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     const screen = render(<ExploreScreen />, { wrapper: makeWrapper() });
     await waitFor(() => expect(screen.getByLabelText('Map view')).toBeTruthy());
     expect(containsTestID(screen.toJSON(), 'v2-background')).toBe(true);
@@ -288,7 +300,7 @@ describe('Map v2 — shared background atmosphere', () => {
 
 describe('Map v2 — AreaVenueCard honest data', () => {
   it('shows the real reviews line, and "No reviews yet" when there are none', async () => {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     mockUseNearbyVenues.mockReturnValue({
       data: [
         makeVenue({ id: 'v-rated', name: 'Rated Barn', review_count: 12, average_rating: 4.6, distance_km: 3.2 }),
@@ -308,7 +320,7 @@ describe('Map v2 — AreaVenueCard honest data', () => {
   });
 
   it('renders "Ages X–Y" only when the venue has real age data', async () => {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     mockUseNearbyVenues.mockReturnValue({
       data: [
         makeVenue({ id: 'v-ages', name: 'Aged Venue', min_age: 2, max_age: 8 }),
@@ -326,7 +338,7 @@ describe('Map v2 — AreaVenueCard honest data', () => {
 
   it('opens Venue Detail when a venue card is tapped', async () => {
     const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     mockUseNearbyVenues.mockReturnValue({
       data: [makeVenue({ id: 'v-tap', name: 'Tappable Venue' })],
       isLoading: false,
@@ -348,7 +360,7 @@ describe('Map v2 — AreaVenueCard honest data', () => {
 // so the app has one weather-badge look, not two.
 describe('Map v2 — AreaVenueCard weatherBadge glass-pill treatment (Phase 9 fix)', () => {
   it('renders the weatherBadge inside a dark glass pill, matching VenueCard.tsx', async () => {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     mockUseWeather.mockReturnValue({
       condition: 'clear',
       temperatureC: 22,
@@ -385,7 +397,7 @@ describe('Map v2 — AreaVenueCard weatherBadge glass-pill treatment (Phase 9 fi
   });
 
   it('renders nothing for the weatherBadge slot when no weather-worthy condition applies', async () => {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     mockUseWeather.mockReturnValue({
       condition: 'overcast',
       temperatureC: 12,
@@ -417,7 +429,7 @@ describe('Map v2 — user-location marker honours consent (product decision 2026
   // consent. If location is declined it must show NO user marker (no fake dot)
   // and fall back to the London-wide view.
   it('shows the native user-location marker after consent is granted', async () => {
-    mockGetItemAsync.mockResolvedValue('1'); // returning user, consent stored
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0')); // returning user, consent stored
     const screen = render(<ExploreScreen />, { wrapper: makeWrapper() });
     await waitFor(() => expect(screen.getByLabelText('Map view')).toBeTruthy());
     // MapWithLocation renders with trackLocation → showsUserLocation = true.
@@ -437,7 +449,7 @@ describe('Map v2 — user-location marker honours consent (product decision 2026
 
 describe('Map v2 — honest category labels + section heading', () => {
   it('resolves the flat category_id from the RPC to the REAL category name (Waterway Park → Park & Playground, not VENUE)', async () => {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     // get_nearby_venues returns a FLAT category_id ONLY — no nested object.
     mockUseNearbyVenues.mockReturnValue({
       data: [makeVenue({ id: 'v-water', name: 'Waterway Park', category: undefined, category_id: 'cat-park' })],
@@ -458,7 +470,7 @@ describe('Map v2 — honest category labels + section heading', () => {
   });
 
   it('shows "VENUE" ONLY as a fallback when the category is genuinely absent (id has no match)', async () => {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     mockUseNearbyVenues.mockReturnValue({
       // category_id set but useCategories (default []) has no match → never fabricate.
       data: [makeVenue({ id: 'v-none', name: 'Mystery Place', category: undefined, category_id: 'cat-missing' })],
@@ -472,7 +484,7 @@ describe('Map v2 — honest category labels + section heading', () => {
   });
 
   it('labels the section "Nearby places" with a count that matches the list shown (no "Open right now" mismatch)', async () => {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     mockUseNearbyVenues.mockReturnValue({
       data: [
         makeVenue({ id: 'v-a', name: 'Alpha Farm' }),
@@ -493,7 +505,7 @@ describe('Map v2 — honest category labels + section heading', () => {
 
   it('tapping a coloured marker opens the peek card with the REAL category (not "Venue"), no fabricated open status, closes, and opens Venue Detail', async () => {
     const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     // Flat category_id only (RPC shape) + no opening hours (so open status is unknown).
     mockUseNearbyVenues.mockReturnValue({
       data: [makeVenue({ id: 'v-water', name: 'Waterway Park', category: undefined, category_id: 'cat-park' })],
@@ -536,7 +548,7 @@ describe('Map v2 — honest category labels + section heading', () => {
   });
 
   it('the final nearby venue card can scroll clear of the tab bar (renders the last of many cards, honest data)', async () => {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     mockUseNearbyVenues.mockReturnValue({
       data: Array.from({ length: 12 }, (_, i) => makeVenue({ id: `v-${i}`, name: `Venue ${i}` })),
       isLoading: false,
@@ -576,7 +588,7 @@ describe('Map v2 — tab-safe bottom content spacing (source guard)', () => {
 
 describe('Map v2 — honest category labels + section heading (cont.)', () => {
   it('does NOT show a fabricated "0.0" rating in list mode for an unrated venue', async () => {
-    mockGetItemAsync.mockResolvedValue('1');
+    mockGetItemAsync.mockResolvedValue(buildLocationConsentRecord('user-test-id', 'v1.0'));
     mockUseNearbyVenues.mockReturnValue({
       data: [makeVenue({ id: 'v-unrated', name: 'Unrated Barn', review_count: 0, average_rating: 0, category: { id: 'c-p', name: 'Park', icon: '🌳', color: '#5BC08A', slug: 'park' } })],
       isLoading: false,

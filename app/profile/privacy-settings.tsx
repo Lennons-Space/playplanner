@@ -11,10 +11,19 @@
  * app/profile/_layout.tsx (headerShown:false) for the fix.
  *
  * GDPR Art.13 / ICO Children's Code Standard 4 — transparency.
- * This is an informational screen. It shows the user their current location
- * permission status and links them to the data download screen. No mutations
- * happen here — consent changes happen at the OS level (device Settings) or
- * through the explicit in-app consent prompt.
+ * This screen shows the user their current OS location permission and links
+ * them to the data download screen.
+ *
+ * IT IS NO LONGER PURELY INFORMATIONAL (PP-018, 2026-08-25). It now also owns
+ * PlayPlanner's OWN per-account location consent, which the user can turn on or
+ * off here. That is deliberate and required: a decline is persisted per account
+ * (tri-state), so without a control here an account that tapped "Not now" on
+ * the prompt would have no way back — withdrawal would be easy and re-consent
+ * impossible, which is not what GDPR Art.7(3) asks for.
+ *
+ * The OS permission and PlayPlanner's consent are rendered as SEPARATE cards
+ * because they are separate things: the device permission is shared by every
+ * account on the phone, while the consent belongs to one data subject.
  *
  * Location status is read via expo-location getPermissionsAsync() — a
  * non-requesting query that reads the OS permission state WITHOUT prompting
@@ -34,6 +43,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
+import { useLocationConsent } from '@/hooks/useLocationConsent';
 import { Icon } from '@/components/ui/Icon';
 import { GlassSurface } from '@/components/ui/GlassSurface';
 import { ThemedBackground } from '@/components/ui/ThemedBackground';
@@ -79,6 +89,49 @@ export default function PrivacySettingsScreen() {
       ? 'Location access is enabled. Change this in your device Settings.'
       : 'Location access is off. PlayPlanner uses a default location for search.';
 
+  // ── PlayPlanner's own, per-account location consent (PP-018) ──────────────
+  // Separate from the OS permission above — see the card comment below.
+  const { status: consentStatus, grant, revoke } = useLocationConsent();
+
+  // 'checking' is transient; 'unavailable' means nobody is signed in, which
+  // cannot normally happen on a profile screen but must not render an
+  // actionable control if it somehow does.
+  const consentActionable = consentStatus === 'granted'
+    || consentStatus === 'declined'
+    || consentStatus === 'undecided';
+
+  const consentPillLabel =
+    consentStatus === 'granted'  ? 'On'  :
+    consentStatus === 'declined' ? 'Off' :
+    consentStatus === 'undecided' ? 'Not set' :
+    '—';
+
+  const consentSubtitle =
+    consentStatus === 'granted'
+      ? 'Nearby search uses your location. Tap to turn this off.'
+      : consentStatus === 'declined'
+        ? 'Nearby search uses a default area. Tap to turn this on.'
+        : consentStatus === 'undecided'
+          ? 'You have not chosen yet. Tap to turn this on.'
+          : 'Sign in to manage this.';
+
+  const consentActionLabel =
+    consentStatus === 'granted'
+      ? 'Turn off location in PlayPlanner'
+      : 'Turn on location in PlayPlanner';
+
+  function handleToggleConsent() {
+    if (!consentActionable) return;
+    // Both paths are non-blocking and write their own GDPR audit event:
+    // grant() logs the consent, revoke() logs the withdrawal (Art.7(3)).
+    // Neither touches the OS permission — that stays the device owner's.
+    if (consentStatus === 'granted') {
+      void revoke();
+    } else {
+      void grant();
+    }
+  }
+
   return (
     <View style={styles.root}>
       <ThemedBackground />
@@ -114,6 +167,55 @@ export default function PrivacySettingsScreen() {
                 </Text>
               </View>
             </View>
+          </GlassSurface>
+
+          {/* ── PlayPlanner's own location consent (PP-018) ───────────────
+              DELIBERATELY a separate card from the OS permission row above.
+              They are different things: the device permission is granted once
+              and shared by every account on the phone, whereas this is THIS
+              ACCOUNT's decision and is what actually gates precise location in
+              PlayPlanner. Showing only the OS row would let a user believe
+              location was "On" while their account had never consented.
+
+              This control is also the GDPR Art.7(3) surface, and it now works
+              in BOTH directions. That matters because a decline is persisted
+              per account (tri-state) — without a way back, an account that
+              tapped "Not now" once could never enable location again. */}
+          <GlassSurface style={styles.card} tintColor={cardTint}>
+            <TouchableOpacity
+              style={styles.cardRow}
+              onPress={handleToggleConsent}
+              disabled={!consentActionable}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !consentActionable }}
+              accessibilityLabel={consentActionLabel}
+              activeOpacity={0.7}
+            >
+              <View style={styles.iconBox}>
+                <Icon name="pin" size={18} color={ACCENT.accent} />
+              </View>
+              <View style={styles.cardTextBlock}>
+                <Text style={[styles.cardRowLabel, { color: T.label }]}>
+                  Use my location in PlayPlanner
+                </Text>
+                <Text style={[styles.cardRowSub, { color: T.label3 }]}>{consentSubtitle}</Text>
+              </View>
+              <View style={[
+                styles.statusPill,
+                consentStatus === 'granted'
+                  ? styles.statusPillOn
+                  : [styles.statusPillOff, { backgroundColor: T.fill }],
+              ]}>
+                <Text style={[
+                  styles.statusPillText,
+                  consentStatus === 'granted'
+                    ? styles.statusPillTextOn
+                    : [styles.statusPillTextOff, { color: T.label3 }],
+                ]}>
+                  {consentPillLabel}
+                </Text>
+              </View>
+            </TouchableOpacity>
           </GlassSurface>
 
           {/* ── Your data ────────────────────────────────────────────────── */}

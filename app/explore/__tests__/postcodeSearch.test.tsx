@@ -39,6 +39,7 @@ import { FunctionsHttpError, FunctionsFetchError } from '@supabase/supabase-js';
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
+import { buildLocationConsentRecord } from '@/lib/locationConsentStorage';
 import ExploreScreen from '../map';
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
@@ -54,7 +55,7 @@ jest.mock('@/store/authStore', () => ({
 }));
 
 jest.mock('expo-secure-store', () => ({
-  getItemAsync: jest.fn().mockResolvedValue('1'), // stored consent → skip prompt
+  getItemAsync: jest.fn().mockResolvedValue(JSON.stringify({ userId: "user-test-id", grantedAt: "2026-01-01T00:00:00.000Z", consentVersion: "v1.0" })), // account-scoped stored consent → skip prompt
   setItemAsync: jest.fn().mockResolvedValue(undefined),
   deleteItemAsync: jest.fn().mockResolvedValue(undefined),
 }));
@@ -216,6 +217,8 @@ function mockAuthenticatedSession() {
   mockUseAuthStore.mockImplementation((selector) =>
     selector({
       session: { access_token: 'tok', user: { id: 'user-test-id' } },
+      // PP-018: hooks/useLocationConsent.ts scopes consent by `user.id`.
+      user: { id: 'user-test-id' },
       isLoading: false,
     } as unknown as AuthStoreState),
   );

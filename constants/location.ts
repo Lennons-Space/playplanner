@@ -26,17 +26,15 @@ export const DEFAULT_SEARCH_RADIUS_KM = 32;
 // this lets us tell, per user, which version of the consent they saw.
 export const LOCATION_CONSENT_VERSION = 'v1.0';
 
-// The SecureStore key (+ its "granted" sentinel value) that
-// hooks/useLocationConsent.ts persists the user's app-level location
-// consent flag under. Pulled out to this Supabase-free, dependency-light
-// module (rather than importing hooks/useLocationConsent.ts itself) so that
-// widely-mounted, purely-decorative consumers — e.g.
-// hooks/useResolvedWeather.ts, read via every <V2Background/> instance on
-// nearly every screen — can do a READ-ONLY check of the SAME persisted flag
-// without transitively pulling in services/consent/locationConsent.ts's
-// Supabase-backed audit-log write path (which those consumers never need:
-// they never call grant()/decline(), only ever read the current state).
-// MUST match hooks/useLocationConsent.ts exactly — that hook is still the
-// single place allowed to WRITE this key.
-export const LOCATION_CONSENT_STORAGE_KEY = 'location_consent_granted';
-export const LOCATION_CONSENT_GRANTED_VALUE = '1';
+// NOTE (PP-018, 2026-08-25): the app-level location-consent STORAGE contract
+// used to live here as a device-global key plus a bare '1' sentinel. Both are
+// gone. A bare sentinel under a shared key cannot say who granted it, so every
+// account on the device read it as its own — Account A's consent silently
+// became Account B's (GDPR Art.7; ICO Children's Code Standard 10).
+//
+// Consent storage now lives in lib/locationConsentStorage.ts: a per-account key
+// holding a record that names its own owner. That module is deliberately just
+// as dependency-free as this one, so hooks/useResolvedWeather.ts (mounted by
+// every <V2Background/> instance) can still read consent without pulling in the
+// Supabase-backed audit-log write path. The old key survives there only as
+// LEGACY_GLOBAL_LOCATION_CONSENT_KEY, which is deleted on sight, never read.

@@ -142,7 +142,17 @@ export default function ResultsScreen() {
     return <ResultsWithLocation mood={mood} quickFilters={quickFilters} />;
   }
 
-  // declined — use a default area, no GPS, clearly labelled.
+  // 'declined' | 'unavailable' — use a default area, no GPS, clearly labelled.
+  //
+  // 'unavailable' means nobody is signed in (PP-018 product ruling). Guests keep
+  // browsing here — this screen is deliberately NOT behind RequireSession — but
+  // they are never offered PlayPlanner's precise-location consent: no prompt,
+  // nothing persisted, no audit evidence that a later account could inherit.
+  // Signing in still requires that account's own consent before GPS is used.
+  //
+  // 'declined' is now a PERSISTED per-account decision, so a returning account
+  // that said no lands here instead of being re-prompted every session. They
+  // can change their mind in Privacy & data.
   return (
     <ResultsBody
       mood={mood}

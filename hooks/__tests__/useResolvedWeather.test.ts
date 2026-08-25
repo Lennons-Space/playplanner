@@ -29,10 +29,8 @@ import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
 import { useResolvedWeather } from '@/hooks/useResolvedWeather';
 import { useDevWeatherStore } from '@/store/devWeatherStore';
-import {
-  FALLBACK_LOCATION,
-  LOCATION_CONSENT_GRANTED_VALUE,
-} from '@/constants/location';
+import { FALLBACK_LOCATION } from '@/constants/location';
+import { buildLocationConsentRecord } from '@/lib/locationConsentStorage';
 import type { WeatherState } from '@/lib/weather';
 
 jest.mock('expo-location', () => ({
@@ -44,6 +42,29 @@ jest.mock('expo-location', () => ({
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(),
 }));
+
+// PP-018: location consent is scoped to the signed-in account, so this hook
+// needs to know WHOSE consent to look for. The identity is INJECTED via
+// lib/locationConsentIdentity.tsx — deliberately NOT read from store/authStore,
+// which would drag lib/supabase into every <V2Background/> instance. Mocking
+// the context here is also what keeps this suite Supabase-free.
+//
+// Signed out the identity is null and this hook is always "not granted": a
+// guest is never offered precise location at all. These tests exercise the
+// signed-in path, so a stable identity is supplied.
+const TEST_USER_ID = 'weather-user-1111-4aaa-8aaa-aaaaaaaaaaaa';
+// Mutable so the signed-out (guest) case can be exercised too. Reset in
+// beforeEach to the signed-in identity that most tests here assume.
+let mockIdentity: string | null = TEST_USER_ID;
+jest.mock('@/lib/locationConsentIdentity', () => ({
+  useLocationConsentIdentity: () => mockIdentity,
+}));
+
+/** A GRANTED record that positively identifies TEST_USER_ID as its owner. */
+const GRANTED_RECORD = buildLocationConsentRecord(TEST_USER_ID, 'v1.0', 'granted');
+
+/** A DECLINED record for the same account — parses fine, must NOT unlock GPS. */
+const DECLINED_RECORD = buildLocationConsentRecord(TEST_USER_ID, 'v1.0', 'declined');
 
 const mockUseWeatherArgs = jest.fn();
 let mockWeatherReturn: WeatherState | null = null;
@@ -60,10 +81,104 @@ const SS = SecureStore as jest.Mocked<typeof SecureStore>;
 beforeEach(() => {
   jest.clearAllMocks();
   useDevWeatherStore.setState({ override: null, forceNight: null });
+  mockIdentity = TEST_USER_ID;
   mockWeatherReturn = null;
   (SS.getItemAsync as jest.Mock).mockResolvedValue(null); // no persisted consent by default
   (L.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: false });
   (L.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
+});
+
+describe('useResolvedWeather — OS permission is not app consent (PP-018)', () => {
+  // The device-level Android/iOS location permission is granted once and stays
+  // granted across account switches. It says nothing about whether the CURRENT
+  // PlayPlanner account agreed to location — that is a separate, per-account
+  // decision (GDPR Art.7; ICO Children's Code Standard 10).
+  //
+  // This is the account-switch case in miniature: B signs in on a device where
+  // A had already granted both. B has no consent record of their own, so no
+  // location may be used for B no matter what the OS says.
+  it('OS permission granted + NO account consent → still no location is read', async () => {
+    (SS.getItemAsync as jest.Mock).mockResolvedValue(null); // this account never consented
+    (L.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: true });
+    (L.getLastKnownPositionAsync as jest.Mock).mockResolvedValue({
+      coords: { latitude: 53.4808, longitude: -2.2426 },
+    });
+
+    const { result } = renderHook(() => useResolvedWeather());
+    await waitFor(() => expect(mockUseWeatherArgs).toHaveBeenCalled());
+
+    // The Location module must not be consulted at all — not even the
+    // permission CHECK, let alone a cached position.
+    expect(L.getForegroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(L.getLastKnownPositionAsync).not.toHaveBeenCalled();
+    expect(L.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(result.current.usingConsentedLocation).toBe(false);
+    expect(mockUseWeatherArgs).toHaveBeenCalledWith(
+      FALLBACK_LOCATION.latitude,
+      FALLBACK_LOCATION.longitude,
+    );
+  });
+
+  // Guest ruling: signed out, precise location is not offered at all. Even a
+  // stored record and a granted OS permission must not unlock it — there is no
+  // account whose consent could apply.
+  it('signed out + OS permission granted + a stored record → no location is read', async () => {
+    mockIdentity = null;
+    (SS.getItemAsync as jest.Mock).mockResolvedValue(GRANTED_RECORD);
+    (L.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: true });
+    (L.getLastKnownPositionAsync as jest.Mock).mockResolvedValue({
+      coords: { latitude: 53.4808, longitude: -2.2426 },
+    });
+
+    const { result } = renderHook(() => useResolvedWeather());
+    await waitFor(() => expect(mockUseWeatherArgs).toHaveBeenCalled());
+
+    // Nothing is even read from storage for a guest, let alone acted on.
+    expect(SS.getItemAsync).not.toHaveBeenCalled();
+    expect(L.getForegroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(result.current.usingConsentedLocation).toBe(false);
+    expect(mockUseWeatherArgs).toHaveBeenCalledWith(
+      FALLBACK_LOCATION.latitude,
+      FALLBACK_LOCATION.longitude,
+    );
+  });
+
+  // Tri-state: a DECLINED record parses successfully, so a truthiness check on
+  // the parsed record would wrongly unlock location. Only an explicit
+  // 'granted' decision may.
+  it('OS permission granted + account DECLINED → still no location is read', async () => {
+    (SS.getItemAsync as jest.Mock).mockResolvedValue(DECLINED_RECORD);
+    (L.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: true });
+    (L.getLastKnownPositionAsync as jest.Mock).mockResolvedValue({
+      coords: { latitude: 53.4808, longitude: -2.2426 },
+    });
+
+    const { result } = renderHook(() => useResolvedWeather());
+    await waitFor(() => expect(mockUseWeatherArgs).toHaveBeenCalled());
+
+    expect(L.getForegroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(L.getLastKnownPositionAsync).not.toHaveBeenCalled();
+    expect(result.current.usingConsentedLocation).toBe(false);
+    expect(mockUseWeatherArgs).toHaveBeenCalledWith(
+      FALLBACK_LOCATION.latitude,
+      FALLBACK_LOCATION.longitude,
+    );
+  });
+
+  // A consent record belonging to a DIFFERENT account is not this account's
+  // consent, even with the OS permission granted.
+  it('OS permission granted + another account’s consent record → no location is read', async () => {
+    (SS.getItemAsync as jest.Mock).mockResolvedValue(
+      buildLocationConsentRecord('some-other-account-id', 'v1.0'),
+    );
+    (L.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: true });
+
+    const { result } = renderHook(() => useResolvedWeather());
+    await waitFor(() => expect(mockUseWeatherArgs).toHaveBeenCalled());
+
+    expect(L.getForegroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(result.current.usingConsentedLocation).toBe(false);
+  });
 });
 
 describe('useResolvedWeather — pre-consent / not granted (items 1, 2)', () => {
@@ -97,7 +212,7 @@ describe('useResolvedWeather — pre-consent / not granted (items 1, 2)', () => 
 
 describe('useResolvedWeather — granted (item 3): consented coarse location', () => {
   it('checks (never requests) OS permission, reads a CACHED last-known position, and rounds it to 1dp before use', async () => {
-    (SS.getItemAsync as jest.Mock).mockResolvedValue(LOCATION_CONSENT_GRANTED_VALUE);
+    (SS.getItemAsync as jest.Mock).mockResolvedValue(GRANTED_RECORD);
     (L.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: true });
     (L.getLastKnownPositionAsync as jest.Mock).mockResolvedValue({
       coords: { latitude: 53.4808123, longitude: -2.2426456 }, // Manchester-ish, deliberately high precision
@@ -112,7 +227,7 @@ describe('useResolvedWeather — granted (item 3): consented coarse location', (
   });
 
   it('OS permission not actually granted (revoked in system settings after app consent) → silently falls back, no re-prompt', async () => {
-    (SS.getItemAsync as jest.Mock).mockResolvedValue(LOCATION_CONSENT_GRANTED_VALUE);
+    (SS.getItemAsync as jest.Mock).mockResolvedValue(GRANTED_RECORD);
     (L.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: false });
 
     const { result } = renderHook(() => useResolvedWeather());
@@ -125,7 +240,7 @@ describe('useResolvedWeather — granted (item 3): consented coarse location', (
   });
 
   it('no cached last-known position yet → falls back to FALLBACK_LOCATION, never throws', async () => {
-    (SS.getItemAsync as jest.Mock).mockResolvedValue(LOCATION_CONSENT_GRANTED_VALUE);
+    (SS.getItemAsync as jest.Mock).mockResolvedValue(GRANTED_RECORD);
     (L.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: true });
     (L.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
 
@@ -136,7 +251,7 @@ describe('useResolvedWeather — granted (item 3): consented coarse location', (
   });
 
   it('an invalid coordinate from the OS is rejected — falls back rather than feeding garbage to the fetch', async () => {
-    (SS.getItemAsync as jest.Mock).mockResolvedValue(LOCATION_CONSENT_GRANTED_VALUE);
+    (SS.getItemAsync as jest.Mock).mockResolvedValue(GRANTED_RECORD);
     (L.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ granted: true });
     (L.getLastKnownPositionAsync as jest.Mock).mockResolvedValue({ coords: { latitude: 999, longitude: 999 } });
 
@@ -270,5 +385,49 @@ describe('useResolvedWeather — night-label honesty (Defect 4)', () => {
     useDevWeatherStore.setState({ forceNight: true });
     const { result } = renderHook(() => useResolvedWeather());
     expect(result.current.weather).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dependency-boundary guard (PP-018)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// This hook is mounted by every <V2Background/> instance, i.e. nearly every
+// screen, purely for decoration. It must NOT reach a live DB client.
+//
+// PP-018 nearly broke this: scoping consent per account needs the current user
+// id, and the obvious source — store/authStore — imports lib/supabase. The
+// identity is injected via lib/locationConsentIdentity.tsx instead (a React
+// context supplied by app/_layout.tsx), which keeps the boundary intact.
+//
+// A source-level assertion rather than a behavioural one, because the failure
+// mode is an IMPORT: a future refactor reaching for useAuthStore here would
+// still pass every behavioural test in this file while quietly dragging
+// Supabase into every background gradient. Mirrors the existing source-guard
+// idiom in app/explore/__tests__/results.test.tsx.
+describe('useResolvedWeather — stays free of the Supabase module graph', () => {
+  it('does not import store/authStore or lib/supabase', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require('path');
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'useResolvedWeather.ts'),
+      'utf8',
+    );
+
+    // Strip comments so the explanatory prose above these imports (which names
+    // both modules on purpose) cannot make this guard pass or fail spuriously.
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .filter((line: string) => !line.trim().startsWith('//'))
+      .join('\n');
+
+    expect(code).not.toMatch(/from\s+['"]@\/store\/authStore['"]/);
+    expect(code).not.toMatch(/from\s+['"]@\/lib\/supabase['"]/);
+    expect(code).not.toMatch(/from\s+['"]@\/services\/consent\//);
+    // And it DOES use the injected identity.
+    expect(code).toMatch(/from\s+['"]@\/lib\/locationConsentIdentity['"]/);
   });
 });

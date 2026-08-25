@@ -28,6 +28,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '@/store/authStore';
+import { buildLocationConsentRecord } from '@/lib/locationConsentStorage';
 import ExploreScreen from '../map';
 
 // ─── Module mocks ────────────────────────────────────────────────────────────
@@ -50,7 +51,7 @@ jest.mock('@/store/authStore', () => ({
 }));
 
 jest.mock('expo-secure-store', () => ({
-  getItemAsync: jest.fn().mockResolvedValue('1'), // stored consent — reach the map, not the prompt
+  getItemAsync: jest.fn().mockResolvedValue(JSON.stringify({ userId: "user-1", grantedAt: "2026-01-01T00:00:00.000Z", consentVersion: "v1.0" })), // account-scoped stored consent — reach the map, not the prompt
   setItemAsync: jest.fn().mockResolvedValue(undefined),
   deleteItemAsync: jest.fn().mockResolvedValue(undefined),
 }));
@@ -148,7 +149,14 @@ const mockUseAuthStore = useAuthStore as jest.MockedFunction<typeof useAuthStore
 type AuthStoreState = ReturnType<typeof useAuthStore.getState>;
 
 function mockStore(state: { session: unknown; isLoading: boolean }) {
-  mockUseAuthStore.mockImplementation((selector) => selector(state as unknown as AuthStoreState));
+  // PP-018: hooks/useLocationConsent.ts scopes consent by `user.id`, so the
+  // mocked store must expose `user` alongside `session` — the real store always
+  // sets both together (store/authStore.ts). Derived here rather than passed by
+  // each caller so a signed-out case can never accidentally carry a user.
+  const user = (state.session as { user?: { id: string } } | null)?.user ?? null;
+  mockUseAuthStore.mockImplementation((selector) =>
+    selector({ ...state, user } as unknown as AuthStoreState),
+  );
 }
 
 function makeWrapper() {
@@ -161,7 +169,7 @@ function makeWrapper() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (SecureStore.getItemAsync as jest.Mock).mockResolvedValue('1');
+  (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(buildLocationConsentRecord('user-1', 'v1.0'));
   mockFunctionsInvoke.mockResolvedValue({ data: null, error: null });
 });
 

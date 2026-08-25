@@ -140,7 +140,7 @@ jest.mock('@/lib/supabase', () => {
 });
 
 jest.mock('@/services/consent/locationConsent', () => ({
-  migratePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
+  retirePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
 }));
 
 // The __DEV__ diagnostics schedule 35s/60s verification timers, which have no

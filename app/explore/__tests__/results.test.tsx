@@ -22,7 +22,20 @@ import type { Venue } from '@/types';
 import ResultsScreen from '../results';
 
 // ── Mocks (hoisted) ─────────────────────────────────────────────────
-const mockConsent = jest.fn(() => ({ status: 'granted', grant: jest.fn(), decline: jest.fn() }));
+// `revoke` joined the hook's contract in PP-018 (the settings path that
+// withdraws an existing grant). Declared explicitly, and OPTIONAL, so the
+// pre-existing mockReturnValue calls in this file stay valid while the newer
+// guest/declined cases can pass it — rather than inferring a shape from the
+// first literal and forcing every other call site to match it.
+type ConsentMock = {
+  status: string;
+  grant: jest.Mock;
+  decline: jest.Mock;
+  revoke?: jest.Mock;
+};
+const mockConsent = jest.fn(
+  (): ConsentMock => ({ status: 'granted', grant: jest.fn(), decline: jest.fn(), revoke: jest.fn() }),
+);
 jest.mock('@/hooks/useLocationConsent', () => ({
   useLocationConsent: () => mockConsent(),
 }));
@@ -114,6 +127,42 @@ describe('ResultsScreen — consent gate', () => {
     expect(mockConsentPromptProps).toHaveBeenCalledWith(
       expect.objectContaining({ variant: 'dark' }),
     );
+  });
+
+  // ── Guest ruling (PP-018, 2026-08-25) ──────────────────────────────────
+  // This screen is deliberately NOT behind RequireSession — guest browsing
+  // stays available. But a signed-out visitor must never be offered
+  // PlayPlanner's precise-location consent, so the hook reports 'unavailable'
+  // rather than 'undecided' (the only status that prompts).
+  it('does NOT prompt a signed-out visitor for location consent', () => {
+    mockConsent.mockReturnValue({
+      status: 'unavailable', grant: jest.fn(), decline: jest.fn(), revoke: jest.fn(),
+    });
+    const { queryByText } = render(<ResultsScreen />);
+    expect(queryByText('consent-prompt')).toBeNull();
+  });
+
+  it('a signed-out visitor can still browse, on the fallback location', () => {
+    mockConsent.mockReturnValue({
+      status: 'unavailable', grant: jest.fn(), decline: jest.fn(), revoke: jest.fn(),
+    });
+    render(<ResultsScreen />);
+
+    // Guest browsing still works — venues are still requested...
+    expect(mockUseNearbyVenues).toHaveBeenCalled();
+    // ...and never from the device: useLocation() is the only path to GPS and
+    // it must not be reached at all while signed out.
+    expect(mockUseLocation).not.toHaveBeenCalled();
+  });
+
+  // A persisted decline lands here too, and must equally not re-prompt.
+  it('does NOT re-prompt an account that has already declined', () => {
+    mockConsent.mockReturnValue({
+      status: 'declined', grant: jest.fn(), decline: jest.fn(), revoke: jest.fn(),
+    });
+    const { queryByText } = render(<ResultsScreen />);
+    expect(queryByText('consent-prompt')).toBeNull();
+    expect(mockUseLocation).not.toHaveBeenCalled();
   });
 });
 

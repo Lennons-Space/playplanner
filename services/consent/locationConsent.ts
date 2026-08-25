@@ -7,12 +7,22 @@
  * adds that geolocation must be off by default and consent must be documented.
  * This service writes to `location_consent_log` so we have an audit trail.
  *
- * PRE-AUTH CONSENT:
- * If a user accesses the map before creating an account, their consent cannot
- * immediately be written to the database (no user_id exists). In that case,
- * the consent record is stored locally in SecureStore under PENDING_CONSENT_KEY.
- * Call `migratePendingLocationConsent(userId)` after signup or login to move
- * the pending record into the database, linked to the new account.
+ * PRE-AUTH CONSENT — REMOVED (PP-018, 2026-08-25):
+ * This service used to stash a pre-auth consent record in SecureStore under
+ * PENDING_CONSENT_KEY and then attribute it, via `migratePendingLocationConsent`,
+ * to whichever account signed in next. That call ran on EVERY sign-in (see
+ * hooks/useAuth.ts), not just the signup it was designed for, so a consent given
+ * by one person on a shared device was written into the consent log of a
+ * completely different data subject — manufactured consent, and exactly the
+ * evidence GDPR Art.7 says must be genuine.
+ *
+ * A record written while nobody was signed in cannot be attributed to anyone:
+ * there is no proof the person who granted it is the person who later signs in.
+ * So nothing pre-auth is persisted any more, and any record left behind by an
+ * older build is DELETED rather than adopted — see `retirePendingLocationConsent`.
+ * A signed-out user's agreement now lasts only for the screen they gave it on
+ * (hooks/useLocationConsent.ts), and a signed-in account with no record of its
+ * own is simply asked again the next time location is genuinely required.
  *
  * IMPORTANT: All functions are intentionally non-blocking — a logging failure
  * must never break the user's experience. Monitor errors in production separately.
@@ -23,35 +33,28 @@ import { supabase } from '@/lib/supabase';
 import { LOCATION_CONSENT_VERSION } from '@/constants/location';
 import { writeAuditLog } from '@/services/audit/gdprAuditLog';
 
+/**
+ * The pre-PP-018 anonymous consent record. Never written any more; deleted on
+ * sight by `retirePendingLocationConsent` so an older build's leftover cannot
+ * be attributed to whoever signs in next.
+ */
 const PENDING_CONSENT_KEY = 'pending_location_consent';
-
-interface PendingConsent {
-  consented_at: string;
-  consent_version: string;
-}
 
 /**
  * Call this immediately after the user accepts the location consent prompt.
  * If the user is authenticated, writes directly to `location_consent_log`.
- * If not authenticated yet, persists locally for migration on signup/login.
+ *
+ * If NOT authenticated, this records nothing (PP-018). There is no data subject
+ * to bind the consent to, and a record that cannot be attributed can only ever
+ * be served to the wrong person later. The agreement still applies for the
+ * screen the guest gave it on — hooks/useLocationConsent.ts holds that in
+ * memory — it simply never outlives the session or reaches the audit log.
  */
 export async function recordLocationConsentGranted(): Promise<void> {
   const consented_at = new Date().toISOString();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    // No account yet — store locally and migrate once an account is created.
-    try {
-      await SecureStore.setItemAsync(
-        PENDING_CONSENT_KEY,
-        JSON.stringify({ consented_at, consent_version: LOCATION_CONSENT_VERSION }),
-      );
-    } catch (error) {
-      // SecureStore failure is non-fatal. Consent will be prompted again next session.
-      console.warn('PlayPlanner: Failed to store pending location consent locally:', error);
-    }
-    return;
-  }
+  if (!user) return;
 
   try {
     const { error } = await supabase.from('location_consent_log').insert({
@@ -73,38 +76,27 @@ export async function recordLocationConsentGranted(): Promise<void> {
 
 /**
  * Call this after a successful signup or login.
- * Reads any locally-stored pre-auth consent record, writes it to the database
- * linked to the authenticated user, then deletes the local copy.
- * Non-blocking — migration failure must never break the auth flow.
+ *
+ * REPLACES `migratePendingLocationConsent` (PP-018, 2026-08-25). That function
+ * took a `userId` and wrote the anonymous pre-auth consent record into
+ * `location_consent_log` under it. Because hooks/useAuth.ts calls this on every
+ * SIGNED_IN — not only at signup — one person's consent on a shared device
+ * became a permanent, ICO-facing claim that a DIFFERENT person had consented.
+ *
+ * This deliberately takes no `userId`: there is no account it could honestly be
+ * attributed to. It only clears the leftover so it can never leak. The affected
+ * account is asked again the next time location is genuinely required, which is
+ * the correct outcome — we do not manufacture consent, and we do not infer it
+ * from previous location use.
+ *
+ * Non-blocking — failure must never break the auth flow. A failed delete is
+ * harmless: nothing reads this key any more.
  */
-export async function migratePendingLocationConsent(userId: string): Promise<void> {
-  let pending: PendingConsent | null = null;
-
+export async function retirePendingLocationConsent(): Promise<void> {
   try {
-    const raw = await SecureStore.getItemAsync(PENDING_CONSENT_KEY);
-    if (raw) pending = JSON.parse(raw) as PendingConsent;
-  } catch {
-    return;
-  }
-
-  if (!pending) return;
-
-  try {
-    const { error } = await supabase.from('location_consent_log').insert({
-      user_id:         userId,
-      consented_at:    pending.consented_at,
-      consent_version: pending.consent_version,
-    });
-    if (error) {
-      console.warn('PlayPlanner: Failed to migrate pending location consent:', error);
-      // Leave the local copy intact so it is retried on the next login.
-      return;
-    }
-    // Only delete the local copy once the DB write has succeeded.
     await SecureStore.deleteItemAsync(PENDING_CONSENT_KEY);
   } catch {
-    // Non-fatal — the pending record remains in SecureStore and will be
-    // retried on the next login.
+    // Non-fatal. The record is never read, only removed as housekeeping.
   }
 }
 

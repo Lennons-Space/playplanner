@@ -3,7 +3,7 @@ import { AppState, Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore, consumeDeliberateSignOut } from '@/store/authStore';
 import { useMapStore } from '@/store/mapStore';
-import { migratePendingLocationConsent } from '@/services/consent/locationConsent';
+import { retirePendingLocationConsent } from '@/services/consent/locationConsent';
 import { isTombstonedSession, noteAdoptedIdentity, tombstoneIdentity } from '@/lib/authTombstone';
 import { purgeLocalAuthSession, resolveAuthStorageKey } from '@/lib/authSession';
 import { logAuthEvent } from '@/lib/authDiagnostics';
@@ -128,12 +128,13 @@ export function useAuthListener(queryClient: QueryClient) {
 
       setSession(session);
       if (event === 'SIGNED_IN' && session?.user?.id) {
-        // Migrate any pre-auth location consent that was stored locally before
-        // the user had an account. Non-blocking — migration failure must never
-        // affect the sign-in experience. Placed here (not in login.tsx) so it
-        // runs for all sign-in paths (email, OAuth, magic link, etc.) without a
-        // race between navigation and the useEffect dependency change.
-        migratePendingLocationConsent(session.user.id).catch(() => {});
+        // PP-018: this used to MIGRATE a pre-auth location-consent record onto
+        // the account that had just signed in. Running on every SIGNED_IN, that
+        // attributed one person's consent to whoever signed in next on a shared
+        // device. The record is now retired rather than adopted — it names no
+        // account, so no account can honestly claim it. Non-blocking: failure
+        // must never affect the sign-in experience.
+        retirePendingLocationConsent().catch(() => {});
       }
     });
 

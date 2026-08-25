@@ -251,7 +251,7 @@ jest.mock('@/components/venues/RecommendationExplanation', () => ({
 jest.mock('@/hooks/useWeather', () => ({ useWeather: () => null }));
 jest.mock('@/hooks/location', () => ({ useLocation: jest.fn() }));
 jest.mock('@/services/consent/locationConsent', () => ({
-  migratePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
+  retirePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
 }));
 
 

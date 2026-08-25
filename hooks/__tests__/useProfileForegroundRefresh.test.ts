@@ -74,7 +74,7 @@ jest.mock('@/store/mapStore', () => ({
 }));
 
 jest.mock('@/services/consent/locationConsent', () => ({
-  migratePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
+  retirePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
 }));
 
 // ---------------------------------------------------------------------------

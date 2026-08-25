@@ -124,7 +124,7 @@ jest.mock('@/lib/supabase', () => {
 });
 
 jest.mock('@/services/consent/locationConsent', () => ({
-  migratePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
+  retirePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('@/lib/authDiagnostics', () => ({

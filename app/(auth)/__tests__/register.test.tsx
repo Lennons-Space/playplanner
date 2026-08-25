@@ -50,7 +50,7 @@ jest.mock('@/services/audit/gdprAuditLog', () => ({
 
 // Mock location consent migration — tested separately.
 jest.mock('@/services/consent/locationConsent', () => ({
-  migratePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
+  retirePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
 }));
 
 // Core supabase mock — individual tests override signUp as needed.

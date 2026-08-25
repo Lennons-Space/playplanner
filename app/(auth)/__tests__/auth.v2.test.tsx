@@ -74,7 +74,7 @@ jest.mock('@/services/audit/gdprAuditLog', () => ({
 }));
 
 jest.mock('@/services/consent/locationConsent', () => ({
-  migratePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
+  retirePendingLocationConsent: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('@/hooks/useAuth', () => ({

@@ -56,6 +56,25 @@ jest.mock('@/components/ui', () => ({
   Icon: () => null,
 }));
 
+// PP-018: the screen now also owns PlayPlanner's OWN per-account location
+// consent (see the screen's header comment for why it is no longer purely
+// informational). The real hook reaches services/consent/locationConsent.ts and
+// therefore lib/supabase, which throws at import without credentials — and this
+// suite is about the OS-permission/GDPR presentation, not the consent
+// mechanism, which has its own dedicated coverage in
+// hooks/__tests__/locationConsentAccountScoping.test.tsx.
+const mockConsentGrant  = jest.fn().mockResolvedValue(undefined);
+const mockConsentRevoke = jest.fn().mockResolvedValue(undefined);
+let mockConsentStatus: string = 'undecided';
+jest.mock('@/hooks/useLocationConsent', () => ({
+  useLocationConsent: () => ({
+    status: mockConsentStatus,
+    grant: mockConsentGrant,
+    decline: jest.fn().mockResolvedValue(undefined),
+    revoke: mockConsentRevoke,
+  }),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PrivacySettingsScreen = require('../privacy-settings').default;
 

@@ -4,8 +4,9 @@
  * GDPR Article 7 requires that consent be demonstrable — the controller must
  * be able to show that a specific person gave specific consent at a specific
  * time. These tests verify that the consent is written correctly in all paths:
- * authenticated users (direct DB write), unauthenticated users (SecureStore
- * pending write), and post-login migration of pending consent.
+ * authenticated users (direct DB write), unauthenticated users (PP-018: nothing
+ * is recorded at all — there is no data subject to bind consent to), and the
+ * retirement of any pre-auth record left behind by an older build.
  *
  * ICO Children's Code Standard 10: geolocation must be off by default and
  * every consent event must be logged with a version stamp so we can tell
@@ -17,7 +18,7 @@ import * as SecureStore from 'expo-secure-store';
 import { supabase }     from '@/lib/supabase';
 import {
   recordLocationConsentGranted,
-  migratePendingLocationConsent,
+  retirePendingLocationConsent,
   recordLocationConsentWithdrawn,
 } from '../locationConsent';
 import { LOCATION_CONSENT_VERSION } from '@/constants/location';
@@ -138,28 +139,29 @@ beforeEach(() => {
 // recordLocationConsentGranted
 // ======================================================================
 describe('recordLocationConsentGranted', () => {
-  // When no user session exists the consent cannot be written to the database.
-  // It must be persisted locally in SecureStore under 'pending_location_consent'
-  // so it can be migrated once an account is created or the user logs in.
-  it('writes pending consent to SecureStore when user is unauthenticated', async () => {
+  // PP-018: when no user session exists, NOTHING is recorded — not to the
+  // database (impossible: no user_id) and not to SecureStore either.
+  //
+  // The old build stashed a 'pending_location_consent' record here and later
+  // attributed it to whichever account signed in next. That is how a guest's
+  // consent on a shared device became another data subject's consent record.
+  // A consent that cannot be attributed to anyone must not be stored at all.
+  it('records NOTHING when the user is unauthenticated', async () => {
     stubUnauthenticated();
 
     await recordLocationConsentGranted();
 
-    expect(mockSetItem).toHaveBeenCalledWith(
-      'pending_location_consent',
-      expect.stringContaining('"consent_version":"' + LOCATION_CONSENT_VERSION + '"'),
-    );
-    // Must not attempt a DB write
+    // Nothing durable was created that a later account could inherit.
+    expect(mockSetItem).not.toHaveBeenCalled();
+    // And no DB write was attempted — there is no user_id to bind it to.
     expect(mockFrom).not.toHaveBeenCalled();
   });
 
-  // If SecureStore throws (e.g. device is locked), the function must swallow
-  // the error and return. The consent prompt will be shown again next session.
-  // A thrown error here would crash the app at an inopportune moment.
-  it('swallows SecureStore errors when unauthenticated — does not throw', async () => {
+  // The guest's agreement still applies for the screen they gave it on
+  // (hooks/useLocationConsent.ts holds it in memory); this service is simply
+  // not involved. It must return quietly rather than throw into that flow.
+  it('returns quietly when unauthenticated — never throws into the consent flow', async () => {
     stubUnauthenticated();
-    mockSetItem.mockRejectedValue(new Error('device locked'));
 
     await expect(recordLocationConsentGranted()).resolves.toBeUndefined();
   });
@@ -202,64 +204,51 @@ describe('recordLocationConsentGranted', () => {
 });
 
 // ======================================================================
-// migratePendingLocationConsent
+// retirePendingLocationConsent (PP-018 — replaces migratePendingLocationConsent)
 // ======================================================================
-describe('migratePendingLocationConsent', () => {
-  // If there is no pending consent in SecureStore, migration should be a no-op.
-  // We must not make any DB call — that would be a spurious insert.
-  it('does nothing when no pending consent exists in SecureStore', async () => {
-    mockGetItem.mockResolvedValue(null);
+//
+// The old function inserted the anonymous pre-auth consent record into
+// `location_consent_log` under whichever account had just signed in. Since
+// hooks/useAuth.ts calls this on EVERY SIGNED_IN, a guest's consent on a shared
+// device became a permanent, ICO-facing claim that a different data subject had
+// consented — manufactured evidence, in the exact place GDPR Art.7 requires
+// genuine evidence.
+//
+// The replacement attributes nothing to anybody. It only clears the leftover.
+describe('retirePendingLocationConsent', () => {
+  it('never writes to the consent log — nothing may be attributed to any account', async () => {
+    mockGetItem.mockResolvedValue(
+      JSON.stringify({ consented_at: '2024-01-15T10:00:00.000Z', consent_version: 'v1.0' }),
+    );
+    resetFromMock({ insertError: null });
 
-    await migratePendingLocationConsent('user-abc-123');
+    await retirePendingLocationConsent();
 
+    // The decisive assertion: a pending record exists, and it still results in
+    // ZERO database writes. Under the old implementation this inserted a row.
     expect(mockFrom).not.toHaveBeenCalled();
   });
 
-  // Happy path: pending consent exists → insert it to the DB linked to the
-  // newly authenticated user, then remove the local copy so it is not
-  // migrated twice on the next login.
-  it('inserts pending consent to DB and deletes the SecureStore key on success', async () => {
-    const pending = {
-      consented_at:    '2024-01-15T10:00:00.000Z',
-      consent_version: 'v1.0',
-    };
-    mockGetItem.mockResolvedValue(JSON.stringify(pending));
-    resetFromMock({ insertError: null });
-
-    await migratePendingLocationConsent('user-xyz-456');
-
-    expect(mockFrom).toHaveBeenCalledWith('location_consent_log');
-    const fromInstance = mockFrom.mock.results[0].value;
-    expect(fromInstance.insert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        user_id:         'user-xyz-456',
-        consented_at:    pending.consented_at,
-        consent_version: pending.consent_version,
-      }),
+  it('deletes the leftover pending record so it cannot leak to a later account', async () => {
+    mockGetItem.mockResolvedValue(
+      JSON.stringify({ consented_at: '2024-01-15T10:00:00.000Z', consent_version: 'v1.0' }),
     );
-    // Delete the local copy only after a confirmed DB write
+
+    await retirePendingLocationConsent();
+
     expect(mockDeleteItem).toHaveBeenCalledWith('pending_location_consent');
   });
 
-  // If the DB insert fails, the local SecureStore copy must be kept so the
-  // migration can be retried on the next login. Deleting it on failure would
-  // mean the consent record is lost entirely — a GDPR accountability gap.
-  it('retains the SecureStore key when the DB insert fails', async () => {
-    const pending = {
-      consented_at:    '2024-01-15T10:00:00.000Z',
-      consent_version: 'v1.0',
-    };
-    mockGetItem.mockResolvedValue(JSON.stringify(pending));
-    resetFromMock({ insertError: { message: 'network error' } });
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  it('takes no user id, so it is structurally incapable of attributing consent', () => {
+    // Guards against a future refactor quietly reintroducing the defect by
+    // adding a parameter back. Arity 0 is the whole safety property.
+    expect(retirePendingLocationConsent).toHaveLength(0);
+  });
 
-    await migratePendingLocationConsent('user-xyz-456');
+  it('is non-blocking when SecureStore fails', async () => {
+    mockDeleteItem.mockRejectedValueOnce(new Error('keychain unavailable'));
 
-    // The local copy must NOT be deleted — it will be retried next login
-    expect(mockDeleteItem).not.toHaveBeenCalledWith('pending_location_consent');
-    expect(warnSpy).toHaveBeenCalled();
-
-    warnSpy.mockRestore();
+    await expect(retirePendingLocationConsent()).resolves.toBeUndefined();
   });
 });
 

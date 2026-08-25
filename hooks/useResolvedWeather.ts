@@ -53,22 +53,23 @@
 // never drift apart.
 // ─────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
 import { useWeather } from '@/hooks/useWeather';
 import { useDevWeatherStore } from '@/store/devWeatherStore';
+import { useLocationConsentIdentity } from '@/lib/locationConsentIdentity';
+import { FALLBACK_LOCATION } from '@/constants/location';
 import {
-  FALLBACK_LOCATION,
-  LOCATION_CONSENT_STORAGE_KEY,
-  LOCATION_CONSENT_GRANTED_VALUE,
-} from '@/constants/location';
+  locationConsentKey,
+  parseLocationConsentRecord,
+} from '@/lib/locationConsentStorage';
 import { isValidCoordinate } from '@/services/location/coordinates';
 import { resolveAtmosphere, isNightNow, type Atmosphere } from '@/lib/weatherTheme';
 import { conditionLabel, type WeatherState, type WeatherCondition } from '@/lib/weather';
 
 /**
- * Read-only check of the SAME persisted app-level location-consent flag
+ * Read-only check of the SAME persisted app-level location-consent record
  * hooks/useLocationConsent.ts owns — deliberately NOT that hook itself.
  * That hook's `grant()` path imports services/consent/locationConsent.ts,
  * which is Supabase-backed (writes an audit-log row) — pulling that whole
@@ -76,8 +77,25 @@ import { conditionLabel, type WeatherState, type WeatherCondition } from '@/lib/
  * screen in the app, purely decorative) would make a background gradient
  * transitively depend on a live DB client for no reason: this hook never
  * calls grant()/decline(), it only ever needs to know the CURRENT state.
- * Reuses the exact same SecureStore key/value (constants/location.ts) so it
- * can never drift from hooks/useLocationConsent.ts's own definition.
+ * It shares the key/record helpers in lib/locationConsentStorage.ts — a
+ * deliberately dependency-free module — so the two readers can never drift.
+ *
+ * PP-018: consent is per-account, so this read is too. It is keyed on the
+ * signed-in user id, identity-stamped, and generation-guarded, exactly like
+ * hooks/useLocationConsent.ts — otherwise a background gradient would happily
+ * act on Account A's consent while Account B is signed in. Signed out, it is
+ * always false: a guest's session-only agreement is never persisted, so there
+ * is nothing here to read.
+ *
+ * DEPENDENCY BOUNDARY PRESERVED: the account identity is INJECTED via
+ * lib/locationConsentIdentity.tsx (a React context supplied by app/_layout.tsx,
+ * which already owns auth state) rather than read from store/authStore. That
+ * keeps this module — and therefore every <V2Background/> — free of any
+ * transitive dependency on lib/supabase, exactly as constants/location.ts
+ * originally required. A mirrored identity store was rejected: a mirror that
+ * lagged could hand Account A's consent record to Account B, which is the very
+ * leak PP-018 closes. Context propagates in the same commit as the auth change,
+ * so it cannot lag.
  *
  * Returns 'granted' | 'not-granted' — collapses 'checking' safely: neither
  * 'checking' nor 'undecided' nor 'declined' should ever read a real
@@ -86,24 +104,49 @@ import { conditionLabel, type WeatherState, type WeatherCondition } from '@/lib/
  * their consent-prompt copy — this hook never renders consent UI).
  */
 function useSimpleConsentGranted(): boolean {
-  const [granted, setGranted] = useState(false);
+  const userId = useLocationConsentIdentity();
+  const [state, setState] = useState<{ userId: string | null; granted: boolean }>({
+    userId,
+    granted: false,
+  });
+  const generation = useRef(0);
 
   useEffect(() => {
+    const gen = ++generation.current;
     let active = true;
+    const live = () => active && gen === generation.current;
+
+    // Never carry the previous account's answer into the new identity, not
+    // even for the moment before the read below resolves.
+    setState({ userId, granted: false });
+
+    if (!userId) {
+      return () => {
+        active = false;
+      };
+    }
+
     (async () => {
       try {
-        const stored = await SecureStore.getItemAsync(LOCATION_CONSENT_STORAGE_KEY);
-        if (active) setGranted(stored === LOCATION_CONSENT_GRANTED_VALUE);
+        const raw = await SecureStore.getItemAsync(locationConsentKey(userId));
+        // A DECLINED record parses successfully too (tri-state) — only an
+        // explicit 'granted' decision may unlock location. Truthiness of the
+        // record is not enough.
+        const record = parseLocationConsentRecord(raw, userId);
+        const granted = record?.decision === 'granted';
+        if (live()) setState({ userId, granted });
       } catch {
-        if (active) setGranted(false);
+        if (live()) setState({ userId, granted: false });
       }
     })();
+
     return () => {
       active = false;
     };
-  }, []);
+  }, [userId]);
 
-  return granted;
+  // Identity guard: state describing a different account is never honoured.
+  return state.userId === userId ? state.granted : false;
 }
 
 /** Round to 1 decimal place (~11km) — weather doesn't need street precision. */
