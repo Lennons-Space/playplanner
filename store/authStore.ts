@@ -3,7 +3,7 @@ import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { purgeLocalAuthSession, resolveAuthStorageKey } from '@/lib/authSession';
 import { tombstoneIdentity } from '@/lib/authTombstone';
-import { logAuthState, scheduleSignOutVerification } from '@/lib/authDiagnostics';
+import { logAuthState, scheduleSignOutVerification, logAuthenticatedRequestFailure } from '@/lib/authDiagnostics';
 import { useMapStore } from '@/store/mapStore';
 import { clearRecentlyViewed } from '@/lib/recentlyViewed';
 import type { Profile } from '@/types';
@@ -49,7 +49,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
 
   setSession: (session) => {
-    set({ session, user: session?.user ?? null, isLoading: false });
+    // IDENTITY CHANGE CLEARS THE PROFILE (2026-08-25).
+    //
+    // `profile` used to survive an account switch: setSession replaced session
+    // and user but left the PREVIOUS account's profile in the store, relying on
+    // the fetchProfile() below to overwrite it. That is only true when the
+    // fetch SUCCEEDS. When it fails — which is exactly what PGRST303 did on the
+    // device — the store is left holding Account A's profile while Account B is
+    // the signed-in user, and every screen reading `profile` renders A's data
+    // to B. A failed network call must never be what stands between two
+    // accounts' personal data.
+    //
+    // Clearing here is local, synchronous and cannot fail, so the mixed state
+    // is not reachable at all rather than merely unlikely.
+    const previousUserId = get().user?.id ?? null;
+    const nextUserId = session?.user?.id ?? null;
+    const identityChanged = previousUserId !== nextUserId;
+
+    set({
+      session,
+      user: session?.user ?? null,
+      isLoading: false,
+      ...(identityChanged ? { profile: null } : {}),
+    });
     if (session?.user) {
       get().fetchProfile();
     }
@@ -71,7 +93,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (error) {
       // Log so developers can diagnose — without this, a broken profile fetch
       // is completely invisible (profile stays null with no explanation).
+      //
+      // 2026-08-25 device report: this printed `fetchProfile failed: PGRST303`
+      // and NOTHING ELSE, which is not enough to diagnose anything. PGRST303 is
+      // PostgREST's HTTP 401 "JWT claims validation or parsing failed" — an
+      // AUTH failure, not an RLS one — but the code alone cannot say WHICH
+      // claim failed, whether the token was expired, whether it was even a JWT,
+      // or whether the SDK session and this store still agree on who is signed
+      // in. All of that is now reported (safely, __DEV__ only, never any token
+      // material) by logAuthenticatedRequestFailure.
+      //
+      // NOTE: control flow is deliberately UNCHANGED. No sign-out, no retry, no
+      // recovery is triggered from here yet — see the PGRST303 note in
+      // store/__tests__/fetchProfileAuthFailure.test.ts for why acting before
+      // the cause is confirmed would be the wrong move.
       console.error('fetchProfile failed:', error.code);
+      void logAuthenticatedRequestFailure('fetchProfile', error, user.id);
+
+      // Defence in depth for the same invariant setSession now enforces: if the
+      // profile currently held does NOT belong to the signed-in user, drop it.
+      // `get_my_profile` resolves auth.uid() server-side, so a profile's `id` is
+      // always its owner's user id — a mismatch is by definition another
+      // account's data, and a failed read must never leave it on screen.
+      const held = get().profile as { id?: string } | null;
+      if (held && held.id && held.id !== get().user?.id) {
+        set({ profile: null });
+      }
       return;
     }
     // Identity guard: if the user changed while this async fetch was in-flight
