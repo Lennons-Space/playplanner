@@ -7,8 +7,10 @@
 //   PP-012 (HIGH)     -- no database-level venue submission rate limit exists.
 //   PP-010 (CRITICAL) -- an INSERT can mint venue ownership (claimed_by), which
 //                        chains into the claimed-owner UPDATE policy.
-//   PP-011 (HIGH)     -- that UPDATE policy. Deliberately NOT fixed by 063;
-//                        asserted here to remain unchanged.
+//   PP-011 (HIGH)     -- that UPDATE policy. Deliberately NOT fixed by 063.
+//                        PART 4 proves 063 ALONE leaves it open, then applies
+//                        20260829205506_venue_owner_update_boundary and proves
+//                        PP-011 is CLOSED.
 //
 // Structure:
 //   PART 0 -- PRE-FIX REPRODUCTION against the TRUE production policy set,
@@ -26,8 +28,8 @@
 //   PART 3 -- ROOT-CAUSE IMMUNITY: re-widen the policy layer, then re-widen the
 //             grant layer too, and prove the trigger still holds the line.
 //   PART 4 -- PP-010 / PP-011 boundary: ownership cannot be minted at INSERT,
-//             but the admin-approved claim path still establishes it and
-//             PP-011 remains open exactly as before.
+//             the admin-approved claim path still establishes it, 063 alone
+//             still leaves PP-011 open, and the PP-011 migration closes it.
 //   PART 5 -- Idempotency and rollback fidelity.
 //
 // FIDELITY NOTES (disclosed, not hidden):
@@ -53,6 +55,10 @@ import { dirname, join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const MIGRATION_PP011 = readFileSync(
+  join(__dirname, '../migrations/20260829205506_venue_owner_update_boundary.sql'),
+  'utf8',
+);
 const MIGRATION_063 = readFileSync(
   join(__dirname, '../migrations/063_fix_venue_submission_trust_bypass.sql'),
   'utf8',
@@ -259,7 +265,8 @@ const BOOTSTRAP = `
     );
 
   -- 001:466-471 UPDATE policies. Both have USING and NO WITH CHECK, so Postgres
-  -- reuses USING as the WITH CHECK. Untouched by 063; PP-011 remains open.
+  -- reuses USING as the WITH CHECK. Untouched by 063; PP-011 is closed separately
+  -- by 20260829205506_venue_owner_update_boundary (applied in PART 4).
   create policy "Owners can update claimed venue" on public.venues
     for update using (auth.uid() = claimed_by);
   create policy "Admins can update any venue" on public.venues
@@ -829,7 +836,7 @@ async function part1() {
     eq(t.rows[0].ins, true, 'the import path depends on service_role keeping full INSERT');
   });
 
-  await test('GRANTS: UPDATE on venues is untouched (that is PP-011 territory)', async () => {
+  await test('GRANTS: 063 leaves UPDATE on venues untouched (that is PP-011 territory)', async () => {
     await reset();
     const t = await q(
       `select has_table_privilege('authenticated','public.venues','UPDATE') as upd`);
@@ -1222,7 +1229,7 @@ async function part3() {
 // PART 4 -- PP-010 / PP-011 boundary
 // =============================================================================
 async function part4() {
-  console.log('\nPART 4 -- PP-010 closed at INSERT; PP-011 deliberately still open');
+  console.log('\nPART 4 -- PP-010 closed at INSERT; 063 alone leaves PP-011 open; the PP-011 migration closes it');
   const db = new PGlite();
   await db.exec(BOOTSTRAP);
   await db.exec(MIGRATION_063);
@@ -1270,7 +1277,7 @@ async function part4() {
     eq(v.claimed_by, USER_A, 'the admin-approved claim flow must still work after 063');
   });
 
-  await test('PP-011 STILL OPEN (by design): a legitimately claimed venue can self-approve', async () => {
+  await test('063 ALONE still leaves PP-011 open: a claimed venue can self-approve', async () => {
     await asUser(USER_A);
     await q(`update public.venues
                 set moderation_status='approved', is_published=true, is_verified=true,
@@ -1280,10 +1287,10 @@ async function part4() {
     const v = (await q(`select moderation_status, is_published, is_verified, is_premium
                           from public.venues where name='Honest Then Hostile'`)).rows[0];
     assert(v.moderation_status === 'approved' && v.is_published && v.is_verified && v.is_premium,
-      'PP-011 is NOT fixed by 063 -- this must still succeed, and is why PP-011 stays OPEN');
+      'this is the exploit 20260829205506_venue_owner_update_boundary exists to close');
   });
 
-  await test('PP-011 UNCHANGED: both UPDATE policies still have no WITH CHECK', async () => {
+  await test('063 ALONE leaves both UPDATE policies without a WITH CHECK', async () => {
     await reset();
     const r = await q(
       `select policyname, qual, with_check from pg_policies
@@ -1295,6 +1302,76 @@ async function part4() {
     }
     assert(r.rows.some((x) => x.policyname === 'Owners can update claimed venue'),
       'the claimed-owner UPDATE policy must be untouched');
+  });
+
+  // ── Apply the PP-011 migration on top and prove the boundary closes ───────
+  await test('PP-011 CLOSED: applying the owner-update boundary migration succeeds', async () => {
+    await reset();
+    await db.exec(MIGRATION_PP011);
+    // The previous test left this row escalated. Reset it through a trusted
+    // role so the closure tests attempt a REAL change, not a silent no-op --
+    // and so this doubles as a service_role compatibility proof.
+    await asServiceRole();
+    await q("update public.venues set is_verified=false, is_published=false, "
+      + "moderation_status='pending', is_premium=false "
+      + "where name='Honest Then Hostile'");
+    await reset();
+    const v = (await q("select is_verified from public.venues "
+      + "where name='Honest Then Hostile'")).rows[0];
+    eq(v.is_verified, false, 'service_role must still be able to write trust fields');
+  });
+
+  await test('PP-011 CLOSED: the claimed owner can no longer self-verify or self-publish', async () => {
+    await asUser(USER_A);
+    await throws(
+      q("update public.venues set is_verified=true, is_published=true, "
+        + "moderation_status='approved', is_premium=true "
+        + "where name='Honest Then Hostile'"),
+      /42501|may not change|permission denied/i,
+      'the PP-011 boundary must refuse the escalation 063 deliberately left open');
+    await reset();
+  });
+
+  await test('PP-011 CLOSED: trust fields were not written by the refused statement', async () => {
+    await reset();
+    const v = (await q("select is_verified, is_premium from public.venues "
+      + "where name='Honest Then Hostile'")).rows[0];
+    eq(v.is_verified, false, 'no partial privileged write');
+    eq(v.is_premium, false);
+  });
+
+  await test('PP-011 CLOSED: the owner policy now has WITH CHECK and targets authenticated', async () => {
+    await reset();
+    const r = await q("select roles::text[] as roles, with_check from pg_policies "
+      + "where schemaname='public' and tablename='venues' "
+      + "and policyname='Owners can update claimed venue'");
+    eq(r.rows.length, 1);
+    assert(r.rows[0].with_check !== null, 'WITH CHECK must now be explicit');
+    eq(JSON.stringify(r.rows[0].roles), JSON.stringify(['authenticated']));
+  });
+
+  await test('PP-011 CLOSED: anon has lost its UPDATE grant on venues', async () => {
+    await reset();
+    const t = await q("select has_table_privilege('anon','public.venues','UPDATE') as upd");
+    eq(t.rows[0].upd, false);
+  });
+
+  await test('PP-011 CLOSED: the owner may still edit an allowlisted business field', async () => {
+    await asUser(USER_A);
+    await q("update public.venues set description='owner edited' "
+      + "where name='Honest Then Hostile'");
+    await reset();
+    const v = (await q("select description from public.venues "
+      + "where name='Honest Then Hostile'")).rows[0];
+    eq(v.description, 'owner edited', 'PP-011 must not make claimed venues uneditable');
+  });
+
+  await test('PP-011 CLOSED: 063 PP-010 / PP-012 coverage is unaffected', async () => {
+    await reset();
+    const t = await q("select count(*)::int c from pg_trigger "
+      + "where tgrelid='public.venues'::regclass and tgname in "
+      + "('venues_enforce_submission_invariants','venues_enforce_submission_rate_limit')");
+    eq(t.rows[0].c, 2, 'both 063 INSERT-side triggers must survive PP-011');
   });
 
   await db.close();
