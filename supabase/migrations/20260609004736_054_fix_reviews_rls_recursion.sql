@@ -1,0 +1,35 @@
+-- =============================================================================
+-- 20260609004736_054_fix_reviews_rls_recursion.sql
+--
+-- NO-OP HISTORICAL PLACEHOLDER — CONTAINS NO EXECUTABLE SQL, BY DESIGN.
+-- =============================================================================
+--
+-- THIS VERSION GENUINELY EXISTS IN PRODUCTION HISTORY.
+--   Ledger row: supabase_migrations.schema_migrations
+--   version = '20260609004736'   name = '054_fix_reviews_rls_recursion'
+--   Recorded against production at 2026-06-09 00:47:36 UTC.
+--
+-- IT WAS AN EARLIER DUPLICATE EXECUTION OF THE NUMBERED MIGRATION
+--   054_fix_reviews_rls_recursion.sql
+-- This file was created with `supabase migration new 054_fix_reviews_rls_recursion`,
+-- pushed to production, and then never committed to git. The identical SQL is
+-- in git under its numbered name as commit 193dc55 (2026-06-09 09:38:18 UTC); this
+-- ledger row is dated 8h 50m 42s before that commit. Two ledger records, one piece of SQL.
+--
+-- THE EXECUTABLE SQL INTENTIONALLY LIVES IN THE NUMBERED MIGRATION.
+-- 054_fix_reviews_rls_recursion.sql is the single source of truth and is what
+-- actually runs when this repo builds a database from scratch.
+--
+-- WHY THIS FILE EXISTS AT ALL
+-- The Supabase CLI matches local files to remote ledger rows by `version`
+-- string only. With no local file carrying this version, the CLI treats it as a
+-- remote-only migration and refuses to push (LegacyDbPushMissingLocalError), and
+-- its only built-in remedy — `migration repair --status reverted` — would DELETE
+-- a truthful record of something production really did execute. This placeholder
+-- keeps local and remote history aligned while leaving the production ledger
+-- honest and intact.
+--
+-- ⚠️  DO NOT DUPLICATE THE SQL HERE.
+-- Copying 054_fix_reviews_rls_recursion.sql's statements into this file would
+-- run them a second time on every fresh build. Comments only. Leave it empty.
+-- =============================================================================

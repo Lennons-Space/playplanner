@@ -20,7 +20,7 @@ import { PGlite } from '@electric-sql/pglite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATION_056 = readFileSync(join(__dirname, '../migrations/056_venue_website_enrichment.sql'), 'utf8');
-const MIGRATION_060_FULL = readFileSync(join(__dirname, '../migrations/060_enrichment_2_1.sql'), 'utf8');
+const MIGRATION_060_FULL = readFileSync(join(__dirname, '../migrations_drafts/060_enrichment_2_1.sql'), 'utf8');
 
 const START_MARKER = '-- ENRICHMENT_2_1_SECTIONS_BC_START';
 const END_MARKER = '-- ENRICHMENT_2_1_SECTIONS_BC_END';

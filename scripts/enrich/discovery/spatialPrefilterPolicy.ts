@@ -8,7 +8,8 @@
 // migration 050's confidence-threshold parity with lib/facilities/confidence.ts):
 // the radius/limit clamps here MUST stay in lockstep with the
 // `LEAST(GREATEST(...))` expressions in
-// supabase/migrations/060_enrichment_2_1.sql's `enrichment_nearby_venues_for_dedupe`
+// supabase/migrations_drafts/060_enrichment_2_1.sql's
+// `enrichment_nearby_venues_for_dedupe`
 // function body. If you change a bound here, change it there too.
 //
 // WHY THIS FILE EXISTS: this repo's pinned `@electric-sql/pglite@0.5.3` does

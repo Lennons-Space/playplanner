@@ -92,9 +92,11 @@ BEGIN;
 -- nothing: anon can never satisfy `auth.uid() = id` (auth.uid() is NULL), and
 -- service_role bypasses RLS entirely.
 --
--- `(SELECT auth.uid())` is the init-plan form already used by migration 057 in
--- this repo -- semantically identical, evaluated once per statement rather than
--- once per row.
+-- `(SELECT auth.uid())` is the init-plan form already used by migration
+-- 20260801213434_facility_votes_select_own in this repo -- semantically
+-- identical, evaluated once per statement rather than once per row.
+-- (That migration was numbered 057 when this file was written; it was
+-- re-versioned during the 2026-08 migration-history reconciliation.)
 -- -----------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 

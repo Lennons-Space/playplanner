@@ -22,7 +22,7 @@ import { PGlite } from '@electric-sql/pglite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATION_056 = readFileSync(join(__dirname, '../migrations/056_venue_website_enrichment.sql'), 'utf8');
-const MIGRATION_059 = readFileSync(join(__dirname, '../migrations/059_enrichment_autonomy.sql'), 'utf8');
+const MIGRATION_059 = readFileSync(join(__dirname, '../migrations_drafts/059_enrichment_autonomy.sql'), 'utf8');
 
 const ADMIN = '11111111-1111-1111-1111-111111111111';
 const USER = '22222222-2222-2222-2222-222222222222';

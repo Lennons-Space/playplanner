@@ -165,7 +165,11 @@
 --   photos"), the DELETE policy ("Users can delete own photos"), the admin
 --   policy ("Admins can manage all photos"), and every Storage bucket/policy
 --   (migrations 007/008/020/031) — none of these are touched.
--- - Migration 057 / facility-vote RLS — unrelated table, not touched.
+-- - Migration 20260801213434_facility_votes_select_own (facility-vote RLS)
+--   — unrelated table, not touched. (That migration was numbered 057 when
+--   this file was written; it was re-versioned during the 2026-08
+--   migration-history reconciliation. Version 057 is now
+--   057_enrichment_auto_decision.sql, the migration production actually ran.)
 --
 -- SAFETY (why SECURITY DEFINER is safe here — same reasoning shape as
 -- migration 048's is_admin() note)

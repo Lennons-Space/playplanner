@@ -1,0 +1,35 @@
+-- =============================================================================
+-- 20260605211756_security_hardening.sql
+--
+-- NO-OP HISTORICAL PLACEHOLDER — CONTAINS NO EXECUTABLE SQL, BY DESIGN.
+-- =============================================================================
+--
+-- THIS VERSION GENUINELY EXISTS IN PRODUCTION HISTORY.
+--   Ledger row: supabase_migrations.schema_migrations
+--   version = '20260605211756'   name = 'security_hardening'
+--   Recorded against production at 2026-06-05 21:17:56 UTC.
+--
+-- IT WAS AN EARLIER DUPLICATE EXECUTION OF THE NUMBERED MIGRATION
+--   046_security_hardening.sql
+-- This file was created with `supabase migration new security_hardening`,
+-- pushed to production, and then never committed to git. The identical SQL is
+-- in git under its numbered name as commit 5185f5f (2026-06-05 20:58:19 UTC); this
+-- ledger row is dated 19m 37s after that commit. Two ledger records, one piece of SQL.
+--
+-- THE EXECUTABLE SQL INTENTIONALLY LIVES IN THE NUMBERED MIGRATION.
+-- 046_security_hardening.sql is the single source of truth and is what
+-- actually runs when this repo builds a database from scratch.
+--
+-- WHY THIS FILE EXISTS AT ALL
+-- The Supabase CLI matches local files to remote ledger rows by `version`
+-- string only. With no local file carrying this version, the CLI treats it as a
+-- remote-only migration and refuses to push (LegacyDbPushMissingLocalError), and
+-- its only built-in remedy — `migration repair --status reverted` — would DELETE
+-- a truthful record of something production really did execute. This placeholder
+-- keeps local and remote history aligned while leaving the production ledger
+-- honest and intact.
+--
+-- ⚠️  DO NOT DUPLICATE THE SQL HERE.
+-- Copying 046_security_hardening.sql's statements into this file would
+-- run them a second time on every fresh build. Comments only. Leave it empty.
+-- =============================================================================

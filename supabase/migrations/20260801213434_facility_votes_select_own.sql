@@ -1,10 +1,10 @@
 -- =============================================================================
--- 057_facility_votes_select_own.sql
+-- 20260801213434_facility_votes_select_own.sql
 -- Phase 8 reliability-repair fix: 42501 when casting/updating a facility vote.
 --
 -- ROOT CAUSE (confirmed against the 2026-08 production RLS/grant/trigger
 -- diagnostics, against the client call site in hooks/useFacilities.ts, and
--- against a local pglite reproduction in supabase/tests/057_*.mjs)
+-- against a local pglite reproduction in supabase/tests/20260801213434_*.mjs)
 -- -----------------------------------------------------------------------
 -- useCastFacilityVote() upserts into venue_facility_votes with an explicit
 -- conflict target:

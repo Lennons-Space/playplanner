@@ -1,23 +1,23 @@
 // =============================================================================
-// supabase/tests/057_facility_votes_select_own.mjs
+// supabase/tests/20260801213434_facility_votes_select_own.mjs
 //
-// Behavioural database tests for migration 057 (facility-vote 42501 fix) using
+// Behavioural database tests for migration 20260801213434 (facility-vote 42501 fix) using
 // an in-process Postgres (pglite) — NO live Supabase, NO production access.
-// Loads a minimal bootstrap (the prerequisite objects 050/057 depend on) +
-// the REAL migration files 050 and 057, then exercises the RLS/trigger
+// Loads a minimal bootstrap (the prerequisite objects 050/20260801213434 depend on) +
+// the REAL migration files 050 and 20260801213434, then exercises the RLS/trigger
 // pipeline exactly as the client (hooks/useFacilities.ts) does.
 //
 // Structure:
-//   PART 0 — reproduction: bootstrap + 050 ONLY (no 057). Proves the 42501
+//   PART 0 — reproduction: bootstrap + 050 ONLY (no 20260801213434). Proves the 42501
 //            root cause — the client's upsert().select('id') fails because
 //            venue_facility_votes has no SELECT policy, while the identical
 //            write WITHOUT the RETURNING/select chain succeeds.
-//   PART 1 — regression + full matrix: bootstrap + 050 + 057. Proves the fix
+//   PART 1 — regression + full matrix: bootstrap + 050 + 20260801213434. Proves the fix
 //            resolves the exact client operation, and that nothing it must
 //            NOT touch (grants, other policies, SECURITY DEFINER triggers,
 //            aggregate-table privacy) was disturbed.
 //
-// Run:  node supabase/tests/057_facility_votes_select_own.mjs   (part of npm run test:db)
+// Run:  node supabase/tests/20260801213434_facility_votes_select_own.mjs   (part of npm run test:db)
 // =============================================================================
 
 import { readFileSync } from 'node:fs';
@@ -27,13 +27,13 @@ import { PGlite } from '@electric-sql/pglite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATION_050 = readFileSync(join(__dirname, '../migrations/050_parent_facility_votes.sql'), 'utf8');
-const MIGRATION_057 = readFileSync(join(__dirname, '../migrations/057_facility_votes_select_own.sql'), 'utf8');
+const MIGRATION_FACILITY_VOTES = readFileSync(join(__dirname, '../migrations/20260801213434_facility_votes_select_own.sql'), 'utf8');
 
 const USER_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const USER_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const OWNER  = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
 
-// Minimal prerequisite schema that 050/057 depend on (mirrors the real
+// Minimal prerequisite schema that 050/20260801213434 depend on (mirrors the real
 // objects: roles, auth.uid() stub, venues/facilities/venue_facilities from
 // migration 001, and the same default-privilege parity trick used by the
 // 056 test file — Supabase auto-grants table privileges to anon/authenticated
@@ -207,7 +207,7 @@ async function main() {
   await dbBefore.exec(MIGRATION_050);
   const before = makeHelpers(dbBefore);
 
-  console.log('\nMigration 057 — root-cause reproduction (pre-fix, 050 only)\n');
+  console.log('\nMigration 20260801213434 — root-cause reproduction (pre-fix, 050 only)\n');
 
   let repro_venue;
   await test('REPRO: exact client operation (upsert + .select("id")) throws 42501 on a user\'s FIRST-EVER vote', async () => {
@@ -265,15 +265,15 @@ async function main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // PART 1 — regression + full matrix (bootstrap + 050 + 057, the actual fix)
+  // PART 1 — regression + full matrix (bootstrap + 050 + 20260801213434, the actual fix)
   // ═══════════════════════════════════════════════════════════════════════════
   const db = await PGlite.create();
   await db.exec(BOOTSTRAP);
   await db.exec(MIGRATION_050);
-  await db.exec(MIGRATION_057);
+  await db.exec(MIGRATION_FACILITY_VOTES);
   const h = makeHelpers(db);
 
-  console.log('\nMigration 057 — fix verification (050 + 057)\n');
+  console.log('\nMigration 20260801213434 — fix verification (050 + 20260801213434)\n');
 
   let venue;
   await test('setup: create a published/approved test venue', async () => {
@@ -492,7 +492,7 @@ async function main() {
     await h.reset();
 
     // The client's real call shape (upsert via ON CONFLICT DO UPDATE) breaks
-    // again immediately — this IS the regression proof that 057 is what fixes it.
+    // again immediately — this IS the regression proof that 20260801213434 is what fixes it.
     await h.asUser(USER_A);
     await throws(
       h.castVoteSqlNoReturning(venue, 'parking', USER_A, true),
@@ -513,7 +513,7 @@ async function main() {
     eq(stillThere.rows.length, 1, 'insert-own policy from migration 050 survives the rollback');
 
     // Restore the fix so this script ends in the intended final state.
-    await db.exec(MIGRATION_057);
+    await db.exec(MIGRATION_FACILITY_VOTES);
   });
 
   // ── Summary ────────────────────────────────────────────────────────────────

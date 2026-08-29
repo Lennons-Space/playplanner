@@ -25,8 +25,8 @@ import { PGlite } from '@electric-sql/pglite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATION_056 = readFileSync(join(__dirname, '../migrations/056_venue_website_enrichment.sql'), 'utf8');
-const MIGRATION_060 = readFileSync(join(__dirname, '../migrations/060_enrichment_2_1.sql'), 'utf8');
-const MIGRATION_061 = readFileSync(join(__dirname, '../migrations/061_enrichment_review_paths.sql'), 'utf8');
+const MIGRATION_060 = readFileSync(join(__dirname, '../migrations_drafts/060_enrichment_2_1.sql'), 'utf8');
+const MIGRATION_061 = readFileSync(join(__dirname, '../migrations_drafts/061_enrichment_review_paths.sql'), 'utf8');
 
 function extract(src, startMarker, endMarker) {
   const s = src.indexOf(startMarker);
