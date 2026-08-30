@@ -17,7 +17,7 @@
     "enrich:autonomous": "tsx scripts/enrich/autonomous.ts",
     "test:db": "node supabase/tests/migration_history_layout.mjs && node supabase/tests/056_venue_website_enrichment.mjs && node supabase/tests/057_enrichment_auto_decision.mjs && node supabase/tests/20260801213434_facility_votes_select_own.mjs && node supabase/tests/058_fix_venue_photos_rls_recursion.mjs",
     "test:edge": "node supabase/tests/geocode_postcode_auth.mjs",
-    "test:db:security": "node supabase/tests/062_profile_privilege_escalation.mjs && node supabase/tests/063_venue_submission_trust_bypass.mjs && node supabase/tests/065_profile_read_exposure.mjs && node supabase/tests/066_public_profiles_privileges.mjs && node supabase/tests/067_policy_profile_column_dependency.mjs && node supabase/tests/20260829205506_venue_owner_update_boundary.mjs"
+    "test:db:security": "node supabase/tests/062_profile_privilege_escalation.mjs && node supabase/tests/063_venue_submission_trust_bypass.mjs && node supabase/tests/065_profile_read_exposure.mjs && node supabase/tests/066_public_profiles_privileges.mjs && node supabase/tests/067_policy_profile_column_dependency.mjs && node supabase/tests/20260829205506_venue_owner_update_boundary.mjs && node supabase/tests/20260830102402_privilege_hardening.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/bricolage-grotesque": "^0.4.1",
