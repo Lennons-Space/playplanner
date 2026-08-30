@@ -214,18 +214,18 @@ describe('discoverFromCandidates — one pipeline, both sources', () => {
 
   it('makes zero writes when write=false, however many candidates are evaluated', async () => {
     const upsertCandidate = jest.fn();
-    const autoAcceptCandidate = jest.fn();
+    const queueCandidateForReview = jest.fn();
     const counts = await discoverFromCandidates([osmCandidate(), geoapifyCandidate()], {
       existingVenues: NO_EXISTING,
       lookupNearby: lookupNone,
       write: false,
       apply: false,
       upsertCandidate,
-      autoAcceptCandidate,
+      queueCandidateForReview,
     });
     expect(counts.candidatesEvaluated).toBe(2);
     expect(upsertCandidate).not.toHaveBeenCalled();
-    expect(autoAcceptCandidate).not.toHaveBeenCalled();
+    expect(queueCandidateForReview).not.toHaveBeenCalled();
   });
 });
 

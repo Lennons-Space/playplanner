@@ -499,8 +499,20 @@ export interface DiscoverDeps {
     acceptInput: CandidateAcceptInput;
     acceptResult: CandidateAcceptResult;
   }) => Promise<{ id: string }>;
-  /** Call the auto_accept_candidate RPC for an auto_accept-decision candidate. Only called when apply=true. */
-  autoAcceptCandidate?: (candidateId: string) => Promise<void>;
+  /**
+   * Hand an auto_accept-decision candidate to the database's unattended path.
+   *
+   * RELEASE ONE: that path is queue_candidate_for_review, which re-checks every
+   * accept gate and then QUARANTINES. It does not publish, and there is no
+   * longer any service_role-executable function that can — auto_accept_candidate
+   * was dropped in migration 061. An 'auto_accept' decision from
+   * candidateAccept.ts therefore means "strong enough to be worth a reviewer's
+   * time", not "publish this". Publication is a named admin calling
+   * resolve_discovery_candidate.
+   *
+   * Only called when apply=true.
+   */
+  queueCandidateForReview?: (candidateId: string) => Promise<void>;
   /**
    * Official-site corroboration (Enrichment 2.1 Phase D4/H). Only ever called
    * for a candidate that already has a supplied website AND already reached
@@ -520,6 +532,9 @@ export interface DiscoverDeps {
  *   evaluate (normalize -> precheck -> spatial/detailed dedupe -> accept-gate)
  *   -> official corroboration -> re-decide
  *   -> merge_existing / auto_accept / quarantine / reject -> persist.
+ * NOTE (release one): 'auto_accept' no longer means "publish". The strongest
+ * outcome any unattended path can reach is a quarantined candidate awaiting a
+ * human admin — see queueCandidateForReview below.
  * `evaluateOne` is the only source-specific part, and it only chooses which
  * mapper runs — every decision after it is identical for all sources.
  */
@@ -597,8 +612,8 @@ async function runDiscovery<T>(
           acceptInput: evaluation.acceptInput!,
           acceptResult: evaluation.acceptResult!,
         });
-        if (deps.apply && deps.autoAcceptCandidate && acceptResult!.decision === 'auto_accept') {
-          await deps.autoAcceptCandidate(row.id);
+        if (deps.apply && deps.queueCandidateForReview && acceptResult!.decision === 'auto_accept') {
+          await deps.queueCandidateForReview(row.id);
         }
       } catch {
         counts.errors += 1;

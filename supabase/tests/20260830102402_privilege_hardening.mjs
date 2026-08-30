@@ -99,8 +99,16 @@ const BOOTSTRAP = `
   alter default privileges in schema public
     grant execute on functions to anon, authenticated, service_role;
 
+  -- Mirrors migration 062: these are the ONLY columns authenticated may UPDATE.
   create table profiles (
-    id uuid primary key, is_admin boolean default false, updated_at timestamptz default now());
+    id uuid primary key,
+    is_admin boolean default false,
+    is_business_owner boolean default false,
+    username text, full_name text, bio text, avatar_url text,
+    children_ages int[], postcode text,
+    show_in_search boolean default true, show_reviews_publicly boolean default true,
+    marketing_consent boolean default false, terms_accepted_at timestamptz,
+    updated_at timestamptz default now());
 
   create or replace function is_admin() returns boolean
   language sql security definer stable set search_path = public as $$
@@ -110,7 +118,8 @@ const BOOTSTRAP = `
   create table venues (
     id uuid primary key default gen_random_uuid(),
     name text not null, slug text unique, description text,
-    city text not null, postcode text,
+    category_id uuid, address_line1 text, address_line2 text,
+    city text not null, postcode text, country text default 'GB',
     latitude decimal(9,6) not null, longitude decimal(9,6) not null,
     location text,
     phone text, email text, website text,
@@ -160,6 +169,14 @@ const BOOTSTRAP = `
     venue_id uuid references venues(id) on delete cascade,
     facility_slug text, yes_votes int default 0, no_votes int default 0,
     primary key (venue_id, facility_slug));
+
+  -- Migration 057: append-only enrichment ledger. INSERT/UPDATE/DELETE are
+  -- revoked from EVERY role including service_role -- writes happen only via
+  -- SECURITY DEFINER _enrichment_apply_write running as the function owner.
+  create table venue_enrichment_writes (
+    id uuid primary key default gen_random_uuid(),
+    venue_id uuid references venues(id), field text, applied_mode text,
+    created_at timestamptz default now());
 
   create table venue_facilities (
     venue_id uuid references venues(id) on delete cascade,
@@ -290,16 +307,60 @@ const BOOTSTRAP = `
 
   -- ── 062/063-style column-level grants that must SURVIVE this migration ────
   revoke insert on public.venues from public, anon, authenticated;
-  grant insert (name, description, city, postcode, latitude, longitude, phone,
-                website, min_age, max_age, submitted_by, moderation_status, is_published)
+  -- Migration 063 grants EXACTLY these 15 columns -- its own header says so twice.
+  grant insert (name, description, category_id, address_line1, city, postcode,
+                latitude, longitude, phone, website, min_age, max_age,
+                submitted_by, moderation_status, is_published)
     on public.venues to authenticated;
   revoke update on public.profiles from public, anon, authenticated;
-  grant update (updated_at) on public.profiles to authenticated;
+  grant update (username, full_name, bio, avatar_url, children_ages, postcode,
+                show_in_search, show_reviews_publicly, marketing_consent,
+                terms_accepted_at)
+    on public.profiles to authenticated;
+
+  revoke insert, update, delete on venue_enrichment_writes
+    from public, anon, authenticated, service_role;
 
   insert into profiles (id, is_admin) values
     ('${OWNER}', false), ('${OTHER}', false), ('${ADMIN}', true);
 `;
 
+
+// ── Phase 12: forbidden-grant source scanner ─────────────────────────────────
+// Fails if a migration hands TRUNCATE / REFERENCES / TRIGGER / MAINTAIN (or ALL,
+// which contains them) to anon or authenticated -- whether through a direct GRANT
+// or through ALTER DEFAULT PRIVILEGES.
+//
+// Deliberately NOT a naive grep. It strips full-line SQL comments first, so a
+// migration that DOCUMENTS forbidden syntax -- notably the SECURITY-DEGRADING
+// rollback blocks, which legitimately contain GRANT TRUNCATE -- does not trip it.
+// It then parses each statement into (privileges, roles) rather than matching the
+// keywords anywhere in the text, so a table called trigger_log or a
+// GRANT EXECUTE on a trigger-returning function is not a false positive.
+export function scanForForbiddenGrants(sql) {
+  const offenders = [];
+  const code = sql.split(String.fromCharCode(10))
+    .filter((l) => !/^\s*--/.test(l))
+    .join(String.fromCharCode(10));
+  for (const raw of code.split(";")) {
+    const stmt = raw.replace(/\s+/g, " ").trim();
+    if (!/\bgrant\b/i.test(stmt)) continue;      // REVOKE-only statements ignored
+    const g = stmt.toLowerCase().lastIndexOf("grant");
+    const after = stmt.slice(g + 5);
+    const onAt = after.toLowerCase().search(/\bon\b/);
+    if (onAt < 0) continue;
+    const privs = after.slice(0, onAt).toUpperCase();
+    const toAt = after.toLowerCase().lastIndexOf(" to ");
+    if (toAt < 0) continue;
+    const roles = after.slice(toAt + 4).toLowerCase();
+    const badPriv = /\bALL\b|\bTRUNCATE\b|\bREFERENCES\b|\bTRIGGER\b|\bMAINTAIN\b/.test(privs);
+    const badRole = /\banon\b|\bauthenticated\b/.test(roles);
+    if (badPriv && badRole) {
+      offenders.push(`GRANT${privs.length > 40 ? privs.slice(0, 40) + "..." : privs} -> ${roles.trim()}`);
+    }
+  }
+  return offenders;
+}
 // ── Tiny assert harness (same shape as the other supabase/tests files) ───────
 let passed = 0;
 const failures = [];
@@ -488,9 +549,15 @@ async function part2() {
       `select column_name from information_schema.column_privileges
         where table_schema='public' and table_name='venues'
           and grantee='authenticated' and privilege_type='INSERT' order by column_name`);
-    eq(r.rows.length, 13, 'all 13 column INSERT grants must survive');
-    assert(r.rows.some((x) => x.column_name === 'submitted_by'));
-    assert(!r.rows.some((x) => x.column_name === 'is_verified'), 'and no extra columns appeared');
+    eq(r.rows.length, 15, 'migration 063 grants EXACTLY 15 columns -- all must survive');
+    for (const c of ['name','description','category_id','address_line1','city','postcode',
+                     'latitude','longitude','phone','website','min_age','max_age',
+                     'submitted_by','moderation_status','is_published']) {
+      assert(r.rows.some((x) => x.column_name === c), `063 column ${c} must still be granted`);
+    }
+    for (const c of ['is_verified','claimed_by','data_source','review_count']) {
+      assert(!r.rows.some((x) => x.column_name === c), `${c} must NOT be grantable`);
+    }
   });
 
   await test('11. profiles column-level UPDATE grants are unchanged', async () => {
@@ -498,8 +565,15 @@ async function part2() {
       `select column_name from information_schema.column_privileges
         where table_schema='public' and table_name='profiles'
           and grantee='authenticated' and privilege_type='UPDATE'`);
-    eq(r.rows.length, 1);
-    eq(r.rows[0].column_name, 'updated_at');
+    eq(r.rows.length, 10, 'migration 062 grants EXACTLY 10 user-editable columns');
+    for (const c of ['username','full_name','bio','avatar_url','children_ages','postcode',
+                     'show_in_search','show_reviews_publicly','marketing_consent',
+                     'terms_accepted_at']) {
+      assert(r.rows.some((x) => x.column_name === c), `062 column ${c} must still be granted`);
+    }
+    for (const c of ['is_admin','is_business_owner','id']) {
+      assert(!r.rows.some((x) => x.column_name === c), `${c} must NOT be grantable`);
+    }
   });
 
   await test('11b. table-level SELECT/INSERT/UPDATE/DELETE are untouched for the API roles', async () => {
@@ -512,6 +586,22 @@ async function part2() {
       assert(r.rows[0].s && r.rows[0].i && r.rows[0].u && r.rows[0].d,
         `${role} must keep its DML on reviews -- this migration does not touch DML`);
     }
+  });
+
+  await test('11c. service_role DML is complete EXCEPT the deliberate 057 ledger exception', async () => {
+    // 057 revokes INSERT/UPDATE/DELETE on venue_enrichment_writes from every
+    // role including service_role: it is an append-only ledger written only
+    // through SECURITY DEFINER _enrichment_apply_write. A blanket "service_role
+    // has all DML everywhere" assertion is WRONG and would mask this contract.
+    const r = await h.q(
+      `select c.relname, p.p as priv, has_table_privilege('service_role', c.oid, p.p) as held
+         from pg_class c join pg_namespace n on n.oid=c.relnamespace
+         cross join (values ('INSERT'),('UPDATE'),('DELETE')) p(p)
+        where n.nspname='public' and c.relkind='r'`);
+    const missing = r.rows.filter((x) => !x.held);
+    assert(missing.every((x) => x.relname === 'venue_enrichment_writes'),
+      `service_role DML missing somewhere unexpected -> ${JSON.stringify(missing)}`);
+    eq(missing.length, 3, 'exactly INSERT/UPDATE/DELETE on venue_enrichment_writes');
   });
 
   await test('12. PP-011 owner-update boundary still blocks trust-field escalation', async () => {
@@ -842,28 +932,53 @@ async function part6() {
     eq(r.rows[0].c, 8, 'both roles must retain all four DML defaults (2 roles x 4 privileges)');
   });
 
-  await test('GUARD (source): no migration re-grants the four via ALTER DEFAULT PRIVILEGES', async () => {
-    // Structural, not a snapshot of today's tables: this fails if ANY future
-    // migration adds an ALTER DEFAULT PRIVILEGES ... GRANT that hands TRUNCATE,
-    // REFERENCES, TRIGGER or MAINTAIN on TABLES back to anon/authenticated.
+  await test('GUARD (source): no migration grants the four to anon/authenticated', async () => {
+    // Covers BOTH direct GRANT and ALTER DEFAULT PRIVILEGES, across every
+    // migration -- structural, not a snapshot of today\u2019s tables.
     const offenders = [];
     for (const f of readdirSync(MIG_DIR).filter((x) => x.endsWith('.sql')).sort()) {
-      const sql = readFileSync(join(MIG_DIR, f), 'utf8');
-      const code = sql.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
-      const re = /alter\s+default\s+privileges[\s\S]{0,200}?\bgrant\b([\s\S]{0,200}?)\bon\s+tables\b([\s\S]{0,120}?)\bto\b([^;]{0,160});/gi;
-      let m;
-      while ((m = re.exec(code)) !== null) {
-        const privs = m[1].toUpperCase();
-        const roles = m[3].toLowerCase();
-        const hitsRole = /\banon\b|\bauthenticated\b/.test(roles);
-        const hitsPriv = /\bALL\b|TRUNCATE|REFERENCES|TRIGGER|MAINTAIN/.test(privs);
-        if (hitsRole && hitsPriv) offenders.push(`${f}: GRANT ${privs.trim()} ... TO ${roles.trim()}`);
+      for (const o of scanForForbiddenGrants(readFileSync(join(MIG_DIR, f), 'utf8'))) {
+        offenders.push(`${f}: ${o}`);
       }
     }
     eq(offenders.length, 0,
-      `a migration re-grants non-DML table defaults to an API role -> ${offenders.join(' | ')}`);
+      `a migration grants a non-DML table privilege to an API role -> ${offenders.join(' | ')}`);
   });
 
+  await test('GUARD (scanner self-test): flags what it must flag', async () => {
+    const mustFlag = [
+      ['direct GRANT TRUNCATE',   'GRANT TRUNCATE ON public.venues TO anon;'],
+      ['direct GRANT TRIGGER',    'GRANT TRIGGER ON TABLE public.venues TO authenticated;'],
+      ['direct GRANT REFERENCES', 'GRANT REFERENCES ON public.venues TO anon, authenticated;'],
+      ['direct GRANT MAINTAIN',   'GRANT MAINTAIN ON public.venues TO authenticated;'],
+      ['GRANT ALL (contains all four)', 'GRANT ALL ON TABLE public.venues TO anon;'],
+      ['GRANT ALL PRIVILEGES',    'GRANT ALL PRIVILEGES ON public.x TO authenticated;'],
+      ['ON ALL TABLES form',      'GRANT TRUNCATE ON ALL TABLES IN SCHEMA public TO anon;'],
+      ['ALTER DEFAULT PRIVILEGES','ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon;'],
+      ['inside a DO/EXECUTE',     "DO $$ BEGIN EXECUTE 'GRANT MAINTAIN ON ALL TABLES IN SCHEMA public TO authenticated'; END $$;"],
+    ];
+    for (const [label, sql] of mustFlag) {
+      assert(scanForForbiddenGrants(sql).length > 0, `scanner MISSED: ${label}`);
+    }
+  });
+
+  await test('GUARD (scanner self-test): does NOT flag what it must not', async () => {
+    const mustNotFlag = [
+      ['a REVOKE',               'REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM anon, authenticated;'],
+      ['a commented rollback',   '--   GRANT TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public\n--     TO anon, authenticated;'],
+      ['prose describing it',    '-- Do not GRANT TRUNCATE ON public.venues TO anon; it bypasses RLS.'],
+      ['GRANT EXECUTE on a fn',  'GRANT EXECUTE ON FUNCTION public.update_venue_rating() TO authenticated;'],
+      ['ordinary DML grant',     'GRANT SELECT, INSERT, UPDATE, DELETE ON public.reviews TO authenticated;'],
+      ['column-level grant',     'GRANT UPDATE (username, full_name) ON public.profiles TO authenticated;'],
+      ['service_role only',      'GRANT TRUNCATE, REFERENCES, TRIGGER ON public.venues TO service_role;'],
+      ['schema USAGE',           'GRANT USAGE ON SCHEMA private TO authenticated;'],
+      ['a table named trigger_log', 'GRANT SELECT ON public.trigger_log TO anon;'],
+    ];
+    for (const [label, sql] of mustNotFlag) {
+      const hits = scanForForbiddenGrants(sql);
+      eq(hits.length, 0, `scanner FALSE POSITIVE on ${label}: ${JSON.stringify(hits)}`);
+    }
+  });
   await db.close();
 }
 

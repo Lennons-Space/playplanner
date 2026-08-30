@@ -1,19 +1,31 @@
 // =============================================================================
 // scripts/enrich/discovery/candidateAccept.ts
 //
-// Enrichment 2.0 — Part 8: the new-venue auto-accept gate. PURE mirror of the
-// `auto_accept_candidate` SQL RPC (created in 059_enrichment_autonomy.sql,
-// replaced in 061_enrichment_review_paths.sql to add the independence gate)
-// — every boolean gate and the score threshold here matches that RPC exactly,
-// so a TypeScript 'auto_accept' verdict is never surprised by an RPC rejection
+// Enrichment 2.0 — Part 8: the new-venue accept gate. PURE mirror of the
+// `queue_candidate_for_review` SQL RPC (061_enrichment_review_paths.sql) —
+// every boolean gate and the score threshold here matches that RPC exactly, so
+// a TypeScript 'auto_accept' verdict is never surprised by an RPC rejection
 // (and the RPC re-checks everything server-side regardless — this module is a
 // pre-flight filter, not a trust boundary; the DB is the trust boundary).
 //
+// ⚠ RELEASE ONE: 'auto_accept' NO LONGER MEANS "PUBLISH".
+// The RPC this mirrors used to be `auto_accept_candidate`, which inserted a
+// published venue with no human involved. That function has been DROPPED in
+// both signatures, and there is now no service_role-executable database
+// function that can create a venue at all. The strongest outcome any unattended
+// path can produce is a QUARANTINED candidate. Publication is a named admin
+// calling `resolve_discovery_candidate`.
+//
+// So read the verdict below as "strong enough to be worth a reviewer's time",
+// not "safe to publish unattended". The vocabulary ('auto_accept') is retained
+// for now only because renaming it ripples through the counts, the report JSON
+// and several test suites; that rename is queued as follow-up runtime work.
+//
 // A brand-new venue requires a SIGNIFICANTLY stronger bar than enriching an
-// existing one (Part 3/8) — auto-accept is the single highest-risk automated
-// action in this system (it PUBLISHES a venue with zero human review), so this
-// gate is deliberately conservative: any single missing signal quarantines,
-// never silently accepts.
+// existing one (Part 3/8). The gate is deliberately conservative — any single
+// missing signal quarantines, never silently accepts — and that conservatism is
+// still worth having even though publication now needs a human: it is what
+// keeps the review queue small enough for a person to actually read.
 //
 // TWO INDEPENDENT REQUIREMENTS (Enrichment 2.1 hardening): auto-accept needs
 // BOTH a high confidence score AND at least MIN_INDEPENDENT_IDENTITY_EVIDENCE
@@ -37,7 +49,7 @@ import type {
   CandidateAcceptResult,
 } from '../../../types/enrichmentAutonomy';
 
-/** Matches auto_accept_candidate's p_min_score DEFAULT 98 exactly. */
+/** Matches queue_candidate_for_review's p_min_score DEFAULT 98 exactly. */
 export const AUTO_ACCEPT_MIN_SCORE = 98;
 
 /** Below this, evidence is too thin to justify holding a human-review quarantine slot — reject outright. */

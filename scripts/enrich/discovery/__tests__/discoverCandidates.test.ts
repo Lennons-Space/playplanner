@@ -162,37 +162,37 @@ describe('discoverFromElements', () => {
     expect(counts.autoAccepted).toBe(1);
   });
 
-  it('apply mode calls autoAcceptCandidate only for auto_accept decisions', async () => {
+  it('apply mode queues (never publishes) only auto_accept decisions', async () => {
     const upsert = jest.fn().mockResolvedValue({ id: 'cand-2' });
-    const autoAccept = jest.fn().mockResolvedValue(undefined);
+    const queueForReview = jest.fn().mockResolvedValue(undefined);
     await discoverFromElements([zooElement()], {
-      existingVenues: NO_EXISTING, write: true, apply: true, upsertCandidate: upsert, autoAcceptCandidate: autoAccept, corroborate: verified,
+      existingVenues: NO_EXISTING, write: true, apply: true, upsertCandidate: upsert, queueCandidateForReview: queueForReview, corroborate: verified,
     });
-    expect(autoAccept).toHaveBeenCalledWith('cand-2');
+    expect(queueForReview).toHaveBeenCalledWith('cand-2');
   });
 
-  it('apply mode does NOT call autoAcceptCandidate for an UNCORROBORATED single-source candidate', async () => {
+  it('apply mode does NOT queue an UNCORROBORATED single-source candidate', async () => {
     // The regression guard for the hole this hardening closed.
     const upsert = jest.fn().mockResolvedValue({ id: 'cand-solo' });
-    const autoAccept = jest.fn().mockResolvedValue(undefined);
+    const queueForReview = jest.fn().mockResolvedValue(undefined);
     await discoverFromElements([zooElement()], {
-      existingVenues: NO_EXISTING, write: true, apply: true, upsertCandidate: upsert, autoAcceptCandidate: autoAccept,
+      existingVenues: NO_EXISTING, write: true, apply: true, upsertCandidate: upsert, queueCandidateForReview: queueForReview,
     });
     expect(upsert).toHaveBeenCalledTimes(1);
-    expect(autoAccept).not.toHaveBeenCalled();
+    expect(queueForReview).not.toHaveBeenCalled();
   });
 
-  it('apply mode does NOT call autoAcceptCandidate for a quarantined candidate', async () => {
+  it('apply mode does NOT queue a quarantined candidate', async () => {
     const upsert = jest.fn().mockResolvedValue({ id: 'cand-3' });
-    const autoAccept = jest.fn().mockResolvedValue(undefined);
+    const queueForReview = jest.fn().mockResolvedValue(undefined);
     const nameHintOnly: RawOsmElement = {
       type: 'node', id: 7, lat: 52.1, lon: -1.2, tags: { name: "Little Farm Park" },
     };
     await discoverFromElements([nameHintOnly], {
-      existingVenues: NO_EXISTING, write: true, apply: true, upsertCandidate: upsert, autoAcceptCandidate: autoAccept,
+      existingVenues: NO_EXISTING, write: true, apply: true, upsertCandidate: upsert, queueCandidateForReview: queueForReview,
     });
     expect(upsert).toHaveBeenCalledTimes(1);
-    expect(autoAccept).not.toHaveBeenCalled();
+    expect(queueForReview).not.toHaveBeenCalled();
   });
 
   it('never upserts an exact duplicate', async () => {

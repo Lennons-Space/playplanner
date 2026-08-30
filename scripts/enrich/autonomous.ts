@@ -12,7 +12,7 @@
 //     candidate auto-accept, suspected-closure flagging). Without --apply,
 //     this script makes ZERO database writes — it only reads and reports.
 //   - Every write goes through the existing audited RPCs (propose_field,
-//     auto_apply_field_proposal, auto_accept_candidate, system_flag_suspected_
+//     auto_apply_field_proposal, queue_candidate_for_review, system_flag_suspected_
 //     closure) — this script never updates venues/opening_hours directly.
 //
 // Usage:
@@ -576,7 +576,7 @@ async function main(): Promise<void> {
   console.log('\nPlayPlanner Enrichment 2.0 — autonomous orchestrator');
   console.log('=====================================================');
   console.log(`Mode        : ${flags.mode}`);
-  console.log(`Write mode  : ${flags.apply ? '*** --apply — LIVE WRITES via propose_field/auto_apply_field_proposal/auto_accept_candidate/system_flag_suspected_closure ***' : 'DRY RUN (zero writes)'}`);
+  console.log(`Write mode  : ${flags.apply ? '*** --apply — LIVE WRITES via propose_field/auto_apply_field_proposal/queue_candidate_for_review/system_flag_suspected_closure. Discovery persists and QUARANTINES candidates; it cannot publish a venue — that needs an admin calling resolve_discovery_candidate ***' : 'DRY RUN (zero writes)'}`);
   console.log(`Limit       : ${flags.limit}`);
   if (flags.mode === 'enrich-existing') console.log(`Stale days  : ${flags.staleDays}`);
   if (flags.maxRuntimeMinutes) console.log(`Max runtime : ${flags.maxRuntimeMinutes} min`);
@@ -884,6 +884,13 @@ async function main(): Promise<void> {
       return { status: r.status };
     };
 
+    // The TypeScript accept decision -> the candidate row's status. 'auto_accept'
+    // maps to 'candidate' (not to anything published): the DB's
+    // queue_candidate_for_review then re-checks the gates and moves it to
+    // 'quarantined' for a human. Release one has no auto-published state.
+    const candidateStatus = (d: string) =>
+      d === 'quarantine' ? 'quarantined' : d === 'reject' ? 'rejected' : 'candidate';
+
     const counts = await discoverFromCandidates(candidates, {
       existingVenues: [], // unused — lookupNearby takes precedence (see discoverCandidates.ts)
       lookupNearby,
@@ -920,13 +927,27 @@ async function main(): Promise<void> {
           identity_evidence_sources: row.acceptInput.identityEvidenceSources ?? [],
           has_closure_signal: row.acceptInput.hasClosureSignal,
           required_fields_complete: row.acceptInput.requiredFieldsComplete,
-          status: row.acceptResult.decision === 'quarantine' ? 'quarantined' : row.acceptResult.decision === 'reject' ? 'rejected' : 'candidate',
+          status: candidateStatus(row.acceptResult.decision),
+          // A TERMINAL state must record who decided and when — migration 059's
+          // venue_discovery_candidates_terminal_audit_ck enforces it. The
+          // pipeline has no profile id, so it names itself 'system' rather than
+          // leaving a NULL that would be indistinguishable from a human
+          // decision nobody recorded.
+          resolved_mode: candidateStatus(row.acceptResult.decision) === 'rejected' ? 'system' : null,
+          reviewed_at: candidateStatus(row.acceptResult.decision) === 'rejected'
+            ? new Date().toISOString() : null,
+          resolution_reasons: candidateStatus(row.acceptResult.decision) === 'rejected'
+            ? [{ code: 'pipeline_rejected', detail: row.acceptResult.reason }] : [],
         }, { onConflict: 'source,source_id' }).select('id').single();
         if (upErr) throw new Error(upErr.message);
         return { id: (data as { id: string }).id };
       } : undefined,
-      autoAcceptCandidate: flags.apply ? async (candidateId) => {
-        const { error: accErr } = await supabase.rpc('auto_accept_candidate', { p_candidate_id: candidateId });
+      // RELEASE ONE: this QUEUES a strong candidate for human review. It does
+      // not publish. auto_accept_candidate no longer exists in the database
+      // (migration 061 drops both signatures), so a build still calling it
+      // fails loudly rather than silently doing something weaker.
+      queueCandidateForReview: flags.apply ? async (candidateId) => {
+        const { error: accErr } = await supabase.rpc('queue_candidate_for_review', { p_candidate_id: candidateId });
         if (accErr) throw new Error(accErr.message);
       } : undefined,
     });

@@ -214,10 +214,10 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  p          venue_field_proposals%rowtype;
-  v_snap     jsonb;
-  v_current  text;
-  v_generated text;
+  p         venue_field_proposals%rowtype;
+  v_live    jsonb;
+  v_text    text;
+  v_reasons jsonb;
 BEGIN
   SELECT * INTO p FROM venue_field_proposals WHERE id = p_proposal_id;
   IF NOT FOUND THEN
@@ -230,32 +230,25 @@ BEGIN
     RAISE EXCEPTION 'wrong_field:%', p.field;
   END IF;
 
-  v_snap := snapshot_current_value(p.venue_id, 'description');
-  IF (v_snap ->> 'hash') IS DISTINCT FROM p.current_value_hash THEN
-    RAISE EXCEPTION 'stale_current_value';
+  -- POLICY — fill-if-empty. A venue that already has a description keeps it;
+  -- an autonomous rewrite of human-authored copy is never acceptable.
+  v_live := snapshot_current_value(p.venue_id, 'description') -> 'value';
+  IF enrichment_value_is_meaningful(v_live) THEN
+    RAISE EXCEPTION 'description_already_set';
   END IF;
 
-  v_current := p.current_value ->> 'v';
-  IF v_current IS NOT NULL AND length(btrim(v_current)) >= 10 THEN
-    RAISE EXCEPTION 'existing_description_not_trivial';
+  v_text := btrim(coalesce(p.proposed_value ->> 'v', ''));
+  IF v_text = '' THEN
+    RAISE EXCEPTION 'empty_description';
   END IF;
 
-  v_generated := p.proposed_value ->> 'v';
-  IF v_generated IS NULL OR btrim(v_generated) = '' THEN
-    RAISE EXCEPTION 'empty_generated_text';
-  END IF;
-  IF btrim(v_generated) = btrim(coalesce(p.evidence_snippet, ''))
-     OR btrim(v_generated) = btrim(coalesce(p.evidence_raw, '')) THEN
-    RAISE EXCEPTION 'not_a_synthesis';
-  END IF;
+  v_reasons := coalesce(p.decision_reasons, '[]'::jsonb)
+    || jsonb_build_array(jsonb_build_object('code', 'auto_generated_description'));
 
-  UPDATE venues SET description = v_generated, updated_at = now() WHERE id = p.venue_id;
-
-  UPDATE venue_field_proposals
-     SET status = 'applied', applied_at = now(), applied_by = 'system'
-   WHERE id = p_proposal_id;
-
-  RETURN jsonb_build_object('ok', true);
+  -- The primitive enforces the copyright guard: a generated description that is
+  -- byte-identical to the scraped evidence raises description_not_rewritten.
+  -- That check stays THERE so no caller can route around it.
+  RETURN _enrichment_apply_write(p_proposal_id, v_text, 'auto', NULL, v_reasons);
 END;
 $$;
 
@@ -383,19 +376,289 @@ $$;
 -- (https://real-venue.co.uk@evil.example/) can never be read as the venue's
 -- own host. Not a security boundary on its own — it is one layer of the
 -- identity check in auto_apply_booking_url below.
-CREATE OR REPLACE FUNCTION enrichment_url_host(p_url text)
-RETURNS text
-LANGUAGE sql
-IMMUTABLE
+-- ─────────────────────────────────────────────────────────────────────────────
+-- F0. booking_url joins the audited write architecture.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- enrichment_url_host is NOT redefined here. 059 introduces a STRICTER version
+-- (it requires an http/https scheme, so javascript:, data: and file: URLs
+-- resolve to NULL). The earlier 060 implementation made the scheme optional,
+-- which meant 'javascript:alert(1)' parsed as a valid host -- redefining it
+-- here would silently downgrade that protection. www-stripping is not needed:
+-- the identity rule below already treats one host as a subdomain of the other.
+--
+-- Migration 057 is historical and is NOT edited. The primitive is extended with
+-- CREATE OR REPLACE, the same mechanism 057 used on 056's functions.
+--
+-- UNIVERSAL vs POLICY, for booking_url specifically:
+--   Universal (here): HTTPS only, a parseable host, no userinfo segment, the
+--     stale guard, and the immutable ledger row. Nothing may reach
+--     venues.booking_url by any route without these.
+--   Policy (in the callers): same-host identity and fill-if-empty for the
+--     autonomous path; admin authorisation for the human path.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION _enrichment_apply_write(
+  p_proposal_id      uuid,
+  p_applied_text     text,
+  p_mode             text,
+  p_applied_by       uuid,
+  p_decision_reasons jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
-  SELECT CASE
-           WHEN h IS NULL OR h = '' OR position('@' in h) > 0 THEN NULL
-           ELSE regexp_replace(h, '^www\.', '')
-         END
-  FROM (
-    SELECT lower(substring(btrim(coalesce(p_url, '')) from '^(?:https?://)?([^/?#]+)')) AS h
-  ) s;
+DECLARE
+  p          venue_field_proposals%rowtype;
+  v_snap     jsonb;
+  v_val      text;
+  v_seasonal text;
+  v_day      jsonb;
+  v_dow      int;
+  v_open     time;
+  v_close    time;
+  v_notes    text;
+  v_split    text;
+  v_new_hash text;
+  v_new_val  jsonb;
+BEGIN
+  SELECT * INTO p FROM venue_field_proposals WHERE id = p_proposal_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'not_found';
+  END IF;
+
+  v_snap := snapshot_current_value(p.venue_id, p.field);
+  IF (v_snap ->> 'hash') IS DISTINCT FROM p.current_value_hash THEN
+    RAISE EXCEPTION 'stale_current_value';
+  END IF;
+
+  IF p.field = 'price_range' THEN
+    v_val := p.proposed_value ->> 'v';
+    IF v_val IS NULL OR v_val NOT IN ('free','budget','moderate','premium') THEN
+      RAISE EXCEPTION 'invalid_enum_value:%', coalesce(v_val, 'null');
+    END IF;
+    UPDATE venues SET price_range = v_val, updated_at = now() WHERE id = p.venue_id;
+    v_new_val := jsonb_build_object('v', v_val);
+
+  ELSIF p.field = 'booking_url' THEN
+    -- ADDED IN THE 057 REBASE. booking_url now has a real column (Section B).
+    v_val := btrim(coalesce(p.proposed_value ->> 'v', ''));
+    IF v_val = '' THEN
+      RAISE EXCEPTION 'empty_booking_url';
+    END IF;
+    -- HTTPS only: this is a link a parent may transact through.
+    IF v_val !~* '^https://' THEN
+      RAISE EXCEPTION 'insecure_or_invalid_scheme';
+    END IF;
+    -- Rejects a missing/empty host and the userinfo trick
+    -- (https://evil.test@real.test).
+    IF enrichment_url_host(v_val) IS NULL THEN
+      RAISE EXCEPTION 'unparseable_booking_url';
+    END IF;
+    UPDATE venues SET booking_url = v_val, updated_at = now() WHERE id = p.venue_id;
+    v_new_val := jsonb_build_object('v', v_val);
+
+  ELSIF p.field IN ('website','phone','email') THEN
+    v_val := btrim(coalesce(p.proposed_value ->> 'v', ''));
+    IF v_val = '' THEN
+      RAISE EXCEPTION 'empty_value:%', p.field;
+    END IF;
+    IF p.field = 'website' AND NOT enrichment_is_valid_website(v_val) THEN
+      RAISE EXCEPTION 'invalid_website_url';
+    END IF;
+    IF p.field = 'phone' AND NOT enrichment_is_valid_phone(v_val) THEN
+      RAISE EXCEPTION 'invalid_phone';
+    END IF;
+    IF p.field = 'email'
+       AND v_val !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' THEN
+      RAISE EXCEPTION 'invalid_email';
+    END IF;
+    IF    p.field = 'website' THEN
+      UPDATE venues SET website = v_val, updated_at = now() WHERE id = p.venue_id;
+    ELSIF p.field = 'phone'   THEN
+      UPDATE venues SET phone   = v_val, updated_at = now() WHERE id = p.venue_id;
+    ELSE
+      UPDATE venues SET email   = v_val, updated_at = now() WHERE id = p.venue_id;
+    END IF;
+    v_new_val := jsonb_build_object('v', v_val);
+
+  ELSIF p.field = 'description' THEN
+    IF p_applied_text IS NULL OR btrim(p_applied_text) = '' THEN
+      RAISE EXCEPTION 'description_text_required';
+    END IF;
+    IF btrim(p_applied_text) = btrim(coalesce(p.evidence_snippet, ''))
+       OR btrim(p_applied_text) = btrim(coalesce(p.evidence_raw, '')) THEN
+      RAISE EXCEPTION 'description_not_rewritten';
+    END IF;
+    UPDATE venues SET description = p_applied_text, updated_at = now()
+     WHERE id = p.venue_id;
+    v_new_val := jsonb_build_object('v', p_applied_text);
+
+  ELSIF p.field = 'opening_hours' THEN
+    IF jsonb_typeof(p.proposed_value -> 'days') IS DISTINCT FROM 'array'
+       OR jsonb_array_length(p.proposed_value -> 'days') <> 7 THEN
+      RAISE EXCEPTION 'incomplete_week';
+    END IF;
+    IF (SELECT count(DISTINCT (d ->> 'day_of_week'))
+          FROM jsonb_array_elements(p.proposed_value -> 'days') d)
+       <> jsonb_array_length(p.proposed_value -> 'days') THEN
+      RAISE EXCEPTION 'duplicate_day_of_week';
+    END IF;
+    v_seasonal := nullif(btrim(coalesce(p.proposed_value ->> 'seasonal_notes', '')), '');
+    DELETE FROM opening_hours WHERE venue_id = p.venue_id;
+    FOR v_day IN SELECT * FROM jsonb_array_elements(p.proposed_value -> 'days') LOOP
+      v_dow := (v_day ->> 'day_of_week')::int;
+      IF coalesce((v_day ->> 'is_closed')::boolean, false)
+         OR coalesce(jsonb_array_length(v_day -> 'intervals'), 0) = 0 THEN
+        INSERT INTO opening_hours (venue_id, day_of_week, is_closed)
+          VALUES (p.venue_id, v_dow, true);
+      ELSE
+        SELECT min((iv ->> 'opens')::time), max((iv ->> 'closes')::time)
+          INTO v_open, v_close
+          FROM jsonb_array_elements(v_day -> 'intervals') iv;
+        v_notes := NULL;
+        IF jsonb_array_length(v_day -> 'intervals') > 1 THEN
+          SELECT string_agg((iv ->> 'opens') || '-' || (iv ->> 'closes'), ' and ' ORDER BY ord)
+            INTO v_split
+            FROM jsonb_array_elements(v_day -> 'intervals') WITH ORDINALITY AS t(iv, ord);
+          v_notes := 'Open ' || v_split;
+        END IF;
+        IF v_seasonal IS NOT NULL THEN
+          v_notes := CASE WHEN v_notes IS NULL THEN v_seasonal
+                          ELSE v_notes || ' | ' || v_seasonal END;
+        END IF;
+        INSERT INTO opening_hours (venue_id, day_of_week, opens_at, closes_at, is_closed, notes)
+          VALUES (p.venue_id, v_dow, v_open, v_close, false, v_notes);
+      END IF;
+    END LOOP;
+    v_new_val := p.proposed_value;
+
+  ELSE
+    RAISE EXCEPTION 'invalid_field:%', p.field;
+  END IF;
+
+  v_new_hash := snapshot_current_value(p.venue_id, p.field) ->> 'hash';
+
+  UPDATE venue_field_proposals
+     SET status       = 'applied',
+         applied_at   = now(),
+         reviewed_by  = p_applied_by,
+         reviewed_at  = now(),
+         applied_mode = p_mode
+   WHERE id = p_proposal_id;
+
+  INSERT INTO venue_enrichment_writes (
+    run_id,       proposal_id,     venue_id,  field,
+    operation,    old_value,       old_value_hash,
+    new_value,    new_value_hash,
+    applied_mode, applied_by,      decision_reasons,
+    source_url,   evidence_snapshot
+  ) VALUES (
+    p.run_id,     p.id,            p.venue_id, p.field,
+    'apply',      p.current_value, p.current_value_hash,
+    v_new_val,    v_new_hash,
+    p_mode,       p_applied_by,    coalesce(p_decision_reasons, '[]'::jsonb),
+    p.source_url, p.evidence_snippet
+  );
+
+  RETURN jsonb_build_object('ok', true, 'field', p.field);
+END;
 $$;
+
+REVOKE ALL ON FUNCTION _enrichment_apply_write(uuid, text, text, uuid, jsonb)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- F0b. rollback_enrichment_run gains a booking_url branch.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Without this, a booking_url row in the ledger would hit the else branch and
+-- be unrollbackable -- ledger coverage without reversal is only half the
+-- guarantee. The newer-change guard is unchanged: if the live hash no longer
+-- matches what we wrote, a human has edited since and rollback SKIPS.
+CREATE OR REPLACE FUNCTION rollback_enrichment_run(p_run_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  w         record;
+  v_snap    jsonb;
+  v_val     text;
+  v_day     jsonb;
+  v_outcome text;
+  v_results jsonb := '[]'::jsonb;
+BEGIN
+  IF NOT is_admin() THEN
+    RAISE EXCEPTION 'not_authorized';
+  END IF;
+
+  FOR w IN
+    SELECT * FROM venue_enrichment_writes ew
+     WHERE ew.run_id = p_run_id AND ew.operation = 'apply'
+     ORDER BY ew.applied_at DESC
+  LOOP
+    IF EXISTS (SELECT 1 FROM venue_enrichment_writes
+                WHERE reverts_write_id = w.id AND operation = 'rollback') THEN
+      v_outcome := 'already_rolled_back';
+    ELSE
+      v_snap := snapshot_current_value(w.venue_id, w.field);
+      IF (v_snap ->> 'hash') IS DISTINCT FROM w.new_value_hash THEN
+        v_outcome := 'skipped_newer_change';
+      ELSE
+        v_val := w.old_value ->> 'v';
+        IF w.field = 'opening_hours' THEN
+          DELETE FROM opening_hours WHERE venue_id = w.venue_id;
+          IF w.old_value IS NOT NULL AND jsonb_typeof(w.old_value) = 'array' THEN
+            FOR v_day IN SELECT * FROM jsonb_array_elements(w.old_value) LOOP
+              INSERT INTO opening_hours (venue_id, day_of_week, opens_at, closes_at, is_closed, notes)
+              VALUES (w.venue_id, (v_day ->> 'day_of_week')::int,
+                      (v_day ->> 'opens_at')::time, (v_day ->> 'closes_at')::time,
+                      coalesce((v_day ->> 'is_closed')::boolean, false),
+                      v_day ->> 'notes');
+            END LOOP;
+          END IF;
+        ELSIF w.field = 'price_range' THEN
+          UPDATE venues SET price_range = v_val, updated_at = now() WHERE id = w.venue_id;
+        ELSIF w.field = 'website' THEN
+          UPDATE venues SET website = v_val, updated_at = now() WHERE id = w.venue_id;
+        ELSIF w.field = 'phone' THEN
+          UPDATE venues SET phone = v_val, updated_at = now() WHERE id = w.venue_id;
+        ELSIF w.field = 'email' THEN
+          UPDATE venues SET email = v_val, updated_at = now() WHERE id = w.venue_id;
+        ELSIF w.field = 'description' THEN
+          UPDATE venues SET description = v_val, updated_at = now() WHERE id = w.venue_id;
+        ELSIF w.field = 'booking_url' THEN
+          -- ADDED IN THE 057 REBASE.
+          UPDATE venues SET booking_url = v_val, updated_at = now() WHERE id = w.venue_id;
+        ELSE
+          RAISE EXCEPTION 'unsupported_rollback_field:%', w.field;
+        END IF;
+
+        INSERT INTO venue_enrichment_writes (
+          run_id, proposal_id, venue_id, field, operation,
+          old_value, old_value_hash, new_value, new_value_hash,
+          applied_mode, applied_by, reverts_write_id
+        ) VALUES (
+          w.run_id, w.proposal_id, w.venue_id, w.field, 'rollback',
+          w.new_value, w.new_value_hash, w.old_value, w.old_value_hash,
+          w.applied_mode, auth.uid(), w.id
+        );
+        v_outcome := 'rolled_back';
+      END IF;
+    END IF;
+
+    v_results := v_results || jsonb_build_object(
+      'write_id', w.id, 'field', w.field, 'outcome', v_outcome);
+  END LOOP;
+
+  RETURN jsonb_build_object('ok', true, 'results', v_results);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION rollback_enrichment_run(uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION rollback_enrichment_run(uuid) TO authenticated;
 
 -- Enrichment 2.1's booking_url auto-apply path. Separate from 059's
 -- auto_apply_field_proposal (which still hard-blocks booking_url, and is NOT
@@ -424,13 +687,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  p            venue_field_proposals%rowtype;
-  v_snap       jsonb;
-  v_current    text;
-  v_proposed   text;
-  v_site       text;
-  v_host_url   text;
-  v_host_site  text;
+  p           venue_field_proposals%rowtype;
+  v_live      jsonb;
+  v_proposed  text;
+  v_site      text;
+  v_host_url  text;
+  v_host_site text;
+  v_reasons   jsonb;
 BEGIN
   SELECT * INTO p FROM venue_field_proposals WHERE id = p_proposal_id;
   IF NOT FOUND THEN
@@ -443,44 +706,45 @@ BEGIN
     RAISE EXCEPTION 'wrong_field:%', p.field;
   END IF;
 
-  v_snap := snapshot_current_value(p.venue_id, 'booking_url');
-  IF (v_snap ->> 'hash') IS DISTINCT FROM p.current_value_hash THEN
-    RAISE EXCEPTION 'stale_current_value';
-  END IF;
-
-  -- Fill-if-empty only.
-  v_current := p.current_value ->> 'v';
-  IF v_current IS NOT NULL AND btrim(v_current) <> '' THEN
+  -- POLICY 1 — fill-if-empty. Automation never replaces a booking link that is
+  -- already there; a human admin may, through apply_booking_url_proposal.
+  v_live := snapshot_current_value(p.venue_id, 'booking_url') -> 'value';
+  IF enrichment_value_is_meaningful(v_live) THEN
     RAISE EXCEPTION 'booking_url_already_set';
   END IF;
 
   v_proposed := btrim(coalesce(p.proposed_value ->> 'v', ''));
-  IF v_proposed = '' THEN
-    RAISE EXCEPTION 'empty_booking_url';
-  END IF;
-  IF v_proposed !~* '^https://' THEN
-    RAISE EXCEPTION 'insecure_or_invalid_scheme';
-  END IF;
 
-  SELECT website INTO v_site FROM venues WHERE id = p.venue_id;
+  -- POLICY 2 — VENUE IDENTITY, autonomous only.
+  -- A booking link is an outbound link a parent may click and pay through. For
+  -- an unattended write we additionally require the booking host to belong to
+  -- the venue's own website: equal hosts, or one a subdomain of the other.
+  -- This check lives HERE and not in _enrichment_apply_write, because a human
+  -- admin is allowed to approve a legitimate third-party booking provider
+  -- (Bookwhen, Eventbrite, a leisure-trust portal) which by definition fails it.
+  v_site := (SELECT website FROM venues WHERE id = p.venue_id);
+  IF NOT enrichment_is_valid_website(v_site) THEN
+    RAISE EXCEPTION 'venue_website_unusable_for_identity_check';
+  END IF;
   v_host_url  := enrichment_url_host(v_proposed);
   v_host_site := enrichment_url_host(v_site);
   IF v_host_url IS NULL OR v_host_site IS NULL THEN
     RAISE EXCEPTION 'identity_unverifiable';
   END IF;
   IF v_host_url <> v_host_site
-     AND v_host_url NOT LIKE ('%.' || v_host_site)
+     AND v_host_url  NOT LIKE ('%.' || v_host_site)
      AND v_host_site NOT LIKE ('%.' || v_host_url) THEN
     RAISE EXCEPTION 'host_identity_mismatch:%', v_host_url;
   END IF;
 
-  UPDATE venues SET booking_url = v_proposed, updated_at = now() WHERE id = p.venue_id;
+  v_reasons := coalesce(p.decision_reasons, '[]'::jsonb)
+    || jsonb_build_array(jsonb_build_object(
+         'code', 'auto_booking_url_same_host',
+         'booking_host', v_host_url,
+         'venue_website_host', v_host_site));
 
-  UPDATE venue_field_proposals
-     SET status = 'applied', applied_at = now(), applied_by = 'system'
-   WHERE id = p_proposal_id;
-
-  RETURN jsonb_build_object('ok', true);
+  -- The scheme/host/stale/ledger checks are universal and live in the primitive.
+  RETURN _enrichment_apply_write(p_proposal_id, NULL, 'auto', NULL, v_reasons);
 END;
 $$;
 

@@ -104,16 +104,16 @@ describe('Candidate A — complete OSM record, no official corroboration', () =>
   });
 
   it('never calls the auto-accept RPC for a single-source candidate', async () => {
-    const autoAcceptCandidate = jest.fn();
+    const queueCandidateForReview = jest.fn();
     await discoverFromCandidates([completeOsmRecord()], {
       existingVenues: NO_EXISTING,
       lookupNearby: lookupNone,
       write: true,
       apply: true,
       upsertCandidate: async () => ({ id: 'cand-1' }),
-      autoAcceptCandidate,
+      queueCandidateForReview,
     });
-    expect(autoAcceptCandidate).not.toHaveBeenCalled();
+    expect(queueCandidateForReview).not.toHaveBeenCalled();
   });
 });
 
