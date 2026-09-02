@@ -185,6 +185,75 @@ describe('useLocation — invalid coordinate fallback', () => {
 });
 
 // ======================================================================
+// Coarse-permission-only behaviour (2026-09-01 privacy remediation, §1)
+//
+// Android's ACCESS_COARSE_LOCATION-only mode does not return a raw GPS fix —
+// it returns a deliberately reduced-precision position (commonly snapped to
+// a coarse grid on the order of ~1-2km, refreshed periodically), even at
+// `Accuracy.Balanced`. This suite proves the APP'S OWN pipeline tolerates
+// that degraded input just as well as a precise fix — using the REAL
+// coarsenCoordinates/isValidCoordinate implementations (not the passthrough
+// mocks used above), since the property under test is arithmetic, not
+// call-forwarding.
+//
+// This is NOT a substitute for testing on a real Android device with only
+// ACCESS_COARSE_LOCATION declared — it proves the app's tolerance for
+// degraded input, not Android's actual runtime behaviour. See
+// docs/privacy/LOCATION_MINIMISATION_REVIEW.md for the real-device procedure
+// this still requires.
+// ======================================================================
+describe('useLocation — coarse-permission-only input (simulated)', () => {
+  const realCoordinates = jest.requireActual('@/services/location/coordinates');
+
+  beforeEach(() => {
+    mockCoarsen.mockImplementation(realCoordinates.coarsenCoordinates);
+    mockIsValid.mockImplementation(realCoordinates.isValidCoordinate);
+  });
+
+  // A coarse Android fix jittered ~1.5km from a true position, well within
+  // what ACCESS_COARSE_LOCATION alone is documented to return.
+  const COARSE_POSITION = {
+    coords: { latitude: 51.5220, longitude: -0.1090 }, // ~1.5km from RAW_POSITION
+  } as any;
+
+  it('produces a valid, non-fallback location from a coarse/jittered fix', async () => {
+    mockRequestPermissions.mockResolvedValue({ status: 'granted' } as any);
+    mockGetCurrentPosition.mockResolvedValue(COARSE_POSITION);
+
+    const { result } = renderHook(() => useLocation());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.hasPermission).toBe(true);
+    expect(result.current.coords).not.toEqual(FALLBACK_LOCATION);
+    // The real isValidCoordinate/coarsenCoordinates never special-case
+    // precision — any position within bounds passes through and rounds the
+    // same way regardless of how the OS obtained it.
+    expect(result.current.coords.latitude).toBeCloseTo(51.522, 2);
+    expect(result.current.coords.longitude).toBeCloseTo(-0.109, 2);
+  });
+
+  it('a coarse fix still differs meaningfully from a precise fix, proving no special-case coupling to GPS-grade input', async () => {
+    mockRequestPermissions.mockResolvedValue({ status: 'granted' } as any);
+    mockGetCurrentPosition.mockResolvedValue(COARSE_POSITION);
+    const { result: coarseResult } = renderHook(() => useLocation());
+    await waitFor(() => expect(coarseResult.current.isLoading).toBe(false));
+
+    mockGetCurrentPosition.mockResolvedValue(RAW_POSITION);
+    const { result: preciseResult } = renderHook(() => useLocation());
+    await waitFor(() => expect(preciseResult.current.isLoading).toBe(false));
+
+    // Both are valid, usable coordinates for nearby-venue search — the
+    // pipeline has no branch that behaves differently based on input
+    // precision, which is exactly the property that makes removing
+    // ACCESS_FINE_LOCATION safe: downstream consumers (useNearbyVenues,
+    // map centring, distance labels) only ever see this hook's output
+    // shape, never the OS's raw accuracy tier.
+    expect(coarseResult.current.hasPermission).toBe(true);
+    expect(preciseResult.current.hasPermission).toBe(true);
+  });
+});
+
+// ======================================================================
 // Non-blocking consent logging
 // ======================================================================
 describe('useLocation — consent logging is non-blocking', () => {

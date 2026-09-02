@@ -278,7 +278,7 @@ describe('RegisterScreen — consent gating + marketing not pre-ticked', () => {
     const button = screen.getByLabelText('Create your Play Planner account');
     expect(button).toBeDisabled();
 
-    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over, or a parent or guardian'));
+    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over'));
     expect(screen.getByLabelText('Create your Play Planner account')).toBeDisabled();
 
     fireEvent.press(screen.getByLabelText('Tap to accept the Terms of Service and Privacy Policy'));
@@ -297,7 +297,7 @@ describe('RegisterScreen — loading/disabled state', () => {
     fireEvent.changeText(screen.getByLabelText(
       'Password — must be at least 8 characters, no spaces'), 'Password1!',
     );
-    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over, or a parent or guardian'));
+    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over'));
     fireEvent.press(screen.getByLabelText('Tap to accept the Terms of Service and Privacy Policy'));
     fireEvent.press(screen.getByLabelText('Create your Play Planner account'));
 

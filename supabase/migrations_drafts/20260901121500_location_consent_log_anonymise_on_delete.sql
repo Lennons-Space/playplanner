@@ -1,0 +1,84 @@
+-- =============================================================================
+-- 20260901121500_location_consent_log_anonymise_on_delete.sql
+--
+-- DRAFT — NOT APPLIED ANYWHERE. Written during the "Privacy-Critical Engineering
+-- Remediation Pass" (2026-09-01), discovered while tracing the account-deletion
+-- flow for the data-store deletion matrix (docs/privacy/ROPA.md row 3).
+--
+-- THE FINDING
+-- ----------------------------------------------------------------------------
+-- `location_consent_log.user_id` (001_initial_schema.sql:766) is:
+--     user_id uuid references profiles(id) on delete cascade
+-- This means calling `delete_own_account()` — which deletes `auth.users`,
+-- cascading to `profiles`, cascading further via this FK — PERMANENTLY AND
+-- IMMEDIATELY DELETES every consent-log row for that user, not "retains it
+-- for 3 years" as `app/(auth)/privacy.tsx` states (see the wording fix made
+-- to that file this same pass) and not even anonymises it.
+--
+-- This is inconsistent with `gdpr_audit_log.user_id` (001:796), which
+-- correctly uses `on delete set null` — anonymising the audit trail rather
+-- than destroying it. `location_consent_log`'s own header comment
+-- (001:760-762) states its purpose plainly: "This proves consent was valid if
+-- the ICO ever asks" — a purpose that is actively defeated by CASCADE, since
+-- the one moment this evidence might matter most (a dispute arising at or
+-- after account deletion) is exactly when CASCADE erases it.
+--
+-- WHY THIS WASN'T CAUGHT BY THE EARLIER "51/52" ACCOUNT-DELETION FIX PASS
+-- ----------------------------------------------------------------------------
+-- Migrations 051/052 fixed FK columns that were `NO ACTION`/`RESTRICT` and
+-- therefore BLOCKED deletion outright — a visible, loud failure (an error on
+-- every affected user's delete attempt). `location_consent_log`'s CASCADE
+-- never blocks anything — it deletes silently and successfully, which is
+-- exactly why it went unnoticed by an audit looking for deletion FAILURES
+-- rather than deletion OVER-REACH. Worth recording this distinction for
+-- future audits of this kind: "does deletion succeed" and "does deletion do
+-- the RIGHT thing" are different questions, and this repo's history so far
+-- has only systematically checked the first one.
+--
+-- THE FIX
+-- ----------------------------------------------------------------------------
+-- Change `location_consent_log.user_id` from `ON DELETE CASCADE` to
+-- `ON DELETE SET NULL`, matching `gdpr_audit_log`'s existing, correct pattern.
+-- After this, deleting an account anonymises (not destroys) that user's
+-- consent-log history — the record that "someone, on this date, gave/withdrew
+-- consent under version X" survives, satisfying the table's own stated
+-- accountability purpose, while the link to the now-deleted identity is
+-- severed (the same "erasure via anonymisation" treatment already applied
+-- throughout this schema — GDPR recital 26).
+--
+-- This does NOT, by itself, make the "3 years then deleted" wording true —
+-- that requires the separate purge-function mechanism (built in the earlier
+-- enrichment remediation pass: `purge_expired_location_consent_log`,
+-- `purge_expired_gdpr_audit_log`, both in
+-- supabase/migrations_drafts/059_enrichment_autonomy.sql, both deliberately
+-- `EXECUTE`-revoked from every role, not applied, not scheduled) to actually
+-- be granted and scheduled. This migration only stops the record being
+-- destroyed EARLY (on account deletion), which is a precondition for the
+-- 3-year retention meaning anything at all — a promise to "keep something for
+-- 3 years" is not satisfiable by a mechanism that can delete it on day one.
+-- =============================================================================
+
+ALTER TABLE public.location_consent_log
+  DROP CONSTRAINT IF EXISTS location_consent_log_user_id_fkey;
+
+ALTER TABLE public.location_consent_log
+  ADD CONSTRAINT location_consent_log_user_id_fkey
+  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE SET NULL;
+
+-- =============================================================================
+-- VERIFICATION SQL (run manually against a staging DB — requires real
+-- auth.users rows, matching the pattern established in migrations 051/052)
+--
+-- (a) Constraint is now SET NULL:
+--   SELECT confdeltype FROM pg_constraint WHERE conname = 'location_consent_log_user_id_fkey';
+--   -- Expect: 'n' (SET NULL) — was 'c' (CASCADE) before this migration.
+--
+-- (b) A user with consent-log history can still delete their account, and the
+--     consent rows survive, anonymised:
+--   -- as that user: SELECT delete_own_account();
+--   -- Expect: completes with no error.
+--   SELECT id, user_id, consented_at, consent_version FROM location_consent_log
+--     WHERE id = '<the deleted user''s consent row id>';
+--   -- Expect: 1 row, user_id IS NULL, consented_at/consent_version UNCHANGED
+--   -- (previously: 0 rows — the row would have been destroyed by CASCADE).
+-- =============================================================================

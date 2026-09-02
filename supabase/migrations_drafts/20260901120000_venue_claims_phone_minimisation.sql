@@ -1,0 +1,171 @@
+-- =============================================================================
+-- 20260901120000_venue_claims_phone_minimisation.sql
+--
+-- DRAFT — NOT APPLIED ANYWHERE. Written during the "Privacy-Critical Engineering
+-- Remediation Pass" (2026-09-01) in response to a finding in
+-- docs/privacy/ROPA.md: `venue_claims.verified_phone` is stored as PLAINTEXT
+-- after verification is complete, inconsistent with the companion
+-- `otp_attempts` table which correctly stores only `phone_hash`/`code_hash`.
+--
+-- WHY THE FULL NUMBER WAS RETAINED (as found, not assumed)
+-- ----------------------------------------------------------------------------
+-- `venue_claims.verified_phone` (023_business_claiming.sql:30) is populated at
+-- claim-submission time and then read back by:
+--   - hooks/useVenueClaims.ts:59-65 (useAdminVenueClaims) — selected into the
+--     admin review queue.
+--   - app/admin/moderation.tsx:1452-1456 — the ONLY place it is actually
+--     rendered, and even there it is already masked before display
+--     (`+44 **** 5678` style, via a client-side regex over the full value).
+-- No other code path reads it. There is currently NO live write path at all —
+-- app/(tabs)/profile.tsx:486-489 documents that the claim-submission UI was
+-- deliberately removed "for security before re-launch," so no new plaintext
+-- rows are being created today. Existing rows from before that removal remain.
+--
+-- DISTINGUISHING THE THREE PURPOSES Liam asked to separate:
+--   A. Verification proof — "was this claim backed by a real SMS OTP check."
+--      This is the ONLY purpose the current column actually serves; nothing
+--      reads the number for any ongoing product purpose beyond this.
+--   B. Contact information — NOT this table's job. If a venue needs a public
+--      contact number, that is `venues`' own (separate) contact-detail
+--      columns, populated through the enrichment/submission pipeline, not
+--      through the claim-verification record. Conflating the two would mean
+--      a claim-verification artefact doubling as a public contact record,
+--      which is exactly the kind of purpose-creep this migration avoids.
+--   C. Fraud/security record — a genuine, narrow need: detecting the same
+--      phone number being used to claim multiple venues in a way that looks
+--      like abuse. This is the one legitimate reason to retain ANYTHING
+--      beyond "verification happened" — and it does not require the
+--      recoverable plaintext number, only the ability to compare two
+--      verification events for equality.
+--
+-- DESIGN — minimised representation, no recoverable full number
+-- ----------------------------------------------------------------------------
+--   phone_last4                text        — last 4 digits only, for human
+--                                             display in the admin queue
+--                                             (replaces the client-side masking
+--                                             regex in admin/moderation.tsx —
+--                                             the server now sends only what
+--                                             should ever be shown, rather than
+--                                             sending the full number and
+--                                             trusting the client to mask it).
+--   phone_verification_hmac    text        — HMAC-SHA256 of the E.164 phone
+--                                             number, KEYED by a server-side
+--                                             secret (NOT a bare unsalted hash
+--                                             — Liam explicitly ruled that out;
+--                                             a UK mobile number space is small
+--                                             enough that an unsalted hash is
+--                                             practically reversible by a
+--                                             dictionary attack). Supports
+--                                             purpose C (equality comparison
+--                                             for repeat-claim fraud detection)
+--                                             without ever being invertible
+--                                             back to the number. Computed in
+--                                             the edge function that already
+--                                             performs OTP verification (Deno
+--                                             `crypto.subtle.digest`-based
+--                                             HMAC, matching the existing
+--                                             SHA-256 pattern already used for
+--                                             `otp_attempts.phone_hash`/
+--                                             `code_hash` — see the finding
+--                                             below), keyed by a NEW secret
+--                                             (e.g. `PHONE_VERIFICATION_HMAC_KEY`
+--                                             in the Edge Function's env, never
+--                                             the Twilio credentials, never
+--                                             committed, never derivable from
+--                                             any value stored in this table).
+--   phone_verified_at          timestamptz — when verification succeeded.
+--   phone_verification_method  text        — e.g. 'sms_otp' (extensible if a
+--                                             future verification method is
+--                                             added).
+--
+-- ⚠️ RELATED FINDING, OUT OF SCOPE FOR THIS MIGRATION, FLAGGED FOR AWARENESS:
+-- `otp_attempts.phone_hash` and `.code_hash` (023_business_claiming.sql:13-14,
+-- populated by supabase/functions/send-otp/index.ts and verify-otp/index.ts)
+-- are computed via a PLAIN, UNSALTED `sha256()` — exactly the pattern Liam
+-- told this pass to avoid. `code_hash` is low-risk in practice (a 6-digit OTP
+-- expires in 10 minutes, per send-otp/index.ts:10, so the exposure window for
+-- a brute-force is short), but `phone_hash` has no such time limit and the
+-- migration's own header comment calling this table "no PII in logs" is
+-- optimistic — an unsalted SHA-256 over a UK E.164 mobile number space is
+-- practically reversible by a dictionary attack at any time in the future,
+-- not just during the OTP's validity window. NOT FIXED IN THIS MIGRATION
+-- (Liam's task named `venue_claims.verified_phone` specifically) — recorded
+-- here so it is not lost, and because the new `PHONE_VERIFICATION_HMAC_KEY`
+-- secret this migration introduces would be the natural mechanism to also key
+-- `otp_attempts.phone_hash` if that follow-up is ever authorised.
+--
+-- WHAT THIS MIGRATION DOES
+-- ----------------------------------------------------------------------------
+-- Adds the four new columns, additive-only. Does NOT drop `verified_phone` —
+-- that is a separate, later, deliberate step (see the bottom of this file) so
+-- that a human re-reads the destructive part specifically, rather than it
+-- riding along inside an additive schema change. Does NOT backfill existing
+-- rows — Liam's instruction is design-only, no production mutation; the
+-- backfill is written below as a clearly-separated, NOT-EXECUTED block.
+-- =============================================================================
+
+ALTER TABLE public.venue_claims
+  ADD COLUMN IF NOT EXISTS phone_last4               text,
+  ADD COLUMN IF NOT EXISTS phone_verification_hmac    text,
+  ADD COLUMN IF NOT EXISTS phone_verified_at          timestamptz,
+  ADD COLUMN IF NOT EXISTS phone_verification_method  text;
+
+COMMENT ON COLUMN public.venue_claims.phone_last4 IS
+  'Last 4 digits only, for admin-queue display. Never the full number.';
+COMMENT ON COLUMN public.venue_claims.phone_verification_hmac IS
+  'Keyed HMAC-SHA256 of the verified E.164 number, for repeat-claim fraud '
+  'detection only. NOT a bare hash (phone-number space is too small to '
+  'resist a dictionary attack unkeyed) and NOT invertible back to the number.';
+
+-- No RLS/grant changes needed — these columns inherit the existing RLS
+-- policies on venue_claims (023_business_claiming.sql:52-63), which already
+-- correctly scope SELECT to the claimant themselves or an admin, same as
+-- `verified_phone` today.
+
+-- =============================================================================
+-- EXISTING-ROW MIGRATION PLAN — DESIGN ONLY, NOT EXECUTED IN THIS FILE
+-- =============================================================================
+-- The block below is intentionally NOT live SQL (see the DO $$ ... $$ guard's
+-- unconditional RAISE EXCEPTION) so that applying this draft migration as
+-- written CANNOT accidentally run the backfill. Running it for real requires
+-- a human to deliberately remove the guard, after:
+--   1. Confirming a secret named `app.phone_verification_hmac_key` (or
+--      equivalent) is available to whatever runs the backfill (a one-off
+--      script using the same Deno/Node HMAC approach as the edge function,
+--      NOT a bare SQL `hmac()` call with a hardcoded key).
+--   2. Sign-off that this is an acceptable one-time processing of the
+--      existing plaintext data for the specific, narrow purpose of populating
+--      its own minimised replacement (arguably the most privacy-friendly
+--      possible use of the plaintext data still on file — converting it into
+--      a form that no longer needs to be retained).
+--
+-- DO $$
+-- BEGIN
+--   RAISE EXCEPTION 'Backfill intentionally not executable — see the migration file header.';
+-- END $$;
+--
+-- Backfill approach (to be run as a one-off authenticated script, NOT inline
+-- SQL, because the HMAC key must never appear in a SQL string/migration file):
+--   For each row in venue_claims WHERE verified_phone IS NOT NULL:
+--     phone_last4              := right(verified_phone, 4)
+--     phone_verification_hmac  := <script computes HMAC-SHA256(verified_phone, secret_key)>
+--     phone_verified_at        := coalesce(reviewed_at, created_at)  -- best available proxy;
+--                                  exact original verification time was never separately
+--                                  recorded, which is itself a minor finding: consider
+--                                  recording it precisely once the claim flow is rebuilt.
+--     phone_verification_method := 'sms_otp'
+--
+-- ONLY AFTER the backfill has run and been verified (spot-check a sample of
+-- rows, confirm phone_last4 matches the last 4 digits of the original
+-- verified_phone for those rows) should a SEPARATE, LATER migration drop the
+-- `verified_phone` and `verified_phone_token` columns:
+--
+--   -- (separate future migration, NOT this one)
+--   -- ALTER TABLE public.venue_claims DROP COLUMN verified_phone;
+--   -- ALTER TABLE public.venue_claims DROP COLUMN verified_phone_token;
+--
+-- Dropping a live production column is destructive and irreversible without a
+-- backup restore — it deliberately does not live in the same file as an
+-- additive schema change, so it can never be applied by someone who only
+-- meant to add the new columns.
+-- =============================================================================

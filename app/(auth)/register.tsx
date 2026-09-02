@@ -9,7 +9,14 @@
  *    valid, unambiguous consent (UK GDPR Art.7).
  *  - Age affirmation checkbox must be actively ticked before the button works —
  *    ICO Children's Code Standard 4 (age assurance). Low-friction approach: a
- *    checkbox declaration that the user is 18+ or a parent/guardian. The timestamp
+ *    flat 18+ self-declaration checkbox, matching docs/terms.html's flat 18+
+ *    requirement (2026-09-01: the previous wording carve-out for "a parent/
+ *    guardian using PlayPlanner for my family" was removed — it was looser
+ *    than the Terms and could be read as inviting an under-18 family member
+ *    to use the account; PlayPlanner intends adult-only ACCOUNTS. This does
+ *    NOT resolve the separate, still-open Children's Code SCOPE question for
+ *    the wider product — see docs/privacy/CHILDRENS_CODE_SCOPE_ASSESSMENT.md).
+ *    The timestamp
  *    of acceptance is recorded in profiles.terms_accepted_at (same timestamp as
  *    terms acceptance — both declarations are made simultaneously at signup).
  *    The act of submitting after checking the box is the consent record.
@@ -414,7 +421,7 @@ export default function RegisterScreen() {
                   accessibilityLabel={
                     ageAffirmed
                       ? 'Age confirmed — tap to uncheck'
-                      : 'Tap to confirm you are 18 or over, or a parent or guardian'
+                      : 'Tap to confirm you are 18 or over'
                   }
                 >
                   <View style={[checkboxBox(ageAffirmed, T), styles.checkBoxTopAlign]}>
@@ -423,7 +430,7 @@ export default function RegisterScreen() {
                     )}
                   </View>
                   <Text style={styles.checkLabel}>
-                    I confirm I am 18 or over, or I am a parent/guardian using PlayPlanner for my family.
+                    I confirm I am 18 or over.
                   </Text>
                 </TouchableOpacity>
 

@@ -178,9 +178,12 @@ export default function PrivacyScreen() {
             If you delete your account, we keep the published image as anonymous venue content for
             other parents to see, but we permanently remove the link to you — the photo is no
             longer associated with your account or identity in any way.{'\n'}
-            • <Bold>Location consent log entries</Bold> — kept for 3 years for ICO accountability
-            purposes, then deleted automatically.{'\n'}
-            • <Bold>GDPR audit log entries</Bold> — kept for 3 years then deleted automatically.{'\n'}
+            • <Bold>Location consent log entries</Bold> — our target retention period is 3 years for
+            ICO accountability purposes. We are in the process of deploying the automated deletion for
+            this; until it is fully in place, these records may be retained a short time beyond 3
+            years, and are periodically reviewed for deletion.{'\n'}
+            • <Bold>GDPR audit log entries</Bold> — same target retention (3 years) and same
+            in-progress automation as above.{'\n'}
             • <Bold>Payment records</Bold> — Stripe retains transaction records in line with their
             legal obligations (typically 7 years for financial records).{'\n\n'}
             You can download all data we hold about you at any time in Profile &gt; Download my data.

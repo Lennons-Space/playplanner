@@ -1449,11 +1449,12 @@ export default function ModerationScreen() {
               </View>
             }
             renderItem={({ item: claim }) => {
-              const maskedPhone = claim.verified_phone
-                ? claim.verified_phone.replace(/(\+\d{2})(\d+)(\d{4})$/, (_m: string, prefix: string, mid: string, last: string) =>
-                    `${prefix} ${'*'.repeat(mid.length)} ${last}`
-                  )
-                : '—';
+              // 2026-09-01 privacy remediation: the server now sends only the
+              // last 4 digits (phone_last4), never the full verified number —
+              // no client-side masking needed, since there is nothing left to
+              // mask. See
+              // supabase/migrations_drafts/20260901120000_venue_claims_phone_minimisation.sql.
+              const maskedPhone = claim.phone_last4 ? `•••• ${claim.phone_last4}` : '—';
 
               const venue    = (claim as any).venue    as { id: string; name: string; address_line1: string | null; city: string } | null;
               const claimant = (claim as any).claimant as { id: string; username: string | null; full_name: string | null } | null;

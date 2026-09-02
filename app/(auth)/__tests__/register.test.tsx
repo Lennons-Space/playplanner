@@ -87,7 +87,7 @@ function fillValidForm() {
     'Password1!'
   );
   // Tick age affirmation (ICO Children's Code Standard 4 — required)
-  fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over, or a parent or guardian'));
+  fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over'));
   // Accept terms (required checkbox — UK GDPR Art.7)
   fireEvent.press(screen.getByLabelText('Tap to accept the Terms of Service and Privacy Policy'));
 }
@@ -189,7 +189,7 @@ describe('RegisterScreen — validation guards', () => {
 
   /** Enable the button by ticking both required checkboxes. */
   function enableButton() {
-    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over, or a parent or guardian'));
+    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over'));
     fireEvent.press(screen.getByLabelText('Tap to accept the Terms of Service and Privacy Policy'));
   }
 
@@ -278,7 +278,7 @@ describe('RegisterScreen — age affirmation checkbox (ICO Standard 4)', () => {
     renderScreen();
 
     // Tick age affirmation but NOT terms
-    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over, or a parent or guardian'));
+    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over'));
 
     const button = screen.getByLabelText('Create your Play Planner account');
     expect(button).toBeDisabled();
@@ -288,7 +288,7 @@ describe('RegisterScreen — age affirmation checkbox (ICO Standard 4)', () => {
     renderScreen();
 
     // Tick both required checkboxes
-    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over, or a parent or guardian'));
+    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over'));
     fireEvent.press(screen.getByLabelText('Tap to accept the Terms of Service and Privacy Policy'));
 
     const button = screen.getByLabelText('Create your Play Planner account');
@@ -300,11 +300,11 @@ describe('RegisterScreen — age affirmation checkbox (ICO Standard 4)', () => {
 
     // Before ticking — shows the "tap to confirm" label
     expect(
-      screen.getByLabelText('Tap to confirm you are 18 or over, or a parent or guardian')
+      screen.getByLabelText('Tap to confirm you are 18 or over')
     ).toBeTruthy();
 
     // Tick it
-    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over, or a parent or guardian'));
+    fireEvent.press(screen.getByLabelText('Tap to confirm you are 18 or over'));
 
     // After ticking — label should change to confirmed state
     expect(screen.getByLabelText('Age confirmed — tap to uncheck')).toBeTruthy();

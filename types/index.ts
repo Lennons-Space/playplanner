@@ -283,7 +283,13 @@ export interface VenueClaim {
   id: string;
   venue_id: string;
   user_id: string;
-  verified_phone: string;
+  // 2026-09-01 privacy remediation: the recoverable full number is no longer
+  // selected into the client. `phone_last4` is the minimised, display-safe
+  // representation — see
+  // supabase/migrations_drafts/20260901120000_venue_claims_phone_minimisation.sql.
+  // `verified_phone` remains in the database (additive-only migration) but
+  // application code should not read or type it as part of this shape.
+  phone_last4: string | null;
   status: 'pending' | 'approved' | 'rejected';
   notes: string | null;
   admin_notes: string | null;
