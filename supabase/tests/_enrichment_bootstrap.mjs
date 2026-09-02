@@ -277,7 +277,17 @@ export const BOOTSTRAP = `
       check (jsonb_typeof(decision_reasons) = 'array'),
     decision_engine_version text,
     decision_at timestamptz,
-    applied_mode text check (applied_mode in ('auto','manual')));
+    applied_mode text check (applied_mode in ('auto','manual')),
+    -- R4 (pre-staging remediation, 2026-09-01): 056 has this column + a
+    -- touch_updated_at trigger; the fixture was missing both. Needed as the
+    -- "when did this become superseded" timestamp for retention purposes --
+    -- propose_field's supersede UPDATE sets no other timestamp.
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now());
+
+  create trigger venue_field_proposals_updated_at
+    before update on venue_field_proposals
+    for each row execute function touch_updated_at();
 
   -- ── 056 snapshot_current_value: the LIVE definition, verbatim ─────────────
   -- 057 did NOT redefine this. booking_url returns a hardcoded null because the

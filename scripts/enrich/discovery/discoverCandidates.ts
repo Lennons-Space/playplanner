@@ -498,7 +498,7 @@ export interface DiscoverDeps {
     dedupe: DedupeResult;
     acceptInput: CandidateAcceptInput;
     acceptResult: CandidateAcceptResult;
-  }) => Promise<{ id: string }>;
+  }) => Promise<{ id: string; outcome?: string; status?: string }>;
   /**
    * Hand an auto_accept-decision candidate to the database's unattended path.
    *
@@ -612,7 +612,15 @@ async function runDiscovery<T>(
           acceptInput: evaluation.acceptInput!,
           acceptResult: evaluation.acceptResult!,
         });
-        if (deps.apply && deps.queueCandidateForReview && acceptResult!.decision === 'auto_accept') {
+        // R2: a terminal-unchanged outcome means this identity was already
+        // resolved by a human (or a prior terminal pipeline rejection) and
+        // upsert_discovery_candidate deliberately left it untouched — the row
+        // is not sitting at 'candidate' any more, so queue_candidate_for_review
+        // would raise 'not_pending_candidate' and this would count as a
+        // spurious error rather than the "already dealt with" no-op it is.
+        if (deps.apply && deps.queueCandidateForReview
+            && acceptResult!.decision === 'auto_accept'
+            && row.outcome !== 'terminal_unchanged') {
           await deps.queueCandidateForReview(row.id);
         }
       } catch {

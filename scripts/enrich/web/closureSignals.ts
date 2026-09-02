@@ -26,6 +26,7 @@
 // =============================================================================
 
 import type { ClosureAssessment, ClosureSignal } from '../../../types/enrichmentAutonomy';
+import { cleanEvidence } from './sanitize';
 
 // Explicit closure phrases. Deliberately narrow — "closed today", "closed on
 // Mondays", "temporarily closed for refurbishment" must NOT match (those are
@@ -58,7 +59,18 @@ export function detectClosureText(
 
   const start = Math.max(0, match.index - 60);
   const end = Math.min(text.length, match.index + match[0].length + 60);
-  const snippet = text.slice(start, end).trim().slice(0, 512);
+  // R6 (pre-staging remediation, 2026-09-01): route through the canonical
+  // scrubber before persistence. This slice is taken from surrounding page
+  // text, not from a field the proposal is "about" — there is no value worth
+  // preserving verbatim here, so no `keep` argument is passed and email/
+  // phone/UK-postcode matches are always redacted. NOTE (be honest about the
+  // limit): scrubPii is a regex-based redactor for email/phone/postcode
+  // shapes — it does not do named-entity/person-name detection, so free text
+  // like "ask for Dave on the way out" is NOT caught by this or any existing
+  // scrubber in this codebase. That gap is pre-existing and shared by every
+  // other evidence_snippet in the schema; recorded here rather than silently
+  // relied upon.
+  const snippet = cleanEvidence(text.slice(start, end));
 
   return {
     kind: opts.sourceTier === 1 ? 'explicit_official_text' : 'explicit_thirdparty_text',

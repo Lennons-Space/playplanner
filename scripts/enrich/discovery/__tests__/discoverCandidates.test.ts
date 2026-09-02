@@ -182,6 +182,24 @@ describe('discoverFromElements', () => {
     expect(queueForReview).not.toHaveBeenCalled();
   });
 
+  // R2 (pre-staging remediation, 2026-09-01): upsertCandidate now returns the
+  // real upsert_discovery_candidate RPC outcome. A 'terminal_unchanged' result
+  // means this identity was already resolved by a human (or a prior pipeline
+  // rejection) and the DB deliberately left it untouched -- queuing it for
+  // review again would raise 'not_pending_candidate' at the SQL layer for no
+  // reason. This is a defence-in-depth TS-side check on top of the real
+  // enforcement, which lives in upsert_discovery_candidate itself (SQL redline
+  // suite, Part J).
+  it('apply mode does NOT re-queue a terminal_unchanged rediscovery', async () => {
+    const upsert = jest.fn().mockResolvedValue({ id: 'cand-terminal', outcome: 'terminal_unchanged', status: 'rejected' });
+    const queueForReview = jest.fn().mockResolvedValue(undefined);
+    await discoverFromElements([zooElement()], {
+      existingVenues: NO_EXISTING, write: true, apply: true, upsertCandidate: upsert, queueCandidateForReview: queueForReview, corroborate: verified,
+    });
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(queueForReview).not.toHaveBeenCalled();
+  });
+
   it('apply mode does NOT queue a quarantined candidate', async () => {
     const upsert = jest.fn().mockResolvedValue({ id: 'cand-3' });
     const queueForReview = jest.fn().mockResolvedValue(undefined);

@@ -138,9 +138,20 @@ const FN_059 = [
   extractFn(SQL_059, 'enrichment_is_valid_website'),
   extractFn(SQL_059, 'enrichment_is_valid_phone'),
   extractFn(SQL_059, 'enrichment_value_is_meaningful'),
+  // R1 (pre-staging remediation, 2026-09-01): the opening_hours equivalent,
+  // now used by auto_apply_field_proposal below.
+  extractFn(SQL_059, 'enrichment_opening_hours_is_meaningful'),
   extractFn(SQL_059, '_enrichment_apply_write'),
   extractFn(SQL_059, 'auto_apply_field_proposal'),
 ].join(String.fromCharCode(10));
+
+// R3 (pre-staging remediation, 2026-09-01): auto_apply_field_proposal now
+// calls enrichment_venue_field_suppressed unconditionally, so this schema must
+// be loaded before FN_059's functions are ever CALLED (not before they are
+// CREATEd -- plpgsql bodies aren't validated until call time -- but boot()
+// below loads it first regardless, for readability).
+const SUPPRESSION_SCHEMA = extractSection(SQL_059, 'suppression_schema');
+const SUPPRESSION_CHECKS = extractSection(SQL_059, 'suppression_checks');
 
 const CLOSURE_SCHEMA = extractSection(SQL_059, 'closure_schema');
 const CLOSURE_FUNCTIONS = extractSection(SQL_059, 'closure_functions');
@@ -150,11 +161,14 @@ const VENUES_PROVENANCE = extractSection(SQL_059, 'venues_provenance');
 // 061 completes what 059 started: independent identity evidence, and the two
 // publication-path functions that replace auto_accept_candidate.
 const CANDIDATE_EVIDENCE = extractSection(SQL_061, 'candidate_evidence');
+const CANDIDATE_UPSERT = extractSection(SQL_061, 'candidate_upsert');
 const CANDIDATE_PUBLICATION = extractSection(SQL_061, 'candidate_publication');
 
 async function boot() {
   const db = new PGlite();
   await db.exec(BOOTSTRAP);
+  await db.exec(SUPPRESSION_SCHEMA);
+  await db.exec(SUPPRESSION_CHECKS);
   await db.exec(FN_059);
   await db.exec(OPERATING_STATUS_COLUMN);
   await db.exec(CLOSURE_SCHEMA);
@@ -162,6 +176,12 @@ async function boot() {
   await db.exec(DISCOVERY_SCHEMA);
   await db.exec(VENUES_PROVENANCE);
   await db.exec(CANDIDATE_EVIDENCE);
+  // CANDIDATE_UPSERT (upsert_discovery_candidate) also calls
+  // enrichment_candidate_source_suppressed (R3) -- loaded here so any test in
+  // this file that exercises it (none currently call it directly, but
+  // CANDIDATE_PUBLICATION's resolve_discovery_candidate does not depend on it
+  // either way) has it available if that changes.
+  await db.exec(CANDIDATE_UPSERT);
   await db.exec(CANDIDATE_PUBLICATION);
   return { db, h: makeHelpers(db) };
 }

@@ -63,6 +63,57 @@ describe('detectClosureText', () => {
     const sig = detectClosureText(longText, { sourceUrl: 'https://example.com/', sourceTier: 1, detectedAt: now });
     expect(sig!.evidenceSnippet.length).toBeLessThanOrEqual(512);
   });
+
+  // R6 (pre-staging remediation, 2026-09-01). Previously this function built
+  // evidenceSnippet via raw text.slice(...).trim().slice(0, 512), with no call
+  // to the canonical scrubber (scripts/enrich/web/sanitize.ts's scrubPii/
+  // cleanEvidence) anywhere in the path — closure evidence could carry a raw
+  // email address, phone number, or UK postcode straight into
+  // venue_closure_signals.evidence_snippet. These tests prove the persisted
+  // snippet is scrubbed, using the same canonical scrubber every other
+  // evidence_snippet in the schema already goes through.
+  describe('R6 -- evidence snippet PII scrubbing', () => {
+    it('redacts an email address adjacent to the closure phrase', () => {
+      const sig = detectClosureText(
+        'This venue has permanently closed. Enquiries to owner@willowsfarm.co.uk please.',
+        { sourceUrl: 'https://willowsfarm.co.uk/', sourceTier: 1, detectedAt: now },
+      );
+      expect(sig!.evidenceSnippet).not.toMatch(/owner@willowsfarm\.co\.uk/);
+      expect(sig!.evidenceSnippet).toContain('[email]');
+    });
+
+    it('redacts a phone number adjacent to the closure phrase', () => {
+      const sig = detectClosureText(
+        'We have closed. Call 01225 123456 with any questions about refunds.',
+        { sourceUrl: 'https://example.com/', sourceTier: 1, detectedAt: now },
+      );
+      expect(sig!.evidenceSnippet).not.toMatch(/01225\s*123456/);
+      expect(sig!.evidenceSnippet).toContain('[phone]');
+    });
+
+    it('is honest about its limits: this scrubber does not do named-entity/person-name detection', () => {
+      // Documents an existing, shared limitation (scrubPii is regex-based —
+      // email/phone/UK-postcode shapes only) rather than silently relying on
+      // protection that does not exist. If a future scrubber adds name
+      // detection, this test should be updated to assert the redaction
+      // instead of documenting its absence.
+      const sig = detectClosureText(
+        'This venue has now closed — ask for Dave if you have questions.',
+        { sourceUrl: 'https://example.com/', sourceTier: 1, detectedAt: now },
+      );
+      expect(sig!.evidenceSnippet).toContain('Dave');
+    });
+
+    it('leaves ordinary non-PII closure evidence unchanged apart from whitespace collapsing', () => {
+      const sig = detectClosureText(
+        'This venue has permanently closed after the lease expired.',
+        { sourceUrl: 'https://example.com/', sourceTier: 1, detectedAt: now },
+      );
+      expect(sig!.evidenceSnippet).toContain('permanently closed');
+      expect(sig!.evidenceSnippet).not.toContain('[email]');
+      expect(sig!.evidenceSnippet).not.toContain('[phone]');
+    });
+  });
 });
 
 describe('assessClosure — escalation ladder', () => {

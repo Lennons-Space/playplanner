@@ -102,9 +102,34 @@ const REBASED_059 = [
   extractFn(SQL_059, 'enrichment_is_valid_website'),
   extractFn(SQL_059, 'enrichment_is_valid_phone'),
   extractFn(SQL_059, 'enrichment_value_is_meaningful'),
+  // R1 (pre-staging remediation, 2026-09-01): the opening_hours equivalent of
+  // enrichment_value_is_meaningful, now used by auto_apply_field_proposal below.
+  extractFn(SQL_059, 'enrichment_opening_hours_is_meaningful'),
   extractFn(SQL_059, '_enrichment_apply_write'),
   extractFn(SQL_059, 'auto_apply_field_proposal'),
 ].join(String.fromCharCode(10));
+
+// R3 (pre-staging remediation, 2026-09-01): the suppression/objection schema
+// and its two check functions. Both `rebased` (auto_apply_field_proposal and
+// propose_field call enrichment_venue_field_suppressed) and `draftShapes`
+// (upsert_discovery_candidate calls enrichment_candidate_source_suppressed)
+// now depend on this being loaded, so boot() below loads it for either flag.
+const REAL_SUPPRESSION_059 = [
+  extractSection(SQL_059, 'suppression_schema'),
+  extractSection(SQL_059, 'suppression_checks'),
+  extractSection(SQL_059, 'suppression_admin'),
+].join(String.fromCharCode(10));
+
+// propose_field, extended with the suppression re-check (R3). Not part of
+// REBASED_059's extractFn list above because propose_field is not a NEW
+// function 059 introduces -- it is 057's live function, extended here exactly
+// as auto_apply_field_proposal already is. Loaded whenever `rebased` is true.
+const REBASED_PROPOSE_FIELD = extractSection(SQL_059, 'suppression_propose_field');
+
+// R4 (pre-staging remediation, 2026-09-01): retention purge functions. Not
+// loaded by default -- only the tests that specifically exercise retention
+// request it, via boot({ retention: true }).
+const REAL_RETENTION_059 = extractSection(SQL_059, 'retention_functions');
 
 const REBASED_060 = [
   extractFn(SQL_060, 'snapshot_current_value'),
@@ -183,14 +208,20 @@ const CANDIDATE_FUNCTIONS = [
 
 
 async function boot({ draftColumns = false, draftShapes = false, draftSnapshot = false,
-                      rebased = false } = {}) {
+                      rebased = false, retention = false } = {}) {
   const db = new PGlite();
   await db.exec(BOOTSTRAP);
   if (draftColumns || rebased) await db.exec(DRAFT_COLUMNS);
   if (draftSnapshot) await db.exec(DRAFT_060_SNAPSHOT);
+  // R3: both `rebased` (auto_apply_field_proposal/propose_field) and
+  // `draftShapes` (upsert_discovery_candidate) call the suppression checks,
+  // so either flag needs the suppression schema present before those bodies
+  // are loaded.
+  if (rebased || draftShapes) await db.exec(REAL_SUPPRESSION_059);
   if (rebased) {
     // Apply order matters: 059 then 060 then 061, as promotion would.
     await db.exec(REBASED_059);
+    await db.exec(REBASED_PROPOSE_FIELD);
     await db.exec(REBASED_060);
     await db.exec(REBASED_061);
   }
@@ -200,6 +231,9 @@ async function boot({ draftColumns = false, draftShapes = false, draftSnapshot =
     await db.exec(REAL_DISCOVERY_059);
     await db.exec(REAL_DISCOVERY_061);
   }
+  // R4: retention functions. Requires draftShapes too when the caller wants to
+  // exercise operating-status-event purge (needs the closure schema/trigger).
+  if (retention) await db.exec(REAL_RETENTION_059);
   return { db, h: makeHelpers(db) };
 }
 
@@ -1116,20 +1150,32 @@ async function partG() {
   });
 
   await test('G11. a service_role UPDATE cannot forge an approved candidate', async () => {
-    // service_role bypasses RLS, so the policy is no defence here. The table's
-    // own CHECK constraints are, and they are what this proves.
+    // R2 (pre-staging remediation, 2026-09-01): service_role now holds NO
+    // grant on this table at all, so the FIRST line of defence is "permission
+    // denied" before the UPDATE is even attempted -- a strictly stronger
+    // result than this test originally proved. But the ORIGINAL point still
+    // matters as defence-in-depth: "a privilege can be re-granted by a later
+    // migration" is the exact reasoning this file already applies to the
+    // closure event log's trigger (Section B2's comment). So this test
+    // temporarily re-grants UPDATE (test-only, on this disposable pglite
+    // instance) to prove the table's own CHECK constraints independently stop
+    // a forged approval even if a future migration accidentally widens the
+    // grant back -- not merely that today's grant happens to block it.
     const c = await h.newCandidate();
+    await h.reset();
+    await db.exec(`grant select, update on venue_discovery_candidates to service_role`);
     await h.asService();
     await throws(
       h.q(`update venue_discovery_candidates set status='approved' where id=$1`, [c]),
       /approved_audit_ck|violates check/i,
-      'an approved row with no human actor must be structurally impossible');
+      'an approved row with no human actor must be structurally impossible, even with the grant restored');
     await throws(
       h.q(`update venue_discovery_candidates set status='approved', resolved_mode='manual',
              reviewed_at=now(), reviewed_by=$2 where id=$1`, [c, ADMIN]),
       /venue_only_when_approved_ck|approved_audit_ck|violates check/i,
-      'an approved row must also name the venue it produced');
+      'an approved row must also name the venue it produced, even with the grant restored');
     await h.reset();
+    await db.exec(`revoke select, update on venue_discovery_candidates from service_role`); // restore R2's baseline for later tests
   });
 
   // ── G12..G14: only a named human admin publishes ───────────────────────────
@@ -1274,7 +1320,12 @@ async function partG() {
   });
 
   await test('G21. a terminal state with no decider is structurally impossible', async () => {
+    // R2: see G11's comment -- UPDATE is temporarily re-granted (test-only) to
+    // prove the CHECK constraint itself, independent of today's grant, is
+    // what makes a decider-less terminal row impossible.
     const c = await h.newCandidate();
+    await h.reset();
+    await db.exec(`grant select, update on venue_discovery_candidates to service_role`);
     await h.asService();
     for (const st of ['rejected', 'dismissed', 'duplicate']) {
       await throws(
@@ -1288,6 +1339,7 @@ async function partG() {
                where id=$1`, [c]);
     await h.reset();
     eq((await h.candidate(c)).resolved_mode, 'system');
+    await db.exec(`revoke select, update on venue_discovery_candidates from service_role`); // restore R2's baseline
   });
 
   // ── G22..G24: privileges ───────────────────────────────────────────────────
@@ -1295,9 +1347,13 @@ async function partG() {
     await h.reset();
     const PRIVS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
     const expected = {
+      // R2 (pre-staging remediation, 2026-09-01): service_role now holds NO
+      // privilege on this table at all -- the only door is
+      // upsert_discovery_candidate (061 B2), a SECURITY DEFINER function that
+      // needs no table grant on its caller's role. See H28 for the
+      // "no direct table DML for ANY API role" proof this matrix backs up.
       venue_discovery_candidates: {
-        anon: {}, authenticated: {},
-        service_role: { SELECT: true, INSERT: true, UPDATE: true },
+        anon: {}, authenticated: {}, service_role: {},
       },
       venue_closure_signals: {
         anon: {}, authenticated: {},
@@ -1608,16 +1664,24 @@ async function partH() {
 
   // ── H6..H10: the event log ─────────────────────────────────────────────────
   await test('H6. every successful transition appends EXACTLY one event', async () => {
+    // Order is asserted from each RPC's OWN returned event_id, not by
+    // re-querying with ORDER BY created_at (a pre-existing flake: three calls
+    // this close together can land on the same timestamp under pglite's clock
+    // resolution, and `eventsFor`'s tiebreaker is `id`, a random UUID -- so a
+    // timestamp tie sorts in effectively random order. Not introduced or
+    // touched by the pre-staging remediation pass; fixed here as a one-line
+    // sort-key issue found while re-running these gates repeatedly).
     const v = await h.newVenue({ claimed_by: null });
     await h.asService();
-    await h.q(`select system_flag_suspected_closure($1,'a')`, [v]);
+    const r1 = (await h.q(`select system_flag_suspected_closure($1,'a') as r`, [v])).rows[0].r;
     await h.asUser(ADMIN);
-    await h.q(`select confirm_venue_closure($1,'b')`, [v]);
-    await h.q(`select reactivate_venue($1,'c')`, [v]);
+    const r2 = (await h.q(`select confirm_venue_closure($1,'b') as r`, [v])).rows[0].r;
+    const r3 = (await h.q(`select reactivate_venue($1,'c') as r`, [v])).rows[0].r;
     await h.reset();
     const ev = await eventsFor(v);
     eq(ev.length, 3, 'three transitions, three events -- no more, no fewer');
-    eq(JSON.stringify(ev.map((e) => [e.from_status, e.to_status])),
+    const byId = Object.fromEntries(ev.map((e) => [e.id, e]));
+    eq(JSON.stringify([r1, r2, r3].map((r) => [byId[r.event_id].from_status, byId[r.event_id].to_status])),
        JSON.stringify([['active', 'suspected_closed'],
                        ['suspected_closed', 'confirmed_closed'],
                        ['confirmed_closed', 'active']]));
@@ -1908,7 +1972,14 @@ async function partH() {
 
   await test('H28. the upsert RPC is the ONLY way in -- no direct table DML for any API role', async () => {
     await h.reset();
-    for (const role of ['anon', 'authenticated']) {
+    // R2 (pre-staging remediation, 2026-09-01): FIXED WEAKNESS. This loop
+    // previously checked only ['anon', 'authenticated'] and never checked
+    // service_role -- the one role that actually held SELECT, INSERT, UPDATE
+    // directly on this table (059's grant, before R2), and the one the
+    // discovery runner authenticates as. A test titled "no direct table DML
+    // for ANY API role" that skips the role which actually has DML privilege
+    // proves nothing about the claim in its own title.
+    for (const role of ['anon', 'authenticated', 'service_role']) {
       for (const p of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
         eq((await h.q(`select has_table_privilege($1,'venue_discovery_candidates',$2) as x`,
           [role, p])).rows[0].x, false, `${role} must hold no ${p}`);
@@ -1923,6 +1994,446 @@ async function partH() {
 
   await db.close();
 }
+
+// =============================================================================
+// PART I -- R1: opening_hours fill-if-empty (pre-staging remediation, 2026-09-01)
+// =============================================================================
+// F16 (Part F, above) already proves the empty-existing-hours case applies
+// with a ledger row and rolls back cleanly -- that path is UNCHANGED by R1.
+// What was previously UNGUARDED is the opposite case: a venue with a genuine,
+// meaningful published week. Before this fix, auto_apply_field_proposal's
+// fill-if-empty check only named ('website','phone','email'), so opening_hours
+// fell through to _enrichment_apply_write, which unconditionally DELETEs every
+// existing row and reinserts the proposed week -- automation replacing data
+// that was already there.
+async function partI() {
+  console.log('\nPART I -- R1: opening_hours fill-if-empty\n');
+  const { db, h } = await boot({ rebased: true });
+
+  const fullWeek = (openHour = '09:00', closeHour = '17:00') =>
+    Array.from({ length: 7 }, (_, d) => ({
+      day_of_week: d, is_closed: false, intervals: [{ opens: openHour, closes: closeHour }] }));
+
+  await test('I1. automation must refuse to overwrite a venue\'s meaningful existing opening_hours', async () => {
+    const v = await h.newVenue({ claimed_by: null });
+    // Seed a genuine existing week directly (as a human/import would have).
+    for (const d of [0, 1, 2, 3, 4, 5, 6]) {
+      await h.q(`insert into opening_hours (venue_id, day_of_week, opens_at, closes_at, is_closed)
+                 values ($1,$2,'10:00','16:00',false)`, [v, d]);
+    }
+    const { proposal } = await h.newProposal(v, 'opening_hours', { days: fullWeek() });
+    await h.asService();
+    await throws(h.q(`select auto_apply_field_proposal($1, 99::smallint, 90::smallint)`, [proposal]),
+      /live_value_not_empty:opening_hours/,
+      'a genuine published week must never be silently replaced by automation');
+    await h.reset();
+    const rows = await h.q(
+      `select opens_at, closes_at from opening_hours where venue_id=$1 order by day_of_week`, [v]);
+    eq(rows.rows.length, 7, 'the existing week must survive intact');
+    eq(String(rows.rows[0].opens_at).slice(0, 5), '10:00', 'not overwritten with the proposed hours');
+  });
+
+  await test('I2. a venue with a PARTIAL/closed-only existing record is still "empty" enough to fill', async () => {
+    // is_closed rows with no opens_at/closes_at still COUNT as existing hours
+    // (any row at all means the week has been recorded) -- this proves the
+    // guard is about "has a week been recorded", not "has non-closed hours".
+    const v = await h.newVenue({ claimed_by: null });
+    for (const d of [0, 1, 2, 3, 4, 5, 6]) {
+      await h.q(`insert into opening_hours (venue_id, day_of_week, is_closed) values ($1,$2,true)`, [v, d]);
+    }
+    const { proposal } = await h.newProposal(v, 'opening_hours', { days: fullWeek() });
+    await h.asService();
+    await throws(h.q(`select auto_apply_field_proposal($1, 99::smallint, 90::smallint)`, [proposal]),
+      /live_value_not_empty:opening_hours/,
+      'an all-closed recorded week is still a recorded week, not an empty one');
+    await h.reset();
+  });
+
+  await test('I3. a HUMAN admin may still overwrite an existing week (the guard is autonomy-only)', async () => {
+    // Same shape as F18 (seasonal_notes), proving R1's guard lives in the
+    // POLICY wrapper (auto_apply_field_proposal), not in the shared
+    // _enrichment_apply_write primitive -- a human capability must not leak
+    // away as a side effect of tightening automation.
+    const v = await h.newVenue({ claimed_by: null });
+    await h.q(`insert into opening_hours (venue_id, day_of_week, opens_at, closes_at, is_closed)
+               values ($1,0,'10:00','16:00',false)`, [v]);
+    const { proposal } = await h.newProposal(v, 'opening_hours', { days: fullWeek('08:00', '18:00') });
+    await h.asUser(ADMIN);
+    await h.q(`select apply_venue_proposal($1)`, [proposal]);
+    await h.reset();
+    const rows = await h.q(
+      `select opens_at from opening_hours where venue_id=$1 order by day_of_week`, [v]);
+    eq(rows.rows.length, 7);
+    eq(String(rows.rows[0].opens_at).slice(0, 5), '08:00', 'a human may deliberately replace the week');
+  });
+
+  await test('I4. a stale opening_hours proposal must still be refused before the overwrite guard even matters', async () => {
+    const v = await h.newVenue({ claimed_by: null });
+    const { proposal } = await h.newProposal(v, 'opening_hours', { days: fullWeek() });
+    // Change the live value after the proposal snapshot was taken -- the
+    // universal stale guard in _enrichment_apply_write must fire first.
+    await h.q(`insert into opening_hours (venue_id, day_of_week, opens_at, closes_at, is_closed)
+               values ($1,0,'11:00','15:00',false)`, [v]);
+    await h.asService();
+    await throws(h.q(`select auto_apply_field_proposal($1, 99::smallint, 90::smallint)`, [proposal]),
+      /live_value_not_empty:opening_hours/,
+      'the fill-if-empty check runs before the stale check in the policy wrapper, and correctly still refuses');
+    await h.reset();
+  });
+
+  await db.close();
+}
+
+// =============================================================================
+// PART J -- R3: durable suppression / objection mechanism (pre-staging
+// remediation, 2026-09-01)
+// =============================================================================
+async function partJ() {
+  console.log('\nPART J -- R3: enrichment suppression (objection/erasure)\n');
+  const { db, h } = await boot({ rebased: true, draftShapes: true });
+
+  // create_enrichment_suppression(p_reason, p_venue_id, p_field, p_source,
+  //   p_source_id, p_notes, p_is_permanent, p_expires_at) -- 8 positional args.
+  const suppressVenueField = async (venueId, field, opts = {}) => {
+    await h.asUser(ADMIN);
+    const id = (await h.q(
+      `select create_enrichment_suppression($1,$2,$3,null,null,$4,$5,$6) as id`,
+      [opts.reason ?? 'venue operator objected', venueId, field,
+       opts.notes ?? null, opts.isPermanent ?? true, opts.expiresAt ?? null])).rows[0].id;
+    await h.reset();
+    return id;
+  };
+
+  await test('J1. a suppressed field cannot be re-proposed by propose_field', async () => {
+    const v = await h.newVenue({ claimed_by: null, phone: null });
+    await suppressVenueField(v, 'phone');
+    await h.asService();
+    const run = (await h.q(
+      `insert into venue_enrichment_runs (venue_id, run_label, outcome)
+       values ($1,'test-run','extracted') returning id`, [v])).rows[0].id;
+    await throws(h.q(
+      `select propose_field($1,$2,'phone','{"v":"07911123456"}'::jsonb,
+         'https://x.test','ev',null,'regex','high',false)`, [run, v]),
+      /field_suppressed:phone/, 'the objected-to field must never even reach a proposal row');
+    await h.reset();
+    const count = (await h.q(
+      `select count(*)::int c from venue_field_proposals where venue_id=$1 and field='phone'`, [v]))
+      .rows[0].c;
+    eq(count, 0, 'no proposal row of any kind must exist for the suppressed field');
+  });
+
+  await test('J2. a suppression created AFTER a proposal is already queued still blocks auto-apply', async () => {
+    // This is the case a propose-time-only check would miss entirely.
+    const v = await h.newVenue({ claimed_by: null, phone: null });
+    const { proposal } = await h.newProposal(v, 'phone', { v: '07911123456' });
+    await suppressVenueField(v, 'phone', { reason: 'objected after the crawl, before the batch ran' });
+    await h.asService();
+    await throws(h.q(`select auto_apply_field_proposal($1, 95::smallint, 90::smallint)`, [proposal]),
+      /field_suppressed:phone/, 'auto-apply must re-check suppression, not trust the propose-time state');
+    await h.reset();
+    const v2 = (await h.q(`select phone from venues where id=$1`, [v])).rows[0].phone;
+    eq(v2, null, 'the already-queued value must never reach venues');
+  });
+
+  await test('J3. suppressing ONE field must not block an unrelated field on the same venue', async () => {
+    const v = await h.newVenue({ claimed_by: null, phone: null, website: null });
+    await suppressVenueField(v, 'phone');
+    const { proposal } = await h.newProposal(v, 'website', { v: 'https://still-fine.test' });
+    await h.asService();
+    await h.q(`select auto_apply_field_proposal($1, 95::smallint, 90::smallint)`, [proposal]);
+    await h.reset();
+    const website = (await h.q(`select website from venues where id=$1`, [v])).rows[0].website;
+    eq(website, 'https://still-fine.test', 'an unrelated field must proceed normally');
+  });
+
+  await test('J4. a whole-venue suppression (field IS NULL) blocks every field, not just one', async () => {
+    const v = await h.newVenue({ claimed_by: null, phone: null, website: null });
+    await h.asUser(ADMIN);
+    await h.q(`select create_enrichment_suppression('whole venue objection',$1,null,null,null,null,true,null)`, [v]);
+    await h.reset();
+    await h.asService();
+    const run = (await h.q(
+      `insert into venue_enrichment_runs (venue_id, run_label, outcome)
+       values ($1,'test-run','extracted') returning id`, [v])).rows[0].id;
+    for (const field of ['phone', 'website']) {
+      await throws(h.q(
+        `select propose_field($1,$2,$3,'{"v":"x"}'::jsonb,'https://x.test','ev',null,'regex','high',false)`,
+        [run, v, field]), new RegExp(`field_suppressed:${field}`));
+    }
+    await h.reset();
+  });
+
+  await test('J5. a whole-SOURCE suppression blocks a new discovery candidate from ever being admitted', async () => {
+    await h.asUser(ADMIN);
+    await h.q(`select create_enrichment_suppression('operator asked never to be listed',
+                 null,null,'osm','node/999888',null,true,null)`);
+    await h.reset();
+    await h.asService();
+    await throws(h.q(
+      `select upsert_discovery_candidate($1::jsonb)`,
+      [JSON.stringify({ source: 'osm', source_id: 'node/999888', name: 'Should Never Exist',
+                        latitude: 51.38, longitude: -2.36, status: 'candidate' })]),
+      /candidate_source_suppressed:osm\/node\/999888/,
+      'a suppressed source identity must be refused even on its FIRST sighting');
+    await h.reset();
+    const count = (await h.q(
+      `select count(*)::int c from venue_discovery_candidates where source_id='node/999888'`)).rows[0].c;
+    eq(count, 0, 'no row of any kind must be created for a suppressed source identity');
+  });
+
+  await test('J6. service_role cannot bypass a suppression -- the check has no role branch', async () => {
+    // Not a role-based check at all: propose_field/auto_apply_field_proposal/
+    // upsert_discovery_candidate call enrichment_venue_field_suppressed /
+    // enrichment_candidate_source_suppressed unconditionally, for every
+    // caller. Demonstrated here by calling AS service_role (the role every
+    // enrichment write runs as) and getting the same refusal J1/J5 already
+    // proved for a differently-labelled call.
+    const v = await h.newVenue({ claimed_by: null, phone: null });
+    await suppressVenueField(v, 'phone');
+    await h.asService();
+    const run = (await h.q(
+      `insert into venue_enrichment_runs (venue_id, run_label, outcome)
+       values ($1,'test-run','extracted') returning id`, [v])).rows[0].id;
+    await throws(h.q(
+      `select propose_field($1,$2,'phone','{"v":"x"}'::jsonb,'https://x.test','ev',null,'regex','high',false)`,
+      [run, v]), /field_suppressed:phone/, 'service_role gets no special exemption from the check');
+    await h.reset();
+  });
+
+  await test('J7. admin removal of a suppression deliberately restores eligibility', async () => {
+    const v = await h.newVenue({ claimed_by: null, phone: null });
+    const supId = await suppressVenueField(v, 'phone');
+    await h.asUser(ADMIN);
+    await h.q(`select remove_enrichment_suppression($1,'objection withdrawn')`, [supId]);
+    await h.reset();
+    await h.asService();
+    const run = (await h.q(
+      `insert into venue_enrichment_runs (venue_id, run_label, outcome)
+       values ($1,'test-run','extracted') returning id`, [v])).rows[0].id;
+    const p = (await h.q(
+      `select propose_field($1,$2,'phone','{"v":"07911123456"}'::jsonb,
+         'https://x.test','ev',null,'regex','high',false) as id`, [run, v])).rows[0].id;
+    assert(p, 'proposing must succeed again once the suppression is deliberately removed');
+    await h.reset();
+    const row = (await h.q(`select removed_by, removed_at from venue_enrichment_suppressions where id=$1`,
+      [supId])).rows[0];
+    assert(row.removed_by && row.removed_at, 'removal itself must be recorded, not a hard delete');
+  });
+
+  await test('J8. a non-admin authenticated user cannot create or remove a suppression', async () => {
+    const v = await h.newVenue({ claimed_by: null });
+    await h.asUser(OWNER);
+    await throws(h.q(`select create_enrichment_suppression('trying anyway',$1,null,null,null,null,true,null)`, [v]),
+      /not_admin/);
+    await h.reset();
+  });
+
+  await test('J9. ACL matrix for the suppression surface', async () => {
+    for (const [fn, expect] of [
+      ['public.create_enrichment_suppression(text,uuid,text,text,text,text,boolean,timestamptz)',
+       { PUBLIC: false, anon: false, authenticated: true, service_role: false }],
+      ['public.remove_enrichment_suppression(uuid,text)',
+       { PUBLIC: false, anon: false, authenticated: true, service_role: false }],
+      ['public.list_enrichment_suppressions(boolean)',
+       { PUBLIC: false, anon: false, authenticated: true, service_role: false }],
+      ['public.enrichment_venue_field_suppressed(uuid,text)',
+       { PUBLIC: false, anon: false, authenticated: false, service_role: true }],
+      ['public.enrichment_candidate_source_suppressed(text,text)',
+       { PUBLIC: false, anon: false, authenticated: false, service_role: true }],
+    ]) {
+      const acl = await h.fnAcl(fn);
+      for (const role of ['PUBLIC', 'anon', 'authenticated', 'service_role']) {
+        eq(acl[role], expect[role], `${fn} ${role}`);
+      }
+    }
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      for (const p of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
+        eq((await h.q(`select has_table_privilege($1,'venue_enrichment_suppressions',$2) as x`,
+          [role, p])).rows[0].x, false, `${role} must hold no ${p} on the suppression table itself`);
+      }
+    }
+  });
+
+  await db.close();
+}
+
+// =============================================================================
+// PART K -- R4: retention capability (pre-staging remediation, 2026-09-01)
+// =============================================================================
+// Every function under test here has NO EXECUTE grant to any role (by
+// design -- see 059 Section F's header) and is called directly as the
+// pglite superuser/owner in these tests, exactly as a future signed-off ops
+// script would need an explicit, separately-granted capability to do. These
+// tests prove the MECHANISM works and is bounded; they do not imply any
+// period here is approved for real use.
+async function partK() {
+  console.log('\nPART K -- R4: retention capability\n');
+  // rebased: true is needed too -- K5 exercises auto_apply_field_proposal,
+  // which is only loaded by the `rebased` flag (see REBASED_059 above).
+  const { db, h } = await boot({ rebased: true, draftShapes: true, retention: true });
+
+  await test('K1. a floor rejects an unset or too-short retention period (every purge function)', async () => {
+    await throws(h.q(`select purge_expired_operating_status_events(null)`), /retention_period_too_short_or_unset/);
+    await throws(h.q(`select purge_expired_operating_status_events(10)`), /retention_period_too_short_or_unset/);
+    await throws(h.q(`select purge_old_field_proposals(null, 30)`), /retention_period_too_short_or_unset/);
+    await throws(h.q(`select purge_old_enrichment_write_evidence(1)`), /retention_period_too_short_or_unset/);
+    await throws(h.q(`select purge_old_discovery_candidate_contact_data(1)`), /retention_period_too_short_or_unset/);
+    await throws(h.q(`select purge_old_closure_signals(1)`), /retention_period_too_short_or_unset/);
+  });
+
+  await test('K2. venue_operating_status_events: ordinary DELETE is still refused for every role, including the owner', async () => {
+    const v = await h.newVenue({ claimed_by: null });
+    await h.q(`select system_flag_suspected_closure($1,'test signal')`, [v]);
+    await throws(h.q(`delete from venue_operating_status_events where venue_id=$1`, [v]),
+      /append-only/i, 'an ordinary DELETE (even as the owning role, outside the purge function) must still be refused');
+  });
+
+  await test('K3. purge_expired_operating_status_events deletes only rows older than the cutoff, nothing newer', async () => {
+    // Cannot backdate via UPDATE -- the append-only trigger refuses UPDATE
+    // unconditionally, by design (K2), even for retention purposes. So the
+    // "old" row is inserted directly with an already-old created_at (INSERT
+    // is not blocked by the trigger), as the reset/owner role which holds no
+    // named-role grant restrictions.
+    const v = await h.newVenue({ claimed_by: null });
+    await h.q(`insert into venue_operating_status_events
+                 (venue_id, from_status, to_status, mode, actor_id, created_at)
+               values ($1,'active','suspected_closed','auto',null, now() - interval '1000 days')`, [v]);
+    const v2 = await h.newVenue({ claimed_by: null });
+    await h.q(`select system_flag_suspected_closure($1,'recent signal')`, [v2]);
+
+    const deleted = (await h.q(`select purge_expired_operating_status_events(730) as c`)).rows[0].c;
+    assert(deleted >= 1, 'the aged-out row must be counted as deleted');
+    const remaining = await h.q(`select venue_id from venue_operating_status_events`);
+    assert(!remaining.rows.some((r) => r.venue_id === v), 'the old row must be gone');
+    assert(remaining.rows.some((r) => r.venue_id === v2), 'the recent row must survive');
+  });
+
+  await test('K4. after a purge, the append-only guarantee is restored (the GUC does not leak)', async () => {
+    const v = await h.newVenue({ claimed_by: null });
+    await h.q(`select system_flag_suspected_closure($1,'another signal')`, [v]);
+    await h.q(`select purge_expired_operating_status_events(99999)`); // deletes nothing (too recent)
+    await throws(h.q(`delete from venue_operating_status_events where venue_id=$1`, [v]),
+      /append-only/i, 'the retention bypass must not remain armed after the function returns');
+  });
+
+  await test('K5. purge_old_field_proposals removes rejected/superseded rows, never pending or applied', async () => {
+    const vPending = await h.newVenue({ claimed_by: null, phone: null });
+    const { proposal: pending } = await h.newProposal(vPending, 'phone', { v: 'x' });
+    const vApplied = await h.newVenue({ claimed_by: null, phone: null });
+    const { proposal: applied } = await h.newProposal(vApplied, 'phone', { v: '+441234567890' });
+    await h.asService();
+    await h.q(`select auto_apply_field_proposal($1, 95::smallint, 90::smallint)`, [applied]);
+    await h.reset();
+    const vRejected = await h.newVenue({ claimed_by: null });
+    const { proposal: rejected } = await h.newProposal(vRejected, 'phone', { v: '+441234567890' });
+    await h.q(`update venue_field_proposals set status='rejected', decision_at = now() - interval '1000 days' where id=$1`, [rejected]);
+
+    const count = (await h.q(`select purge_old_field_proposals(90, 14) as c`)).rows[0].c;
+    assert(count >= 1);
+    const statuses = (await h.q(
+      `select id, status from venue_field_proposals where id in ($1,$2,$3)`,
+      [pending, applied, rejected])).rows;
+    assert(statuses.some((r) => r.id === pending), 'a pending proposal must never be purged');
+    assert(statuses.some((r) => r.id === applied), 'an applied proposal is the audit record and must never be purged');
+    assert(!statuses.some((r) => r.id === rejected), 'the old rejected proposal must be gone');
+  });
+
+  await test('K6. purge_old_discovery_candidate_contact_data nulls contact fields but keeps the decision skeleton', async () => {
+    const c = await h.newCandidate({ source: 'osm', source_id: 'node/800001', status: 'quarantined',
+      phone: '01225 123456', website: 'https://old.test' });
+    await h.asUser(ADMIN);
+    await h.q(`select resolve_discovery_candidate($1,'reject','not a real venue')`, [c]);
+    await h.reset();
+    await h.q(`update venue_discovery_candidates set reviewed_at = now() - interval '1000 days' where id=$1`, [c]);
+
+    await h.q(`select purge_old_discovery_candidate_contact_data(30)`);
+    const row = await h.candidate(c);
+    eq(row.phone, null);
+    eq(row.website, null);
+    eq(row.address_line1, null);
+    eq(row.status, 'rejected', 'the decision skeleton (status/resolved_mode/reviewed_by/at) must survive');
+    assert(row.reviewed_by !== undefined, 'reviewed_by column must still be present/queryable');
+  });
+
+  await test('K7. purge_old_discovery_candidate_contact_data never touches an approved (published) candidate', async () => {
+    const c = await h.newCandidate({ source: 'osm', source_id: 'node/800002', status: 'quarantined',
+      phone: '01225 999999', postcode: 'BA1 1AA', city: 'Bath' });
+    await h.asUser(ADMIN);
+    await h.q(`select resolve_discovery_candidate($1,'approve',null)`, [c]);
+    await h.reset();
+    await h.q(`update venue_discovery_candidates set reviewed_at = now() - interval '1000 days' where id=$1`, [c]);
+    await h.q(`select purge_old_discovery_candidate_contact_data(30)`);
+    const row = await h.candidate(c);
+    eq(row.phone, '01225 999999', 'an approved candidate is the audit trail for a live venue and must not be touched');
+  });
+
+  await db.close();
+}
+
+// =============================================================================
+// PART L -- retention x suppression interaction (required explicitly by the
+// remediation brief: a retention job must never destroy the only record
+// preventing re-enrichment)
+// =============================================================================
+async function partL() {
+  console.log('\nPART L -- retention must never delete a suppression record\n');
+  const { db, h } = await boot({ rebased: true, draftShapes: true, retention: true });
+
+  await test('L1. no retention function in this file touches venue_enrichment_suppressions at all', async () => {
+    // Structural, not behavioural: prove it by reading the actual function
+    // bodies rather than trusting a comment. None of the R4 purge functions
+    // may reference the suppression table in any DELETE/UPDATE.
+    const fns = [
+      'purge_expired_operating_status_events', 'purge_old_field_proposals',
+      'purge_old_enrichment_write_evidence', 'purge_old_discovery_candidate_contact_data',
+      'purge_old_closure_signals',
+    ];
+    for (const fn of fns) {
+      const src = (await h.q(
+        `select pg_get_functiondef(p.oid) as def from pg_proc p where proname = $1`, [fn])).rows[0].def;
+      assert(!/venue_enrichment_suppressions/i.test(src),
+        `${fn} must never reference venue_enrichment_suppressions`);
+    }
+  });
+
+  await test('L2. an old suppression survives every retention pass untouched, and still blocks re-enrichment', async () => {
+    const v = await h.newVenue({ claimed_by: null, phone: null });
+    await h.asUser(ADMIN);
+    const supId = (await h.q(
+      `select create_enrichment_suppression('objection, now a year old',$1,'phone',null,null,null,true,null) as id`,
+      [v])).rows[0].id;
+    await h.reset();
+    // Backdate it as far as any retention window in this file would reach.
+    // Must run as the reset/owner role: `authenticated` (even ADMIN) holds no
+    // table grant on venue_enrichment_suppressions at all (R3's table has no
+    // grants to any named role, by design -- see Section E's header).
+    await h.q(`update venue_enrichment_suppressions set created_at = now() - interval '3650 days' where id=$1`, [supId]);
+
+    // Run every purge function that could plausibly run in the same maintenance window.
+    await h.q(`select purge_expired_operating_status_events(365)`);
+    await h.q(`select purge_old_field_proposals(30, 7)`);
+    await h.q(`select purge_old_enrichment_write_evidence(365)`);
+    await h.q(`select purge_old_discovery_candidate_contact_data(30)`);
+    await h.q(`select purge_old_closure_signals(30)`);
+
+    const row = (await h.q(`select removed_at from venue_enrichment_suppressions where id=$1`, [supId])).rows[0];
+    assert(row, 'the suppression row itself must still exist');
+    eq(row.removed_at, null, 'and must still be ACTIVE -- retention must never lift an objection by attrition');
+
+    await h.asService();
+    const run = (await h.q(
+      `insert into venue_enrichment_runs (venue_id, run_label, outcome)
+       values ($1,'test-run','extracted') returning id`, [v])).rows[0].id;
+    await throws(h.q(
+      `select propose_field($1,$2,'phone','{"v":"07911123456"}'::jsonb,'https://x.test','ev',null,'regex','high',false)`,
+      [run, v]), /field_suppressed:phone/,
+      'the year-old suppression must still be doing its job after every retention pass ran');
+    await h.reset();
+  });
+
+  await db.close();
+}
+
 // =============================================================================
 async function main() {
   console.log('Enrichment 057 rebase -- RED LINE');
@@ -1934,6 +2445,10 @@ async function main() {
   await partF();
   await partG();
   await partH();
+  await partI();
+  await partJ();
+  await partK();
+  await partL();
 
   const reds = state.red.filter((r) => r.outcome === 'red (expected)');
   const unexpectedGreen = state.red.filter((r) => r.outcome === 'UNEXPECTEDLY GREEN');

@@ -174,6 +174,12 @@ REVOKE ALL ON FUNCTION enrichment_is_valid_phone(text) FROM PUBLIC, anon, authen
 GRANT EXECUTE ON FUNCTION enrichment_is_valid_phone(text) TO service_role;
 
 -- Is an existing value meaningful, i.e. would writing over it destroy data?
+-- SCALAR fields only (website/phone/email) -- snapshot_current_value wraps
+-- those as {"v": ...}. opening_hours is NOT a scalar: snapshot_current_value
+-- returns it as a raw jsonb ARRAY of day rows (056:124-138), so
+-- `p_value ->> 'v'` is always NULL for it and this function would always
+-- (wrongly) say "not meaningful" -- see enrichment_opening_hours_is_meaningful
+-- below for the array-shaped equivalent. Do not extend this one to cover it.
 CREATE OR REPLACE FUNCTION enrichment_value_is_meaningful(p_value jsonb)
 RETURNS boolean
 LANGUAGE sql
@@ -187,6 +193,29 @@ $$;
 
 REVOKE ALL ON FUNCTION enrichment_value_is_meaningful(jsonb) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION enrichment_value_is_meaningful(jsonb) TO service_role;
+
+-- R1 (pre-staging remediation, 2026-09-01): the opening_hours equivalent of
+-- enrichment_value_is_meaningful. "Meaningful" for a multi-row field means
+-- "at least one opening_hours row exists for this venue" -- an empty week is
+-- exactly what fill-if-empty is for; a non-empty week is exactly what it must
+-- not overwrite. Mirrors the live, already-audited logic in
+-- 057_enrichment_auto_decision.sql's auto_apply_venue_proposal
+-- (`jsonb_typeof(v_live) = 'array' and jsonb_array_length(v_live) > 0`) --
+-- deliberately the SAME test, not a reinvention, so the draft cannot drift
+-- from the behaviour production already has.
+CREATE OR REPLACE FUNCTION enrichment_opening_hours_is_meaningful(p_value jsonb)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT p_value IS NOT NULL
+     AND pg_catalog.jsonb_typeof(p_value) = 'array'
+     AND pg_catalog.jsonb_array_length(p_value) > 0
+$$;
+
+REVOKE ALL ON FUNCTION enrichment_opening_hours_is_meaningful(jsonb) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION enrichment_opening_hours_is_meaningful(jsonb) TO service_role;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- _enrichment_apply_write, extended with universal website/phone validation.
@@ -397,6 +426,20 @@ BEGIN
     RAISE EXCEPTION 'not_pending:%', p.status;
   END IF;
 
+  -- R3 (pre-staging remediation, 2026-09-01): re-checked HERE, not only at
+  -- propose_field time. A suppression may be created by an admin AFTER a
+  -- proposal was already queued -- e.g. a venue operator objects to their
+  -- personal phone number the day after the crawl proposed it, before the
+  -- nightly auto-apply batch runs. Re-checking at the point of auto-apply is
+  -- what makes the objection effective against an already-pending write, not
+  -- just against future proposals. See enrichment_venue_field_suppressed
+  -- (Section E below) -- this call happens for EVERY caller of this function,
+  -- with no service_role-specific bypass, so the check cannot be routed
+  -- around by whoever holds the service key.
+  IF enrichment_venue_field_suppressed(p.venue_id, p.field) THEN
+    RAISE EXCEPTION 'field_suppressed:%', p.field;
+  END IF;
+
   IF p.field IN ('description', 'price_range', 'booking_url') THEN
     RAISE EXCEPTION 'field_never_auto_applies:%', p.field;
   END IF;
@@ -427,6 +470,21 @@ BEGIN
   v_live := snapshot_current_value(p.venue_id, p.field) -> 'value';
   IF p.field IN ('website','phone','email')
      AND enrichment_value_is_meaningful(v_live) THEN
+    RAISE EXCEPTION 'live_value_not_empty:%', p.field;
+  END IF;
+
+  -- R1 (pre-staging remediation, 2026-09-01): RESTORED for opening_hours.
+  -- This guard was scoped to ('website','phone','email') only, so a venue with
+  -- a genuine, meaningful published week fell through to
+  -- _enrichment_apply_write, which unconditionally DELETEs every existing
+  -- opening_hours row and reinserts the proposed week -- automation replacing
+  -- data that was already there, exactly what fill-if-empty exists to forbid,
+  -- for the one field whose wrongness sends a family to a locked door. The
+  -- live 057 auto-apply path already guards this correctly (see the function
+  -- comment on enrichment_opening_hours_is_meaningful above); this brings the
+  -- draft back into line with it rather than leaving it weaker.
+  IF p.field = 'opening_hours'
+     AND enrichment_opening_hours_is_meaningful(v_live) THEN
     RAISE EXCEPTION 'live_value_not_empty:%', p.field;
   END IF;
 
@@ -1067,13 +1125,21 @@ CREATE POLICY "discovery_candidates_admin_all" ON venue_discovery_candidates
 -- GRANT SELECT TO authenticated (the admin-only RLS policy already exists), in
 -- its own migration, reviewed on its own merits.
 --
--- service_role: SELECT + INSERT + UPDATE. The discovery pipeline upserts
--- candidates and moves them between non-terminal states. DELETE is withheld:
--- the quarantine record is the audit trail for what discovery proposed, and
--- nothing in the pipeline has a reason to erase it. TRUNCATE, REFERENCES and
+-- R2 (pre-staging remediation, 2026-09-01): service_role gets NOTHING either,
+-- not even SELECT. It PREVIOUSLY held SELECT, INSERT, UPDATE directly on this
+-- table, which meant the compliance/DB boundary this migration otherwise
+-- describes ("a terminal human decision outranks any later automated
+-- sighting", 061 B2) was only a convention -- the runner's own service-role
+-- key could always bypass upsert_discovery_candidate and write the table
+-- directly, which is exactly what scripts/enrich/autonomous.ts was doing.
+-- upsert_discovery_candidate (061 B2) is SECURITY DEFINER and runs as the
+-- function owner, so it needs no table grant on the caller's role to do its
+-- job; the only way in now is genuinely the RPC, matching this table's own
+-- header claim. Verified no other file reads this table directly either (a
+-- repo-wide grep of scripts/, supabase/functions/, app/, components/ finds
+-- only autonomous.ts, now rewired onto the RPC). TRUNCATE, REFERENCES and
 -- TRIGGER (and MAINTAIN on PG17+) are withheld from every role by the REVOKE.
 REVOKE ALL ON TABLE venue_discovery_candidates FROM PUBLIC, anon, authenticated, service_role;
-GRANT SELECT, INSERT, UPDATE ON TABLE venue_discovery_candidates TO service_role;
 -- @end-section: discovery_schema
 
 -- ── RPC: auto_accept_candidate — DELIBERATELY NOT CREATED ────────────────────
@@ -1357,11 +1423,720 @@ GRANT EXECUTE ON FUNCTION discovery_candidate_provenance(text, text, jsonb) TO s
 DROP FUNCTION IF EXISTS discovery_candidate_provenance(text, text);
 -- @end-section: venues_provenance
 
+-- =============================================================================
+-- E. venue_enrichment_suppressions — durable objection/suppression (R3)
+-- =============================================================================
+-- PRE-STAGING REMEDIATION, 2026-09-01. THE GAP THIS CLOSES: nothing in this
+-- schema could previously stop a corrected or objected-to fact from being
+-- re-proposed by the next crawl. propose_field's dedupe compares only against
+-- the CURRENT live value (056:209-212) -- so blanking a field to honour an
+-- objection made the field MORE likely to be re-proposed at high confidence,
+-- with no record anywhere that a human had already said no to it. That defeat
+-- of the right to object/erasure was the DPIA's stated reason this could not
+-- be signed off (docs/DPIA_website_enrichment_addendum.md §10.1).
+--
+-- MODEL. One table, two independent targets:
+--   scope='venue'     -- an EXISTING published venue objects to (or has had
+--                         corrected) a specific field, or the whole venue.
+--                         field IS NULL means "do not touch this venue at
+--                         all"; field NOT NULL means "leave this one field
+--                         alone, everything else may still be enriched" --
+--                         Liam's requirement that a field-level suppression
+--                         must not unnecessarily suppress unrelated fields.
+--   scope='candidate' -- a (source, source_id) that must never be admitted as
+--                         a NEW candidate/venue again, keyed by provider
+--                         identity because a not-yet-created venue has no
+--                         venue_id to suppress by.
+--
+-- ENFORCEMENT IS SERVER-SIDE, INSIDE THE WRITE PATH, NOT IN TYPESCRIPT.
+-- Exactly the lesson R2 already proved: a rule a service-role holder can skip
+-- is not a rule. So the check lives inside propose_field (below, extended by
+-- CREATE OR REPLACE), inside auto_apply_field_proposal (re-checked above, at
+-- the point of auto-apply -- a suppression created AFTER a proposal was
+-- already queued must still stop that proposal), and inside
+-- upsert_discovery_candidate (061 B2, extended by CREATE OR REPLACE in that
+-- file). None of these checks branch on the caller's role: there is no
+-- "unless service_role" clause anywhere, so service_role cannot silently
+-- override a suppression by construction, not by convention.
+--
+-- WHY A ROW, NOT A BOOLEAN COLUMN ON venues. A boolean loses WHY, WHEN and WHO
+-- -- exactly the information an objection needs to be defensible later, and
+-- exactly the pattern this schema already uses everywhere else (decision_
+-- reasons, resolution_reasons, the closure event log). Removal is a soft
+-- delete (removed_by/removed_at/removal_notes), not a hard DELETE, for the
+-- same reason: "an admin restored eligibility for this venue on this date, for
+-- this stated reason" is itself worth keeping.
+--
+-- @test-section: suppression_schema
+CREATE TABLE IF NOT EXISTS venue_enrichment_suppressions (
+  id            uuid primary key default gen_random_uuid(),
+  scope         text not null check (scope in ('venue', 'candidate')),
+
+  -- scope='venue' target
+  venue_id      uuid references venues(id) on delete cascade,
+  field         text check (field in (
+                  'description','price_range','website','booking_url',
+                  'phone','email','opening_hours'
+                )),
+
+  -- scope='candidate' target -- same provider-identity contract as
+  -- venue_discovery_candidates(source, source_id); deliberately not a FK to
+  -- that table, because the whole point is to suppress a source_id BEFORE (or
+  -- even without) a candidate row ever existing for it.
+  source        text check (source in ('osm', 'geoapify')),
+  source_id     text,
+
+  reason        text not null check (btrim(reason) <> ''),
+  notes         text,
+
+  created_by    uuid not null references profiles(id),
+  created_at    timestamptz not null default now(),
+
+  is_permanent  boolean not null default true,
+  expires_at    timestamptz,
+
+  -- Soft delete. A suppression that has been removed no longer blocks
+  -- anything (the enforcement functions below filter on removed_at IS NULL),
+  -- but the record of it having existed, and of who lifted it and why, is
+  -- retained -- an admin "restoring eligibility" is itself an accountable act.
+  removed_by    uuid references profiles(id),
+  removed_at    timestamptz,
+  removal_notes text,
+
+  -- Exactly one target shape per row -- never both, never neither.
+  constraint venue_enrichment_suppressions_target_ck check (
+    (scope = 'venue'
+       and venue_id is not null and source is null and source_id is null)
+    or
+    (scope = 'candidate'
+       and venue_id is null and source is not null and source_id is not null
+       and field is null)
+  ),
+  -- is_permanent and expires_at must never disagree about whether this
+  -- suppression ends. No "permanent, but also has an expiry" and no
+  -- "not permanent, but nobody said when it lapses".
+  constraint venue_enrichment_suppressions_expiry_ck check (
+    is_permanent = (expires_at is null)
+  ),
+  -- A half-recorded removal (only one of removed_by/removed_at set) is not a
+  -- state this schema can make sense of later.
+  constraint venue_enrichment_suppressions_removal_ck check (
+    (removed_by is null and removed_at is null)
+    or (removed_by is not null and removed_at is not null)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS venue_enrichment_suppressions_venue_idx
+  ON venue_enrichment_suppressions (venue_id, field) WHERE removed_at IS NULL;
+CREATE INDEX IF NOT EXISTS venue_enrichment_suppressions_candidate_idx
+  ON venue_enrichment_suppressions (source, source_id) WHERE removed_at IS NULL;
+
+ALTER TABLE venue_enrichment_suppressions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "enrichment_suppressions_admin_all" ON venue_enrichment_suppressions
+  FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+
+-- ── TABLE PRIVILEGES ─────────────────────────────────────────────────────────
+-- NOTHING, for every role, including service_role and authenticated. The only
+-- surface is the three SECURITY DEFINER RPCs below (create/remove/list) plus
+-- the two read-only check functions the write-path functions call internally.
+-- This is the same shape as venue_operating_status_events and (after R2)
+-- venue_discovery_candidates: a table whose only door is a function, so there
+-- is no ACL surface for an auditor to have to disprove.
+REVOKE ALL ON TABLE venue_enrichment_suppressions FROM PUBLIC, anon, authenticated, service_role;
+-- @end-section: suppression_schema
+
+-- @test-section: suppression_checks
+-- Whole-venue OR single-field suppression. field IS NULL on the suppression
+-- row means "the whole venue"; p_field is the field a caller is asking about.
+CREATE OR REPLACE FUNCTION enrichment_venue_field_suppressed(p_venue_id uuid, p_field text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM venue_enrichment_suppressions
+     WHERE scope = 'venue'
+       AND venue_id = p_venue_id
+       AND (field IS NULL OR field = p_field)
+       AND removed_at IS NULL
+       AND (is_permanent OR expires_at > now())
+  )
+$$;
+
+REVOKE ALL ON FUNCTION enrichment_venue_field_suppressed(uuid, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION enrichment_venue_field_suppressed(uuid, text) TO service_role;
+
+CREATE OR REPLACE FUNCTION enrichment_candidate_source_suppressed(p_source text, p_source_id text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM venue_enrichment_suppressions
+     WHERE scope = 'candidate'
+       AND source = p_source
+       AND source_id = p_source_id
+       AND removed_at IS NULL
+       AND (is_permanent OR expires_at > now())
+  )
+$$;
+
+REVOKE ALL ON FUNCTION enrichment_candidate_source_suppressed(text, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION enrichment_candidate_source_suppressed(text, text) TO service_role;
+-- @end-section: suppression_checks
+
+-- @test-section: suppression_admin
+-- create_enrichment_suppression -- the ONLY way to create a suppression row.
+-- Human admin only: an objection/erasure record must name a real accountable
+-- actor, exactly like confirm_venue_closure and resolve_discovery_candidate.
+CREATE OR REPLACE FUNCTION create_enrichment_suppression(
+  p_reason       text,
+  p_venue_id     uuid DEFAULT NULL,
+  p_field        text DEFAULT NULL,
+  p_source       text DEFAULT NULL,
+  p_source_id    text DEFAULT NULL,
+  p_notes        text DEFAULT NULL,
+  p_is_permanent boolean DEFAULT true,
+  p_expires_at   timestamptz DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid uuid;
+  v_scope text;
+  v_id  uuid;
+BEGIN
+  v_uid := auth.uid();
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'no_authenticated_actor';
+  END IF;
+  IF NOT is_admin() THEN
+    RAISE EXCEPTION 'not_admin';
+  END IF;
+  IF p_reason IS NULL OR btrim(p_reason) = '' THEN
+    RAISE EXCEPTION 'reason_required';
+  END IF;
+
+  IF p_venue_id IS NOT NULL AND (p_source IS NOT NULL OR p_source_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'ambiguous_target:both_venue_and_candidate_supplied';
+  END IF;
+
+  IF p_venue_id IS NOT NULL THEN
+    v_scope := 'venue';
+  ELSIF p_source IS NOT NULL AND p_source_id IS NOT NULL THEN
+    v_scope := 'candidate';
+    IF p_field IS NOT NULL THEN
+      RAISE EXCEPTION 'candidate_suppression_has_no_field';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'target_required:supply_either_venue_id_or_source_and_source_id';
+  END IF;
+
+  IF NOT p_is_permanent AND p_expires_at IS NULL THEN
+    RAISE EXCEPTION 'expires_at_required_when_not_permanent';
+  END IF;
+  IF p_is_permanent AND p_expires_at IS NOT NULL THEN
+    RAISE EXCEPTION 'permanent_suppression_must_not_carry_an_expiry';
+  END IF;
+
+  INSERT INTO venue_enrichment_suppressions (
+    scope, venue_id, field, source, source_id,
+    reason, notes, created_by, is_permanent, expires_at
+  ) VALUES (
+    v_scope, p_venue_id, p_field, p_source, p_source_id,
+    p_reason, p_notes, v_uid, p_is_permanent, p_expires_at
+  )
+  RETURNING id INTO v_id;
+
+  RETURN v_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION create_enrichment_suppression(text, uuid, text, text, text, text, boolean, timestamptz)
+  FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION create_enrichment_suppression(text, uuid, text, text, text, text, boolean, timestamptz)
+  TO authenticated;
+
+-- remove_enrichment_suppression -- deliberate restoration of eligibility.
+-- Soft delete only (see the table comment); the row survives as history.
+CREATE OR REPLACE FUNCTION remove_enrichment_suppression(
+  p_suppression_id uuid,
+  p_notes          text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid uuid;
+  v_row venue_enrichment_suppressions%rowtype;
+BEGIN
+  v_uid := auth.uid();
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'no_authenticated_actor';
+  END IF;
+  IF NOT is_admin() THEN
+    RAISE EXCEPTION 'not_admin';
+  END IF;
+
+  SELECT * INTO v_row FROM venue_enrichment_suppressions WHERE id = p_suppression_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'not_found';
+  END IF;
+  IF v_row.removed_at IS NOT NULL THEN
+    RAISE EXCEPTION 'already_removed';
+  END IF;
+
+  UPDATE venue_enrichment_suppressions
+     SET removed_by = v_uid, removed_at = now(), removal_notes = p_notes
+   WHERE id = p_suppression_id;
+
+  RETURN jsonb_build_object('ok', true, 'id', p_suppression_id, 'removed_by', v_uid);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION remove_enrichment_suppression(uuid, text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION remove_enrichment_suppression(uuid, text) TO authenticated;
+
+-- list_enrichment_suppressions -- the read surface. Admin-only, via a
+-- function rather than a table grant, for the same "no ACL for an auditor to
+-- disprove" reason as everything else in this section. p_include_removed
+-- defaults false so the ordinary view is "what is currently blocking
+-- enrichment", with history available on request.
+CREATE OR REPLACE FUNCTION list_enrichment_suppressions(p_include_removed boolean DEFAULT false)
+RETURNS SETOF venue_enrichment_suppressions
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT is_admin() THEN
+    RAISE EXCEPTION 'not_admin';
+  END IF;
+  RETURN QUERY
+    SELECT * FROM venue_enrichment_suppressions
+     WHERE p_include_removed OR removed_at IS NULL
+     ORDER BY created_at DESC;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION list_enrichment_suppressions(boolean) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION list_enrichment_suppressions(boolean) TO authenticated;
+-- @end-section: suppression_admin
+
+-- @test-section: suppression_propose_field
+-- propose_field, extended with the suppression check (R3). REBASED ONTO 057's
+-- 14-argument version (057:696-781) -- the signature, dedup and decision-
+-- mapping logic below are 057's, byte-for-byte, with exactly one addition:
+-- the suppression guard, first, before anything else runs. FAILS CLOSED: a
+-- suppressed field never gets as far as a proposal row, not even a
+-- 'report_only' or 'auto_reject' one -- there is nothing for a suppression to
+-- protect against if a proposal already exists carrying the objected-to value.
+CREATE OR REPLACE FUNCTION propose_field(
+  p_run_id                  uuid,
+  p_venue_id                uuid,
+  p_field                   text,
+  p_proposed                jsonb,
+  p_source_url              text,
+  p_evidence                text,
+  p_evidence_raw            text,
+  p_method                  text,
+  p_confidence              text,
+  p_conflicts               boolean,
+  p_retrieved_at            timestamptz DEFAULT now(),
+  p_decision                text        DEFAULT 'manual_review',
+  p_decision_reasons        jsonb       DEFAULT '[]'::jsonb,
+  p_decision_engine_version text        DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_snapshot jsonb;
+  v_current  jsonb;
+  v_hash     text;
+  v_new_id   uuid;
+  v_status   text;
+BEGIN
+  -- R3: checked before anything else. No branch below this line runs for a
+  -- suppressed (venue_id, field) pair.
+  IF enrichment_venue_field_suppressed(p_venue_id, p_field) THEN
+    RAISE EXCEPTION 'field_suppressed:%', p_field;
+  END IF;
+
+  IF p_decision IS NULL
+     OR p_decision NOT IN ('auto_apply','manual_review','auto_reject','report_only') THEN
+    RAISE EXCEPTION 'invalid_decision:%', coalesce(p_decision, 'null');
+  END IF;
+
+  v_snapshot := snapshot_current_value(p_venue_id, p_field);
+  v_current  := v_snapshot -> 'value';
+  v_hash     := v_snapshot ->> 'hash';
+
+  IF p_field <> 'opening_hours'
+     AND v_current IS NOT NULL
+     AND v_current = p_proposed THEN
+    RETURN NULL;
+  END IF;
+
+  v_status := CASE p_decision
+    WHEN 'auto_reject'  THEN 'rejected'
+    WHEN 'report_only'  THEN 'report_only'
+    ELSE                     'pending'
+  END;
+
+  UPDATE venue_field_proposals
+     SET status = 'superseded'
+   WHERE venue_id = p_venue_id
+     AND field    = p_field
+     AND status   = 'pending';
+
+  INSERT INTO venue_field_proposals (
+    run_id, venue_id, field, proposed_value, current_value, current_value_hash,
+    source_url, evidence_snippet, evidence_raw, retrieved_at,
+    extraction_method, confidence, conflicts_existing, status,
+    decision, decision_reasons, decision_engine_version, decision_at
+  ) VALUES (
+    p_run_id, p_venue_id, p_field, p_proposed, v_current, v_hash,
+    p_source_url, p_evidence, p_evidence_raw, p_retrieved_at,
+    p_method, p_confidence, coalesce(p_conflicts, false), v_status,
+    p_decision, coalesce(p_decision_reasons, '[]'::jsonb),
+    p_decision_engine_version, now()
+  )
+  RETURNING id INTO v_new_id;
+
+  RETURN v_new_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION propose_field(
+  uuid, uuid, text, jsonb, text, text, text, text, text, boolean,
+  timestamptz, text, jsonb, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION propose_field(
+  uuid, uuid, text, jsonb, text, text, text, text, text, boolean,
+  timestamptz, text, jsonb, text)
+  TO service_role;
+-- @end-section: suppression_propose_field
+
+-- =============================================================================
+-- F. Retention — the TECHNICAL CAPABILITY, not the legal decision (R4)
+-- =============================================================================
+-- PRE-STAGING REMEDIATION, 2026-09-01. THIS SECTION DOES NOT DECIDE RETENTION
+-- PERIODS. Every period below is an explicit REQUIRED PARAMETER with a safety
+-- floor, never a silently-applied default long enough to matter, and every
+-- purge function has EXECUTE revoked from every role including service_role
+-- -- there is deliberately no API path that can invoke any of them yet. They
+-- exist so that once Liam/legal approve specific periods (DPIA §8.2), turning
+-- them on is "GRANT EXECUTE + schedule a call", not "design and build a
+-- retention mechanism against a live table for the first time".
+--
+-- THE STRUCTURAL PROBLEM THIS SECTION FIXES FIRST: venue_operating_status_
+-- events' append-only trigger (Section B2 above) raises unconditionally for
+-- UPDATE OR DELETE, for every role, including the table owner -- a superuser
+-- calling DELETE hits it too, because the trigger doesn't consult roles at
+-- all. That means NO retention period could ever be expressed on that table,
+-- not even by a future signed-off admin action. The fix is a session-local
+-- guard the trigger checks: only a DELETE issued while
+-- app.enrichment_retention_purge is set to 'on' in THIS transaction is let
+-- through, and the only code path that ever sets it is
+-- purge_expired_operating_status_events below, which resets it before
+-- returning. UPDATE is not exempted by this guard under any setting -- the
+-- append-only guarantee for a live row is untouched; only aged-out DELETE is
+-- possible, and only through this one function.
+-- @test-section: retention_functions
+CREATE OR REPLACE FUNCTION venue_operating_status_events_append_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE'
+     AND current_setting('app.enrichment_retention_purge', true) = 'on' THEN
+    RETURN OLD;
+  END IF;
+  RAISE EXCEPTION 'venue_operating_status_events is append-only (attempted %)', TG_OP
+    USING errcode = '42501';
+END;
+$$;
+-- (REPLACES the Section B2 definition above -- same REVOKE, same trigger
+-- attachment already in place; CREATE OR REPLACE is enough, no re-attach.)
+
+-- Deliberately not callable by anything yet (see the section header). p_older_
+-- than_days has a hard floor so a fat-fingered call cannot mass-delete recent
+-- audit history even after this is one day granted to an ops role.
+CREATE OR REPLACE FUNCTION purge_expired_operating_status_events(p_older_than_days integer)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int;
+BEGIN
+  IF p_older_than_days IS NULL OR p_older_than_days < 365 THEN
+    RAISE EXCEPTION 'retention_period_too_short_or_unset:%', p_older_than_days;
+  END IF;
+
+  PERFORM set_config('app.enrichment_retention_purge', 'on', true); -- LOCAL: this transaction only
+  DELETE FROM venue_operating_status_events
+   WHERE created_at < now() - (p_older_than_days || ' days')::interval;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  PERFORM set_config('app.enrichment_retention_purge', 'off', true);
+
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION purge_expired_operating_status_events(integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+-- No EXECUTE grant to ANY role. DRAFT VALUE, OWNER/LEGAL SIGN-OFF REQUIRED for
+-- the actual period (DPIA §8.2 proposes "architecture decision required" for
+-- this exact table) before this is ever granted or scheduled.
+
+-- venue_field_proposals (056, LIVE) -- rejected/superseded/report_only rows
+-- only. 'applied' and 'pending' rows are NEVER touched here: 'applied' is the
+-- actual record of what changed venues data (the DPIA's proposed rule is
+-- "retained, reviewed at 24m", i.e. a review trigger, not a deletion, and
+-- reviews are a human process this function does not perform), and 'pending'
+-- is live work. DRAFT VALUES for p_rejected_after_days/p_superseded_after_days
+-- -- see DPIA §8.2.
+CREATE OR REPLACE FUNCTION purge_old_field_proposals(
+  p_rejected_after_days   integer,
+  p_superseded_after_days integer
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int;
+BEGIN
+  IF p_rejected_after_days IS NULL OR p_rejected_after_days < 30 THEN
+    RAISE EXCEPTION 'retention_period_too_short_or_unset:rejected:%', p_rejected_after_days;
+  END IF;
+  IF p_superseded_after_days IS NULL OR p_superseded_after_days < 7 THEN
+    RAISE EXCEPTION 'retention_period_too_short_or_unset:superseded:%', p_superseded_after_days;
+  END IF;
+
+  DELETE FROM venue_field_proposals
+   WHERE (status = 'rejected'   AND decision_at < now() - (p_rejected_after_days   || ' days')::interval)
+      OR (status = 'superseded' AND updated_at  < now() - (p_superseded_after_days || ' days')::interval)
+      OR (status = 'report_only' AND decision_at < now() - (p_rejected_after_days  || ' days')::interval);
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION purge_old_field_proposals(integer, integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+-- No EXECUTE grant to ANY role. DRAFT VALUES, OWNER/LEGAL SIGN-OFF REQUIRED.
+
+-- venue_enrichment_writes (057, LIVE) -- never a DELETE (it is the ledger
+-- rollback_enrichment_run depends on); the DPIA's proposed rule is to NULL the
+-- evidence-bearing columns after the retention window while keeping the
+-- skeleton row (what changed, when, by what mode) for audit continuity. No
+-- append-only TRIGGER exists on this table (only a plain REVOKE of insert/
+-- update/delete from client roles, 057:119-130), so a SECURITY DEFINER
+-- function reaches it as the owning role without needing the GUC trick used
+-- for the closure event log above.
+CREATE OR REPLACE FUNCTION purge_old_enrichment_write_evidence(p_older_than_days integer)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int;
+BEGIN
+  IF p_older_than_days IS NULL OR p_older_than_days < 365 THEN
+    RAISE EXCEPTION 'retention_period_too_short_or_unset:%', p_older_than_days;
+  END IF;
+
+  -- venue_enrichment_writes (057) has no created_at column, only applied_at --
+  -- verified against the real table definition, not assumed.
+  UPDATE venue_enrichment_writes
+     SET evidence_snapshot = NULL,
+         old_value = NULL,
+         new_value = NULL
+   WHERE applied_at < now() - (p_older_than_days || ' days')::interval
+     AND evidence_snapshot IS NOT NULL; -- idempotent: don't keep "touching" already-nulled rows
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION purge_old_enrichment_write_evidence(integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+-- No EXECUTE grant to ANY role. DRAFT VALUE, OWNER/LEGAL SIGN-OFF REQUIRED.
+
+-- venue_discovery_candidates (059/061) -- terminal, non-approved rows only.
+-- 'approved' rows are the audit trail for a LIVE venue (venue_id points at a
+-- real published row) and are never touched. This nulls the contact/address
+-- fields the DPIA identifies as the personal-data-bearing ones, keeping the
+-- decision skeleton (status, resolved_mode, reviewed_by/at, resolution_
+-- reasons, source/source_id, seen_count) intact.
+CREATE OR REPLACE FUNCTION purge_old_discovery_candidate_contact_data(p_older_than_days integer)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int;
+BEGIN
+  IF p_older_than_days IS NULL OR p_older_than_days < 30 THEN
+    RAISE EXCEPTION 'retention_period_too_short_or_unset:%', p_older_than_days;
+  END IF;
+
+  UPDATE venue_discovery_candidates
+     SET phone = NULL, website = NULL, address_line1 = NULL
+   WHERE status IN ('rejected', 'dismissed', 'duplicate')
+     AND reviewed_at < now() - (p_older_than_days || ' days')::interval
+     AND (phone IS NOT NULL OR website IS NOT NULL OR address_line1 IS NOT NULL);
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION purge_old_discovery_candidate_contact_data(integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+-- No EXECUTE grant to ANY role. DRAFT VALUE, OWNER/LEGAL SIGN-OFF REQUIRED.
+--
+-- NOTE, load-bearing for the retention+suppression interaction requirement:
+-- this function touches ONLY venue_discovery_candidates. No retention
+-- function in this file references venue_enrichment_suppressions in any FROM,
+-- JOIN or WHERE clause that could delete or modify a suppression row, and none
+-- ever will by accident -- there IS no purge function for that table at all.
+-- A suppression is a durable objection record; it does not "go stale" the way
+-- evidence does, and nothing here ages it out. See the redline test proving
+-- this (R3xRetention section).
+
+-- venue_closure_signals (059) -- append-only evidence, but not append-forever.
+-- No trigger guards this table (only the plain REVOKE at Section B above), so
+-- this is a straightforward DELETE by age, matching the DPIA's proposed
+-- "180d after status settles" rule (parameterised, not hardcoded, per this
+-- section's header).
+CREATE OR REPLACE FUNCTION purge_old_closure_signals(p_older_than_days integer)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int;
+BEGIN
+  IF p_older_than_days IS NULL OR p_older_than_days < 30 THEN
+    RAISE EXCEPTION 'retention_period_too_short_or_unset:%', p_older_than_days;
+  END IF;
+
+  DELETE FROM venue_closure_signals
+   WHERE detected_at < now() - (p_older_than_days || ' days')::interval;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION purge_old_closure_signals(integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+-- No EXECUTE grant to ANY role. DRAFT VALUE, OWNER/LEGAL SIGN-OFF REQUIRED.
+
+-- ── The pre-existing, ALREADY LIVE, user-facing promise ─────────────────────
+-- app/(auth)/privacy.tsx:181-183 already tells every user, today, in
+-- production: "Location consent log entries — kept for 3 years for ICO
+-- accountability purposes, then deleted automatically" and the same for GDPR
+-- audit log entries. That promise is not a draft awaiting sign-off -- it has
+-- ALREADY been made. Nothing currently implements it (docs/DPIA.md:387,392
+-- correctly marks it "(future)"). This is the one pair of functions in this
+-- section with a real, non-placeholder default (1095 days = 3 years, matching
+-- the live wording exactly), because the period itself is not in question --
+-- only the mechanism was missing. EXECUTE is still revoked from every role:
+-- actually SCHEDULING these (pg_cron, or an ops script) is a separate,
+-- deliberate deployment decision this remediation pass does not make
+-- unprompted, and neither table is touched by any migration that has been
+-- applied anywhere.
+CREATE OR REPLACE FUNCTION purge_expired_location_consent_log(p_older_than_days integer DEFAULT 1095)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int;
+BEGIN
+  IF p_older_than_days IS NULL OR p_older_than_days < 365 THEN
+    RAISE EXCEPTION 'retention_period_too_short_or_unset:%', p_older_than_days;
+  END IF;
+  DELETE FROM location_consent_log
+   WHERE created_at < now() - (p_older_than_days || ' days')::interval;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION purge_expired_location_consent_log(integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION purge_expired_gdpr_audit_log(p_older_than_days integer DEFAULT 1095)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int;
+BEGIN
+  IF p_older_than_days IS NULL OR p_older_than_days < 365 THEN
+    RAISE EXCEPTION 'retention_period_too_short_or_unset:%', p_older_than_days;
+  END IF;
+  DELETE FROM gdpr_audit_log
+   WHERE created_at < now() - (p_older_than_days || ' days')::interval;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION purge_expired_gdpr_audit_log(integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+-- @end-section: retention_functions
+
 COMMIT;
 
 -- =============================================================================
 -- ROLLBACK (no separate _down file yet, matching the 049/056 convention):
 --   BEGIN;
+--   -- R4/R3 remediation (2026-09-01), rolled back first since nothing else
+--   -- depends on these:
+--   DROP FUNCTION IF EXISTS purge_expired_gdpr_audit_log(integer);
+--   DROP FUNCTION IF EXISTS purge_expired_location_consent_log(integer);
+--   DROP FUNCTION IF EXISTS purge_old_closure_signals(integer);
+--   DROP FUNCTION IF EXISTS purge_old_discovery_candidate_contact_data(integer);
+--   DROP FUNCTION IF EXISTS purge_old_enrichment_write_evidence(integer);
+--   DROP FUNCTION IF EXISTS purge_old_field_proposals(integer, integer);
+--   DROP FUNCTION IF EXISTS purge_expired_operating_status_events(integer);
+--   -- NOTE: rolling back to the PRE-R4 venue_operating_status_events_append_only
+--   -- (unconditional RAISE, no GUC check) is safe and recommended if this
+--   -- section is reverted -- do not leave the GUC-aware version live without
+--   -- the purge function, since an unused escape hatch is worse than none.
+--   DROP FUNCTION IF EXISTS propose_field(uuid, uuid, text, jsonb, text, text, text, text, text, boolean, timestamptz, text, jsonb, text);
+--   -- then re-apply 057's propose_field (057:696-781) to restore pre-R3 behaviour.
+--   DROP FUNCTION IF EXISTS list_enrichment_suppressions(boolean);
+--   DROP FUNCTION IF EXISTS remove_enrichment_suppression(uuid, text);
+--   DROP FUNCTION IF EXISTS create_enrichment_suppression(text, uuid, text, text, text, text, boolean, timestamptz);
+--   DROP FUNCTION IF EXISTS enrichment_candidate_source_suppressed(text, text);
+--   DROP FUNCTION IF EXISTS enrichment_venue_field_suppressed(uuid, text);
+--   DROP TABLE IF EXISTS venue_enrichment_suppressions;  -- destroys objection/erasure history
+--   DROP FUNCTION IF EXISTS enrichment_opening_hours_is_meaningful(jsonb);
 --   DROP FUNCTION IF EXISTS discovery_candidate_provenance(text, text, jsonb);
 --   ALTER TABLE venues DROP COLUMN IF EXISTS data_source_meta;
 --   ALTER TABLE venues DROP COLUMN IF EXISTS attribution_required;

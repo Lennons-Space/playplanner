@@ -83,8 +83,17 @@ const REBASED_059 = [
   extractFn(SQL_059, 'enrichment_is_valid_website'),
   extractFn(SQL_059, 'enrichment_is_valid_phone'),
   extractFn(SQL_059, 'enrichment_value_is_meaningful'),
+  // R1 (pre-staging remediation, 2026-09-01): used by auto_apply_field_proposal.
+  extractFn(SQL_059, 'enrichment_opening_hours_is_meaningful'),
   extractFn(SQL_059, '_enrichment_apply_write'),
   extractFn(SQL_059, 'auto_apply_field_proposal'),
+].join(String.fromCharCode(10));
+
+// R3 (pre-staging remediation, 2026-09-01): auto_apply_field_proposal now
+// calls enrichment_venue_field_suppressed unconditionally.
+const REAL_SUPPRESSION_059 = [
+  extractSection(SQL_059, 'suppression_schema'),
+  extractSection(SQL_059, 'suppression_checks'),
 ].join(String.fromCharCode(10));
 
 const REBASED_060 = [
@@ -142,6 +151,7 @@ async function boot() {
   const db = new PGlite();
   await db.exec(BOOTSTRAP);
   await db.exec(DRAFT_COLUMNS);
+  await db.exec(REAL_SUPPRESSION_059);
   await db.exec(REBASED_059);
   await db.exec(REBASED_060);
   await db.exec(REAL_DISCOVERY_059);

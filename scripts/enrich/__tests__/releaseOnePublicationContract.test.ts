@@ -70,11 +70,26 @@ describe('release one: the runtime never asks the database to auto-publish', () 
     expect(AUTONOMOUS).toMatch(/d === 'quarantine' \? 'quarantined' : d === 'reject' \? 'rejected' : 'candidate'/);
   });
 
-  it('a terminal pipeline decision is stamped with a system actor and a time', () => {
+  it('the runtime goes through upsert_discovery_candidate, not a raw table upsert', () => {
+    // R2 (pre-staging remediation, 2026-09-01): a raw
+    // .from('venue_discovery_candidates').upsert(...) let rediscovery fight a
+    // terminal human decision (migration 059's grant used to hand service_role
+    // direct INSERT/UPDATE on the table). The only door now is this RPC.
+    expect(AUTONOMOUS).toMatch(/rpc\(\s*'upsert_discovery_candidate'/);
+    expect(AUTONOMOUS).not.toMatch(/from\(\s*'venue_discovery_candidates'\s*\)\s*\.\s*upsert/);
+  });
+
+  it('a terminal pipeline decision is stamped with a system actor and a time -- by the DATABASE, not the runtime', () => {
     // venue_discovery_candidates_terminal_audit_ck (059) rejects a terminal row
-    // that does not say who decided and when.
-    expect(AUTONOMOUS).toMatch(/resolved_mode:.*'system'/s);
-    expect(AUTONOMOUS).toMatch(/reviewed_at:[\s\S]{0,200}toISOString\(\)/);
+    // that does not say who decided and when. Before R2 the runtime computed
+    // resolved_mode/reviewed_at itself and passed them in the upsert payload;
+    // now upsert_discovery_candidate (061) computes both server-side for a
+    // 'rejected' status (see supabase/tests/enrichment_057_rebase_redline.mjs
+    // H27), so the runtime only needs to supply the human-readable reason.
+    // Asserting the OLD client-side computation here would be asserting dead
+    // code, not the actual audit-trail guarantee.
+    expect(AUTONOMOUS).toMatch(/decision_reason:[\s\S]{0,120}acceptResult\.reason/);
+    expect(AUTONOMOUS).not.toMatch(/resolved_mode:\s*candidateStatus/);
   });
 
   it('the operator-facing write-mode banner does not promise publication', () => {

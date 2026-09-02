@@ -223,6 +223,18 @@ BEGIN
     RAISE EXCEPTION 'missing_source_identity';
   END IF;
 
+  -- R3 (pre-staging remediation, 2026-09-01): a whole-source suppression
+  -- blocks BOTH a first sighting and a rediscovery refresh of this identity.
+  -- This is deliberately the FIRST check in the function, before the SELECT
+  -- ... FOR UPDATE below, so a suppressed source_id can never even reach the
+  -- "first sighting" INSERT branch. Enforced here, inside the one function
+  -- that is the sole write path onto this table (059's grant now hands out no
+  -- direct table privilege to any role -- see R2), so there is no route
+  -- around it for anyone holding the service key.
+  IF enrichment_candidate_source_suppressed(v_source, v_source_id) THEN
+    RAISE EXCEPTION 'candidate_source_suppressed:%/%', v_source, v_source_id;
+  END IF;
+
   -- The pipeline may only ever produce these three. 'approved' and 'dismissed'
   -- are human verdicts and 'duplicate' is set through the dedupe path below --
   -- none of them may arrive from a payload the runner composed.

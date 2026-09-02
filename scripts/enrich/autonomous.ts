@@ -898,49 +898,58 @@ async function main(): Promise<void> {
       write: flags.apply,
       apply: flags.apply,
       limit: flags.limit,
+      // R2 (pre-staging remediation, 2026-09-01): this used to be a raw
+      // PostgREST `.upsert(..., { onConflict: 'source,source_id' })`, which
+      // meant a REDISCOVERY of a candidate a human had already rejected,
+      // dismissed, marked duplicate, or approved wrote status='candidate'
+      // straight back over that decision — the runner's own service-role key
+      // could silently undo a terminal human call. Migration 059 now grants
+      // service_role NO privilege on venue_discovery_candidates at all (not
+      // even SELECT); the ONLY door is upsert_discovery_candidate (061 B2),
+      // which enforces "a terminal decision outranks a later automated
+      // sighting" server-side, where the runner cannot route around it.
       upsertCandidate: flags.apply ? async (row) => {
-        const { data, error: upErr } = await supabase.from('venue_discovery_candidates').upsert({
-          name: row.candidate.name,
-          latitude: row.candidate.latitude,
-          longitude: row.candidate.longitude,
-          postcode: row.candidate.postcode,
-          address_line1: row.addressLine1,
-          city: row.city,
-          phone: row.candidate.phone,
-          website: row.websiteUrl,
-          // The candidate's OWN source — never hardcoded. A hardcoded 'osm'
-          // would mis-attribute every non-OSM row AND collide on the
-          // (source, source_id) unique key.
-          source: row.source,
-          source_id: row.sourceId,
-          dedupe_decision: row.dedupe.decision,
-          matched_venue_id: row.dedupe.matchedVenueId,
-          confidence_score: row.acceptInput.confidenceScore,
-          has_family_relevant_category: row.acceptInput.hasFamilyRelevantCategory,
-          has_valid_uk_coordinates: row.acceptInput.hasValidUkCoordinates,
-          has_valid_address: row.acceptInput.hasValidAddress,
-          is_trusted_source: row.acceptInput.isTrustedSource,
-          official_verification: row.acceptInput.officialVerification,
-          // Migration 061: the DB re-checks this itself before publishing —
-          // it is the trust boundary, this script is the pre-flight filter.
-          independent_identity_evidence_count: row.acceptInput.independentIdentityEvidenceCount,
-          identity_evidence_sources: row.acceptInput.identityEvidenceSources ?? [],
-          has_closure_signal: row.acceptInput.hasClosureSignal,
-          required_fields_complete: row.acceptInput.requiredFieldsComplete,
-          status: candidateStatus(row.acceptResult.decision),
-          // A TERMINAL state must record who decided and when — migration 059's
-          // venue_discovery_candidates_terminal_audit_ck enforces it. The
-          // pipeline has no profile id, so it names itself 'system' rather than
-          // leaving a NULL that would be indistinguishable from a human
-          // decision nobody recorded.
-          resolved_mode: candidateStatus(row.acceptResult.decision) === 'rejected' ? 'system' : null,
-          reviewed_at: candidateStatus(row.acceptResult.decision) === 'rejected'
-            ? new Date().toISOString() : null,
-          resolution_reasons: candidateStatus(row.acceptResult.decision) === 'rejected'
-            ? [{ code: 'pipeline_rejected', detail: row.acceptResult.reason }] : [],
-        }, { onConflict: 'source,source_id' }).select('id').single();
+        const decision = candidateStatus(row.acceptResult.decision);
+        const { data, error: upErr } = await supabase.rpc('upsert_discovery_candidate', {
+          p_candidate: {
+            name: row.candidate.name,
+            latitude: row.candidate.latitude,
+            longitude: row.candidate.longitude,
+            postcode: row.candidate.postcode,
+            address_line1: row.addressLine1,
+            city: row.city,
+            phone: row.candidate.phone,
+            website: row.websiteUrl,
+            // The candidate's OWN source — never hardcoded. A hardcoded 'osm'
+            // would mis-attribute every non-OSM row AND collide on the
+            // (source, source_id) unique key.
+            source: row.source,
+            source_id: row.sourceId,
+            dedupe_decision: row.dedupe.decision,
+            matched_venue_id: row.dedupe.matchedVenueId,
+            confidence_score: row.acceptInput.confidenceScore,
+            has_family_relevant_category: row.acceptInput.hasFamilyRelevantCategory,
+            has_valid_uk_coordinates: row.acceptInput.hasValidUkCoordinates,
+            has_valid_address: row.acceptInput.hasValidAddress,
+            is_trusted_source: row.acceptInput.isTrustedSource,
+            official_verification: row.acceptInput.officialVerification,
+            // Migration 061: the DB re-checks this itself before publishing —
+            // it is the trust boundary, this script is the pre-flight filter.
+            independent_identity_evidence_count: row.acceptInput.independentIdentityEvidenceCount,
+            identity_evidence_sources: row.acceptInput.identityEvidenceSources ?? [],
+            has_closure_signal: row.acceptInput.hasClosureSignal,
+            required_fields_complete: row.acceptInput.requiredFieldsComplete,
+            status: decision,
+            // The RPC builds resolved_mode/reviewed_at/resolution_reasons
+            // itself for a 'rejected' status (059's terminal-audit CHECK
+            // requires them); this is the human-readable justification it
+            // folds into that resolution_reasons entry.
+            decision_reason: decision === 'rejected' ? row.acceptResult.reason : undefined,
+          },
+        });
         if (upErr) throw new Error(upErr.message);
-        return { id: (data as { id: string }).id };
+        const result = data as { id: string; outcome: string; status: string };
+        return { id: result.id, outcome: result.outcome, status: result.status };
       } : undefined,
       // RELEASE ONE: this QUEUES a strong candidate for human review. It does
       // not publish. auto_accept_candidate no longer exists in the database
