@@ -91,7 +91,7 @@ PlayPlanner processes data about children **indirectly** (via parent accounts st
 | 1. Best interests of child | Design decisions prioritise child safety | ✅ | Moderation on all UGC; RLS on sensitive data; no direct child profiling |
 | 2. Age appropriate design | Interface, language, and defaults suit young users' parents | ✅ | App targets adults (parents) only; no gamification/nudging for children |
 | 3. Transparency | Clear, concise privacy notice | ✅ | In-app privacy policy; plain language; linked in app.json |
-| 4. Parental involvement | Age affirmation / parental consent mechanisms | ✅ | Checkbox affirmation added to signup screen (2026-06-08): "I confirm I am 18 or over, or I am a parent/guardian using PlayPlanner for my family." Not pre-ticked; submit button disabled until checked. Timestamp recorded in profiles.terms_accepted_at. See §3 Open Action — Age Affirmation. |
+| 4. Parental involvement | Age affirmation / parental consent mechanisms | ✅ | Checkbox affirmation added to signup screen (2026-06-08): "I confirm I am 18 or over." (reworded 2026-09-01 from an earlier version that read "...or I am a parent/guardian using PlayPlanner for my family," which was looser than docs/terms.html's flat 18+ requirement) Not pre-ticked; submit button disabled until checked. Timestamp recorded in profiles.terms_accepted_at. See §3 Open Action — Age Affirmation. |
 | 5. Data minimisation | Collect only what's needed for stated purpose | ✅ | No analytics SDKs; location coarsened to 3dp (~111m); no exact birthdates |
 | 6. Profiling & nudges | No profiling of children; no manipulation tactics | ✅ | Facility votes are aggregated (no individual profiles); no push notifications that target age groups |
 | 7. Contact details | Use contact info sparingly; respect preferences | ✅ | Email only for auth/password reset; no marketing emails without consent |
@@ -105,7 +105,7 @@ PlayPlanner processes data about children **indirectly** (via parent accounts st
 **ICO Standard 4 age affirmation has been implemented at signup.**
 
 A checkbox declaration was added to `app/(auth)/register.tsx`:
-> "I confirm I am 18 or over, or I am a parent/guardian using PlayPlanner for my family."
+> "I confirm I am 18 or over." (reworded 2026-09-01 from an earlier version that read "...or I am a parent/guardian using PlayPlanner for my family," which was looser than docs/terms.html's flat 18+ requirement)
 
 **Implementation details:**
 - Checkbox is not pre-ticked (UK GDPR Art.7 — requires active, unambiguous consent)
@@ -450,7 +450,7 @@ A checkbox declaration was added to `app/(auth)/register.tsx`:
 ### 🔴 CRITICAL (Resolve Before Store Submission)
 
 1. **~~Add age affirmation at signup~~** (ICO Standard 4) — **CLOSED 2026-06-08**
-   - Implemented: checkbox "I confirm I am 18 or over, or I am a parent/guardian using PlayPlanner for my family." added to `app/(auth)/register.tsx`
+   - Implemented: checkbox "I confirm I am 18 or over." (reworded 2026-09-01 from an earlier version that read "...or I am a parent/guardian using PlayPlanner for my family," which was looser than docs/terms.html's flat 18+ requirement) added to `app/(auth)/register.tsx`
    - Not pre-ticked; submit button disabled until checked
    - Timestamp recorded in `profiles.terms_accepted_at`; audit log entry written
    - Unit tests added covering button disabled/enabled states
