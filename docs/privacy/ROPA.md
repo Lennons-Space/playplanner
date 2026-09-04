@@ -35,7 +35,13 @@ possibility · storage · recipients · processor · international transfer · r
 - **Storage:** `auth.users` (Supabase-managed) + `profiles` table
 - **Recipients:** none beyond the controller
 - **Processor:** Supabase (see `PROCESSOR_AND_VENDOR_REGISTER.md`)
-- **International transfer:** see `INTERNATIONAL_TRANSFERS.md` — Supabase hosting region `UNKNOWN — MUST VERIFY` (no region string found in `supabase/config.toml`; `docs/DPIA.md`'s claim of "eu-west-2 Ireland, confirmed in app config" could **not** be independently re-verified from current repo config this session — treat as unconfirmed until checked directly in the Supabase dashboard)
+- **International transfer:** ✅ **RESOLVED 2026-09-02 (owner-checked).** Supabase project region is
+  **`eu-west-2` = LONDON, UNITED KINGDOM** — the primary database, Auth and Storage are **UK-domestic**, so
+  **no restricted transfer arises for the primary datastore.** ⚠️ The old DPIA claim of "eu-west-2 Ireland,
+  confirmed in app config" was wrong twice: the region was never in repo config, and **`eu-west-2` is
+  London, not Ireland** (`eu-west-1` is Ireland). ⚠️ **Do not over-read this** — Supabase's authorised
+  subprocessors, support, telemetry and email functions may still process outside the UK, covered by the
+  DPA's UK Addendum. See `INTERNATIONAL_TRANSFERS.md`.
 - **Retention:** until account deletion (`delete_own_account()` RPC); no auto-expiry
 - **DPIA reference:** `docs/DPIA.md` §1, §10
 - **Privacy-notice reference:** `docs/privacy.html` (account section)
@@ -47,7 +53,7 @@ possibility · storage · recipients · processor · international transfer · r
 - **Data subjects:** account holders
 - **Data categories:** `username`, `full_name`, `avatar_url`, `bio`, `postcode` (approximate), `children_ages text[]` (coarse ranges, about the user's own children as third parties), `is_business_owner`, `subscription_tier`
 - **Source:** directly from the data subject
-- **Lawful basis:** Contract (core profile) + Consent (Art.6(1)(a), for `children_ages` specifically — user opts to provide it for personalisation)
+- **Lawful basis:** Contract (core profile) + Consent (Art.6(1)(a), for `children_ages` specifically — user opts to provide it for their own family record and a reserved future personalisation feature; **verified 2026-09-04: that feature is not currently wired into any ranking logic** — see `docs/DPIA.md` §9 and `CHILDRENS_CODE_SCOPE_ASSESSMENT.md` Standard 12)
 - **Special category/criminal data:** `children_ages` is Art.9-adjacent (data concerning a child, held by the parent) — see the DPIA's existing position that ranges-only, non-identifying data mitigates but does not eliminate this
 - **Storage:** `profiles` table (`001_initial_schema.sql:35-59`)
 - **Recipients:** other users can see a restricted public subset via the `public_profiles` VIEW, which explicitly **excludes** `children_ages`, `is_admin`, `subscription_tier`, `marketing_consent`, `terms_accepted_at`, `postcode`, `stripe_customer_id` (`004_profile_privacy_columns.sql:45-56`)
@@ -65,9 +71,18 @@ possibility · storage · recipients · processor · international transfer · r
 - **Source:** directly from the data subject's device
 - **Lawful basis:** Consent (Art.6(1)(a)) for location use itself; the consent-log entries are Legitimate Interests (Art.6(1)(f), accountability) for the log's own existence
 - **Special category/criminal data:** none
-- **Storage:** coordinates — in-memory/session only, never written to a database; consent decisions — `location_consent_log` (`001_initial_schema.sql:764-772`)
-- **Recipients:** none
-- **Processor:** Supabase (for the consent log only — coordinates never reach any processor's storage)
+- **Storage:** coordinates — in-memory/session only, never written to a PlayPlanner database; consent decisions — `location_consent_log` (`001_initial_schema.sql:764-772`)
+- **Recipients:** 🔴 **CORRECTED 2026-09-02 — was "none", which was wrong.** **Google** receives location
+  data as an **independent controller**. `app/explore/map.tsx:1437` sets `showsUserLocation={trackLocation}`
+  on a `PROVIDER_GOOGLE` map whenever the consented map renders, handing the native Maps SDK the device
+  position from the OS — outside the app's `coarsenCoordinates()` pipeline, which only governs React state.
+  Google's own Maps Platform ToS §4.4(a) confirms it collects *"search terms, IP addresses, and
+  latitude/longitude coordinates"*. Also relevant: **Open-Meteo** receives the user's last-known fix at
+  1dp (~11km) via `useResolvedWeather.ts:190` → `useWeather.ts:13-14`. **Neither recipient is disclosed in
+  the in-app privacy notice — an Art.13(1)(e) gap, still open.**
+- **Processor:** Supabase (for the consent log only — coordinates never reach a *processor's* storage).
+  **Note the distinction: Google is not a processor here.** It is a separate controller receiving a
+  disclosure, which needs its own lawful basis and transparency, not an Art.28 agreement.
 - **International transfer:** as row 1, for the consent-log rows only
 - **Retention:** consent-log rows — **no retention mechanism currently implemented** in code (a `purge_expired_location_consent_log` function was built during the enrichment remediation pass but is deliberately un-granted pending sign-off — see the enrichment DPIA addendum §8.3); the in-app privacy notice's wording was corrected 2026-09-01 to stop asserting automatic deletion that doesn't yet run (see `PERSONAL_DATA_BREACH_RESPONSE.md`-adjacent honesty principle applied here — was previously "kept for 3 years then deleted automatically," now describes this as a target with in-progress automation)
 - **⚠️ Finding this session (2026-08-31 governance pass):** `location_consent_log.ip_hash` is a live column that **is never actually written by any code path** (confirmed by repo-wide search) — the schema anticipated recording a hashed IP for the consent-log but this was never implemented. Not a risk in itself (less data collected than the schema allows for), but the column should either be populated as designed or dropped — leaving an unused column implies a control that isn't there. **Not fixed this pass.**
@@ -205,8 +220,13 @@ possibility · storage · recipients · processor · international transfer · r
 - **Special category:** none
 - **Storage:** `business_subscriptions` table, `profiles.stripe_customer_id`
 - **Recipients:** Stripe (see `PROCESSOR_AND_VENDOR_REGISTER.md`)
-- **Processor:** Stripe (independent controller for payment processing/regulatory obligations — see the processor register for the controller/processor classification discussion)
-- **International transfer:** see `INTERNATIONAL_TRANSFERS.md` — Stripe is a US-headquartered company; transfer mechanism `UNKNOWN — MUST VERIFY` (Stripe's own DPA/SCC status must be checked directly, not assumed)
+- **Processor:** Stripe — **dual role, now verified against Stripe's own DPA §2 (2026-09-02)**: processor
+  for the instructed payment flow, **independent controller** for its own fraud detection and AML/KYC.
+  For a UK account the contracting entity is **Stripe Payments Europe, Limited (Ireland)** (DPA §1).
+- **International transfer:** see `INTERNATIONAL_TRANSFERS.md` — UK → Ireland (SPEL), onward to **Stripe,
+  LLC (US)**. Mechanism **verified in the Data Transfers Addendum (18 Nov 2025)**: §3 DPF, §4 EEA SCCs
+  Modules 1/2/3, §5 "UK International Data Transfer Addendum". ⚠️ §5's body text could not be retrieved
+  programmatically and Stripe, LLC's live DPF standing is unconfirmed — both are owner checks.
 - **Retention:** `UNKNOWN — MUST VERIFY` — no retention job found in this repo; financial-record retention is typically ~7 years under UK tax law, per the existing DPIA's Art.6(1)(c) note, but this should be confirmed against Stripe's own retention practice and PlayPlanner's own bookkeeping obligations, not assumed
 - **Automated processing:** Stripe webhook processing is automated (subscription state sync); no decision with legal/significant effect is made about the individual by this automation · **Children's data:** no (business subscribers are, by definition, adults operating a business)
 
@@ -218,9 +238,18 @@ possibility · storage · recipients · processor · international transfer · r
 - **Lawful basis:** Consent (Art.6(1)(a) — notification permission)
 - **Special category:** none
 - **Storage:** `push_tokens` table (FK to `auth.users`, cascade)
-- **Recipients:** Expo's push relay (`https://exp.host/--/api/v2/push/send`) receives the device token and notification text at send time
-- **Processor:** Expo (see `PROCESSOR_AND_VENDOR_REGISTER.md`)
-- **International transfer:** see `INTERNATIONAL_TRANSFERS.md` — Expo is a US company
+- **Recipients:** Expo's push relay (`https://exp.host/--/api/v2/push/send`) receives, per
+  `supabase/functions/notify-review-published/index.ts:177-192`, the **ExpoPushToken plus the body
+  `"Your review of ${venueName} is now live."` and `{ venueId }`** — i.e. a device token **linked to a
+  named venue the user reviewed**, not an opaque identifier. Expo's published subprocessor list (17 Aug
+  2026) names **Google and Apple** for the onward FCM/APNs leg.
+- **Processor:** Expo (650 Industries, Inc.) — 🔴 **but see `PROCESSOR_AND_VENDOR_REGISTER.md` §3:
+  `DPA COVERAGE UNKNOWN — OWNER/VENDOR CONFIRMATION REQUIRED`.** Expo's ToS §3.2 asserts processor status
+  and EU SCC Module 2 compliance unilaterally; that is **not an executed Art.28(3) agreement**, and no
+  official source names the Push service inside any DPA.
+- **International transfer:** see `INTERNATIONAL_TRANSFERS.md` — US. 🔴 **Expo's terms contain no UK
+  transfer mechanism at all** (no UK GDPR, UK Addendum, IDTA or UK Extension wording anywhere); they
+  reference only EU GDPR and EU Commission SCCs, while every PlayPlanner transfer is UK-origin.
 - **Retention:** `NO RETENTION MECHANISM FOUND` for stale/uninstalled-app tokens beyond account deletion cascade — the migration's own comment notes this as a "future cleanup job if needed," not yet built
 - **Automated processing:** notification sending is automated but is not a decision about the individual with legal/significant effect
 - **Children's data:** no direct token-to-child link (tokens belong to whoever holds the account)

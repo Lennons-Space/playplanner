@@ -75,12 +75,28 @@ Given `CHILDRENS_CODE_SCOPE_ASSESSMENT.md`'s cautious "potentially in scope" con
 existing DPIA's more confident "adults only" framing), the privacy notice's language register should not
 assume every reader is an adult — a minor, non-substantive wording review, not a structural change.
 
-### 9. Data residency claim
-`docs/DPIA.md`'s "AWS eu-west-2 Ireland, confirmed in app config" claim could not be re-verified from the
-current repo this session (see `PROCESSOR_AND_VENDOR_REGISTER.md`, `INTERNATIONAL_TRANSFERS.md`). If the
-live privacy notice makes a similar residency claim anywhere, **it should not be repeated with confidence
-until the hosting region is actually confirmed** — check the exact current wording of the live page
-against this finding before any future edit.
+### 9. Data residency claim — ✅ RESOLVED 2026-09-02
+The owner checked the live Supabase project. **The region is `eu-west-2` = LONDON, UNITED KINGDOM** — the
+primary database, Auth and Storage are UK-domestic. The in-app and hosted notices were updated this pass
+to say so plainly ("Our database is hosted in London, United Kingdom").
+
+⚠️ Two cautions carried forward: (a) the old DPIA's *"eu-west-2 Ireland"* was wrong on the label as well
+as unverified — **`eu-west-1` is Ireland; `eu-west-2` is London**; and (b) a UK primary region does **not**
+mean the whole Supabase chain is UK-only — authorised subprocessors, support, telemetry and email may
+operate elsewhere under the DPA's UK Addendum, and the notices say so rather than claiming more.
+
+### 10. Recipient disclosure — 🔴 THREE FALSE STATEMENTS FOUND AND FIXED 2026-09-02
+Found by tracing the code rather than reading the notice:
+1. *"Location queries sent to Google are anonymised (rounded coordinates)"* — **false**; `showsUserLocation`
+   gives the Maps SDK the raw device position, outside our rounding.
+2. *"Only a venue's approximate location… no personal data"* for Open-Meteo — **false**; it receives the
+   **user's own** last-known fix at ~11 km.
+3. *"This token is not shared with third parties"* / *"No personal data is shared with Expo"* — **false**;
+   Expo receives the token **and** notification content naming a venue the user reviewed.
+
+All three are corrected in both `docs/privacy.html` and `app/(auth)/privacy.tsx`, which are now consistent
+with each other. **Open-Meteo and Expo were previously absent from the in-app notice entirely; both are
+now named.**
 
 ---
 

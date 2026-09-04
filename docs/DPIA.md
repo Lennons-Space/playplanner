@@ -36,8 +36,13 @@ PlayPlanner is a UK/EU-compliant, privacy-first mobile app (React Native + Expo 
 ### 1.2 Data Processing Roles
 
 - **Data controller:** PlayPlanner (solo developer, Liam Evanson; intended to transition to team/company on growth)
-- **Data processors:** Supabase (hosting, Auth, Database, Storage, Edge Functions), Stripe (billing), Google Maps (map tile data; no location tracking shared)
-- **Sub-processors:** Supabase → AWS EU (eu-west-2 Ireland region, confirmed in app config), Stripe Payment Services Directive (PSD2) flows
+- **Data processors:** Supabase (hosting, Auth, Database, Storage, Edge Functions), Stripe (billing — processor for the instructed payment flow only), Expo (push relay — **Art.28 coverage unconfirmed**, see the vendor register)
+- **Separate/independent controllers receiving data (NOT processors) — corrected 2026-09-02:** **Google
+  Maps Platform**, which by its own terms receives *"search terms, IP addresses, and latitude/longitude
+  coordinates"* under **controller-to-controller** terms; and **Stripe** for its own fraud/AML/KYC
+  purposes. The earlier entry here listed Google Maps as a processor sharing "map tile data; no location
+  tracking" — **both halves of that were wrong.** See §"Third-Party Map Provider" below.
+- **Sub-processors:** Supabase → AWS **eu-west-2 (London, UNITED KINGDOM)** — owner-confirmed 2026-09-02. ⚠️ The previous wording said "eu-west-2 Ireland region, confirmed in app config"; that was wrong twice — no region string was ever in app config, and **eu-west-2 is London, not Ireland** (eu-west-1 is Ireland). Also: Supabase's own published subprocessors (24, list dated 1 Jun 2026) may process outside the UK — a UK primary region does not make the whole chain UK-only. Stripe: PSD2 flows.
 
 ### 1.3 Access Controls
 
@@ -71,7 +76,9 @@ PlayPlanner is a UK/EU-compliant, privacy-first mobile app (React Native + Expo 
 
 **Children's Age Ranges** (Art.9 GDPR — processing data about children)
 - **Lawful basis:** Explicit consent at profile setup (users confirm they are parents/guardians providing this for personalisation)
-- **Reason:** Enables matching venues to family age groups; never used for profiling/nudging
+- **Reason:** Collected for display in the user's own profile and reviews, and reserved for a future
+  venue-matching feature (see §9 "Use in Recommendations" — that feature is not currently wired into
+  any ranking logic); never used for profiling/nudging
 - **Safeguards:** 
   - Only age **ranges** ('0–2', '3–5', '6–8', etc.) stored, never exact birthdates
   - Never shared with third parties or used for targeting/marketing
@@ -243,7 +250,31 @@ A checkbox declaration was added to `app/(auth)/register.tsx`:
 - **Coordinates themselves:** Not retained (only session state)
 
 ### Third-Party Map Provider
-- **Google Maps SDK:** Requests are made client-side; no location coordinates sent to Google (Google Maps API requests include zoom/bounds but not the user's exact position in the request body — Google fetches map tiles based on viewport, not location tracking)
+
+> **🔴 CORRECTED 2026-09-02 (Processor + International Transfer Verification Pass).** The previous text
+> read: *"no location coordinates sent to Google (Google Maps API requests include zoom/bounds but not the
+> user's exact position in the request body — Google fetches map tiles based on viewport, not location
+> tracking)"*. **That claim was not defensible and has been withdrawn.** It was contradicted by Google's
+> own terms and by this app's own map configuration. It must not be reinstated.
+
+- **Google Maps SDK — role:** Google is an **independent controller**, not PlayPlanner's processor. Maps
+  Platform ToS §4.4(b) / EEA ToS §4.5 bind both parties to the **Google Controller-Controller Data
+  Protection Terms** (v11, effective 7 May 2026): *"each party: (a) is an independent controller of
+  Controller Personal Data"*. Google's own service list (27 Apr 2026) classifies **Google Maps APIs as a
+  Controller Service**, not an Article 28 Data Processing Service.
+- **Google Maps SDK — what Google receives:** Google's terms state it plainly (ToS §4.4(a)): *"Google
+  collects and receives data from Customer and End Users… including **search terms, IP addresses, and
+  latitude/longitude coordinates**."* Consistent with that, `app/explore/map.tsx:1437` sets
+  `showsUserLocation={trackLocation}` on a `PROVIDER_GOOGLE` map, which instructs the **native Maps SDK**
+  to obtain the device position from the OS. **The app's 3dp `coarsenCoordinates()` rounding does not
+  apply to the SDK** — it only constrains the coordinates held in React state for the PostGIS query.
+- **Conservative, truthful position:** **PlayPlanner must assume Google receives end-user location.**
+  Whether the SDK transmits that position onward is not determinable from this repo's source, and the
+  documentation deliberately does not claim a negative it cannot prove.
+- **Consequences, both still open:** (1) Google is **not disclosed as a recipient of location data** in
+  the in-app privacy notice — an Art.13(1)(e) gap; (2) a lawful basis is needed for a **disclosure to a
+  separate controller**, which is a different analysis from instructing a processor. See
+  `docs/privacy/PROCESSOR_AND_VENDOR_REGISTER.md` §7 and `docs/privacy/INTERNATIONAL_TRANSFERS.md`.
 - **OpenStreetMap tiles:** ODbL-licensed; attribution to be added to app (currently a gap — see Open Actions)
 
 ### Withdrawal & Revocation
@@ -266,8 +297,19 @@ A checkbox declaration was added to `app/(auth)/register.tsx`:
 - **Sensitive?:** Yes — age ranges combined with review text could hint at family composition
 
 ### Use in Recommendations
-- **familyScore.ts:** Scores venues by age-suitability (filters out adult-only venues, playground-specific venues, etc.)
-- **Aggregate matching:** No individual profiling; each user's age preference is only used to personalise *their own* search results
+- **CORRECTED 2026-09-04 (Profiling Disclosure Audit):** the line below previously claimed live
+  personalisation by the user's own age ranges. **That was inaccurate — verified against the actual
+  code this pass.** `lib/recommendations/familyScore.ts`'s `RecommendationContext.childrenAges` field
+  exists but is explicitly commented "reserved for future personalisation," and an exhaustive
+  grep of every call site of `calculateFamilyScore()`/`calculateRecommendationScore()` confirms none
+  ever passes a context argument — the field is dead code today. `familyScore.ts` scores a venue's
+  *own* age-suitability (its category, stated min/max age) identically for every viewer; it does not
+  read or use any individual user's stored `children_ages`.
+- **No individual profiling occurs.** Venue ranking uses venue-intrinsic signals (category, price,
+  hours, verification, aggregate rating), ambient context (weather, time of day), the user's current
+  session location (ordinary location-based retrieval, not persistent tracking), and an explicitly
+  user-selected mood filter — never an automated inference built from a user's accumulated behaviour,
+  reviews, favourites, or stored family data.
 - **No onward sharing:** Age ranges never exported to reviews, never shared with third parties
 
 ### Visibility in Reviews
@@ -405,7 +447,7 @@ A checkbox declaration was added to `app/(auth)/register.tsx`:
 | Age-affirmation gap (ICO Std.4) | — | — | **CLOSED** | Checkbox affirmation added at signup 2026-06-08 — see §3 |
 | Review content exposes child identity | Low | Medium | **MEDIUM** | Moderation redacts identifiers; anonymity option available; user education in privacy policy |
 | Insufficient moderation resource (future growth) | Low | High | **MEDIUM** | Plan admin/moderation team hiring before user growth; build moderation tooling |
-| Supabase regional data residency challenge | Very low | Medium | **LOW** | App is EU-compliant (eu-west-2 Ireland); no transfer outside EEA |
+| Supabase regional data residency challenge | Very low | Medium | **LOW** | Primary region is **eu-west-2 (London, UK)** — UK-domestic, so no restricted transfer for the primary store. Onward subprocessor processing is covered by the DPA's UK Addendum but is not itself proven UK-only |
 | Leaked password check not enabled | Very low | Low | **LOW** | Enable in Supabase dashboard (quick win) |
 | ODbL attribution missing from map UI | Low | Low | **LOW** | Add attribution label to map screen (e.g., "Map data © OpenStreetMap contributors") |
 
@@ -432,7 +474,7 @@ A checkbox declaration was added to `app/(auth)/register.tsx`:
 - ✅ **Standard 4 (age affirmation):** CLOSED 2026-06-08 — checkbox affirmation added to signup screen; not pre-ticked; submit button disabled until checked; timestamp recorded in profiles.terms_accepted_at
 
 ### Data Residency (Post-Brexit)
-- ✅ **No transfer outside UK/EU:** Supabase eu-west-2 (Ireland, EEA); no onward sharing outside EEA
+- ✅ **Primary store is UK-domestic:** Supabase **eu-west-2 (London, UK)**. ⚠️ Do NOT read this as "no transfer outside the UK/EEA at all" — Supabase's authorised subprocessors, and Stripe/Expo/Google, do involve transfers, each under their own mechanism. See docs/privacy/INTERNATIONAL_TRANSFERS.md.
 
 ---
 
@@ -464,7 +506,7 @@ A checkbox declaration was added to `app/(auth)/register.tsx`:
 3. **Author and host privacy policy / terms** (App Store requirement) — **SUBSTANTIALLY ADDRESSED 2026-06-08**
    - In-app privacy policy (`app/(auth)/privacy.tsx`) updated 2026-06-08 to include:
      - Facility votes (individual votes private, aggregate public, deleted on account deletion)
-     - Push notification tokens (not shared with third parties, deleted on account deletion)
+     - Push notification tokens — ⚠️ **the 2026-06-08 wording "not shared with third parties" was FALSE and was corrected 2026-09-02.** The token and the notification content are sent to **Expo**, and onward via **Google/Apple** push infrastructure, whenever a notification is delivered. Tokens are still deleted on account deletion.
      - Children's age ranges (personalisation only, never shared publicly or for advertising, deleted on account deletion)
      - Account deletion behaviour (structured breakdown: profile/votes/tokens/children's ages deleted; reviews/submissions anonymised; pending photos deleted; approved photos anonymised)
      - "How to Delete Your Account" section (Settings → Account → Delete Account; email fallback to privacy@playplanner.app)
@@ -523,7 +565,7 @@ A checkbox declaration was added to `app/(auth)/register.tsx`:
 
 - **Geoapify Phase 2B:** Parked (decision made 2026-06-07 — limited facility gain; do not build facility-merge pipeline)
 - **Email notifications feature:** Not yet live; if/when added, must NOT target by children's age (moderation feature, not engagement metric)
-- **Supabase regional compliance:** eu-west-2 (Ireland) confirmed; no data transfer outside EEA
+- **Supabase regional compliance:** **eu-west-2 (London, UK)** confirmed by the owner 2026-09-02 — the primary database, Auth and Storage are UK-domestic. Onward transfers via authorised subprocessors remain possible and are governed by the DPA's UK Addendum.
 - **Build configs:** eas.json has placeholder Apple credentials (YOUR_...) — fill before EAS submit
 
 ---

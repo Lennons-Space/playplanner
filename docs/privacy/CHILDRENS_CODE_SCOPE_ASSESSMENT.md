@@ -10,6 +10,16 @@ that pass, as an engineering wording fix cannot resolve a legal-scope question)
 issued by the ICO under DPA 2018 s.123 — it is LAW in the sense that a court/regulator must have regard
 to it, not merely advisory guidance. **Not a substitute for solicitor/DPO review.**
 
+> **Profiling Disclosure Audit, 2026-09-04.** Standards 5 and 12 previously cited evidence claiming
+> `familyScore.ts` actively personalises venue recommendations using the requesting user's own stored
+> `children_ages`. **That evidence was wrong and is corrected below** — an exhaustive call-site audit
+> confirmed `RecommendationContext.childrenAges` is never populated anywhere in the app; it is reserved,
+> dead code. The corrected, *stronger* finding: no automated profiling of any kind occurs today. Both
+> rows keep their 🟢 Good status — only the supporting evidence changed, not the conclusion. **§3's
+> overall "potentially in scope, proportionate compliance" conclusion is unaffected** — a stronger
+> profiling finding does not resolve the separate, still-open "likely to be accessed by children"
+> question.
+
 ---
 
 ## 0. Why this revisits, rather than accepts, the existing DPIA's conclusion
@@ -154,14 +164,14 @@ self-declaration — is an ICO-accepted proportionate response for a low-risk se
 | 2 | DPIA | 🟡 Partial | `docs/DPIA.md` exists but pre-dates this scope re-assessment and asserts the Code is fully satisfied on reasoning this document revises; the enrichment DPIA addendum is far more rigorous but covers a different processing activity |
 | 3 | Age-appropriate application | 🟡 Partial | Self-declaration checkbox is a proportionate mechanism for a low-risk service **in principle**, but see §1.1's wording inconsistency, and note the unauthenticated browse surface has no application of this standard at all |
 | 4 | Transparency | 🟡 Partial | Privacy policy exists, plain-language, but (per `PRIVACY_NOTICE_GAP_ANALYSIS.md`) is not child-friendly in register and does not address the "you may be a child using this, here is what that means" case explicitly |
-| 5 | Detrimental use of data | 🟢 Good | No profiling of children's data for anything beyond the user's own recommendation results; no advertising; no third-party sharing (confirmed — zero analytics/ad SDKs) |
+| 5 | Detrimental use of data | 🟢 Good — **evidence corrected 2026-09-04** | No profiling of children's data occurs at all — `children_ages` is not currently used in any recommendation/ranking logic (that hook is reserved/dead code, see Standard 12 below); no advertising; no third-party sharing (confirmed — zero analytics/ad SDKs) |
 | 6 | Policies and community standards | 🟡 Partial | Moderation policy exists operationally (pending-by-default UGC) but is not published as a standalone community-standards document a child/parent could read |
 | 7 | Default settings | 🟢 Good | `show_in_search` defaults **false**; marketing consent defaults **false**; location defaults to no persistent grant and a non-identifying fallback location |
 | 8 | Data minimisation | 🟢 Good | Age **ranges**, not birthdates; no exact child identity ever collected; `children_ages` never exposed via `public_profiles` view |
 | 9 | Data sharing | 🟢 Good | No third-party data sharing found anywhere this session (see `PROCESSOR_AND_VENDOR_REGISTER.md`); `children_ages` never leaves the user's own account context |
 | 10 | Geolocation | 🟡 Needs attention | See `LOCATION_MINIMISATION_REVIEW.md` — location is off by default and coarsened, which is directionally right, but there is no **specific, documented** geolocation policy that names children as a reason, and `ACCESS_FINE_LOCATION` is still declared (assessed separately) |
 | 11 | Parental controls | ⚪ Not applicable as designed | The product model is "parents are the account holders," not "children have accounts parents supervise" — this standard's normal mechanics (parental dashboards, supervised accounts) don't map onto the current design. **This is only a safe "not applicable" if §3's scope conclusion is later firmed up to "unlikely to be accessed" with real evidence — until then, treat as open, not closed.** |
-| 12 | Profiling | 🟢 Good | `familyScore.ts` personalises only the requesting user's own results from their own stated age ranges; no cross-user profiling; profiling-for-marketing does not exist |
+| 12 | Profiling | 🟢 Good — **evidence corrected 2026-09-04** | Previously cited evidence was wrong: `familyScore.ts` does **not** currently personalise using the requesting user's own age ranges — that field (`RecommendationContext.childrenAges`) is reserved/dead code, confirmed by an exhaustive call-site audit (see `docs/DPIA.md` §9). The accurate, stronger evidence: venue ranking uses only venue-intrinsic signals (category, price, hours, rating), ambient context (weather, time of day), current-session location, and an explicitly user-selected mood filter — none of which is automated evaluation/prediction of a user's personal characteristics under UK GDPR Art.4(4). No cross-user profiling; profiling-for-marketing does not exist |
 | 13 | Nudge techniques | 🟢 Good | No dark patterns, no urgency language, no engagement-maximising mechanics identified anywhere in this session's or prior sessions' review of the auth/onboarding flows |
 | 14 | Connected toys and devices | ⚪ Not applicable | PlayPlanner has no connected-device/IoT/toy integration of any kind |
 | 15 | Online tools | 🟡 Partial | No dedicated in-app tool exists for a child (or anyone) to exercise privacy rights directly and simply; rights are exercised via account settings + email fallback (see `DATA_SUBJECT_RIGHTS_PROCEDURE.md`) |
