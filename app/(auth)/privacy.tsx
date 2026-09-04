@@ -38,7 +38,7 @@ export default function PrivacyScreen() {
           contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={[styles.lastUpdated, { color: T.label3 }]}>Last updated: June 2026</Text>
+          <Text style={[styles.lastUpdated, { color: T.label3 }]}>Last updated: September 2026</Text>
 
           <Section title="1. Who we are">
             PlayPlanner is a family venue discovery app. The data controller is Liam Evanson trading as
@@ -62,15 +62,19 @@ export default function PrivacyScreen() {
             Exact dates of birth are never collected.{'\n'}
             • Postcode — optional; used only to show venues near your area.{'\n\n'}
             <Bold>Location data</Bold>
-            {'\n'}• Device location — only when you grant permission and only while using the map.
-            We round coordinates to approximately 100 metres before use. We do not store your precise
-            GPS coordinates on our servers.{'\n'}
+            {'\n'}• Device location — only accessed with your explicit permission, and only for
+            features that need it (nearby-venue search, the interactive map, and local weather). See
+            section 4 for exactly how each of these uses it, since they are not all handled the same
+            way.{'\n'}
             • A record that you gave or refused location permission is stored for GDPR accountability
-            purposes. This record contains only a timestamp and a consent version number — not your
-            coordinates.{'\n\n'}
+            purposes. It does not contain your coordinates. See section 4 for what it does
+            contain.{'\n\n'}
             <Bold>Content you create</Bold>
             {'\n'}• Venue reviews — including rating, visit date, and any age ranges you add.{'\n'}
-            • Venue photos — images you upload of venues (not people). Photos are stripped of EXIF metadata (including any GPS tags) before being stored. See section 8 for what happens to your photos if you delete your account.{'\n'}
+            • Venue photos — images you upload showing venues; please don't include identifiable
+            people in photos you upload. Photos are stripped of EXIF metadata (including any GPS
+            tags) before being stored. See section 8 for what happens to your photos if you delete
+            your account.{'\n'}
             • Venue submissions — information about venues you add to the app. Submissions are held for moderation before publication and are not visible to other users while under review.{'\n\n'}
             <Bold>Venue facility votes</Bold>
             {'\n'}• When you vote on parent-reported venue facilities (e.g. "has baby change", "has
@@ -79,14 +83,17 @@ export default function PrivacyScreen() {
             other users. Votes are deleted when you delete your account.{'\n\n'}
             <Bold>Push notification tokens</Bold>
             {'\n'}• If you enable push notifications, we store a push notification token provided by
-            your device to send you relevant alerts. This token is not shared with third parties.
+            your device to send you relevant alerts. To actually deliver a notification, this token
+            and the notification's content are sent to Expo, and onward through Google's and Apple's
+            push systems — see "Who we share your data with" below.
             You can disable notifications at any time in your device settings. Tokens are deleted
             when you delete your account.{'\n\n'}
             <Bold>Technical data</Bold>
             {'\n'}• Session tokens — stored securely on your device to keep you logged in.{'\n'}
             • GDPR audit log entries — records of consent events (e.g. terms accepted, location
             consent granted) for legal accountability under UK GDPR Article 5(2). These records
-            contain only a user ID, action type, and timestamp — never your personal content.
+            contain a user ID, an action type, a timestamp, and which record was affected — never
+            your personal content such as review text or photos.
           </Section>
 
           <Section title="3. Why we collect it and our lawful basis">
@@ -110,24 +117,45 @@ export default function PrivacyScreen() {
           </Section>
 
           <Section title="4. Location data — additional detail">
-            Location data receives additional protection because of its sensitivity.{'\n\n'}
-            • Location is <Bold>off by default</Bold>. We never access it without your explicit
+            Location data receives additional protection because of its sensitivity. It is used
+            differently depending on which feature you're using — here is each path.{'\n\n'}
+            • <Bold>Off by default.</Bold> We never access location without your explicit
+            permission, granted through the app's own location flow (not requested at app
+            start).{'\n'}
+            • <Bold>No background location tracking.</Bold> We do not request "always on" location
             permission.{'\n'}
-            • We ask for location permission only when you open the map screen.{'\n'}
-            • Coordinates are rounded to approximately 100 metres (3 decimal places) before any
-            processing. High-precision GPS coordinates are discarded immediately.{'\n'}
-            • Rounded coordinates are used only to query our venue database and return nearby results.
-            They are not stored on our servers after the query completes.{'\n'}
-            • We store a log entry recording whether you granted or denied location permission, but
-            this entry contains <Bold>no coordinates</Bold> — only a timestamp and consent version.
-            This log exists solely to meet our ICO accountability obligations.{'\n'}
+            • <Bold>Nearby-venue search:</Bold> before we query our own venue database, we round
+            your coordinates to approximately 100 metres (3 decimal places). The rounded value is
+            used only for that query and is not stored on our servers afterwards.{'\n'}
+            • <Bold>The interactive map:</Bold> when you turn location on and open the map, the
+            native Google Maps SDK obtains your device's location directly from your phone's
+            operating system to show your position on the map — this does not go through our own
+            rounding step. See "Who we share your data with" for what Google does with this and how
+            precision differs by platform.{'\n'}
+            • <Bold>Local weather:</Bold> once you have granted location permission, we may use your
+            device's last-known location, rounded to about 0.1 degrees (roughly 11 km), to request
+            the local weather forecast from Open-Meteo. This does not itself prompt for a new
+            permission — it only uses a permission you have already granted elsewhere in the
+            app.{'\n'}
+            • We keep an accountability record of your location-permission choice: whether you
+            granted or withdrew consent, when, and which version of this policy was in force. It is
+            linked to your account while your account exists, and does <Bold>not</Bold> contain your
+            location coordinates. This log exists to meet our ICO accountability obligations.{'\n'}
             • You can revoke location permission at any time in Profile &gt; Privacy Settings, or in
-            your device's system settings.
+            your device's system settings — this stops all of the above.
           </Section>
 
           <Section title="5. Children's data">
-            PlayPlanner is designed for parents and carers aged 18 and over. We comply with the ICO
-            Age-Appropriate Design Code (Children's Code).{'\n\n'}
+            PlayPlanner accounts are intended for parents and carers aged 18 and over. Some browsing
+            and search functionality is accessible without creating an account. We take the ICO's
+            Age-Appropriate Design Code (Children's Code) seriously and apply privacy-protective
+            measures throughout the app, including: location access that is off by default and, on
+            Android, limited to approximate location only; no behavioural advertising and no
+            advertising profiles built about you; no analytics or tracking of any kind; and data
+            minimisation for any information about children. Venue recommendations are ranked using
+            each venue's own information (category, price, ratings), the current weather, and
+            filters you choose — not by automatically building a profile of your behaviour over
+            time. We keep our approach to the Children's Code under ongoing review.{'\n\n'}
             • We do not knowingly collect data from children under 13.{'\n'}
             • You can optionally provide the age ranges of children in your family (e.g. "0–2 years",
             "3–5 years"). These are used only to personalise venue recommendations for your family.
@@ -142,30 +170,62 @@ export default function PrivacyScreen() {
 
           <Section title="6. Who we share your data with">
             We do not sell your data. We do not share it with advertisers.{'\n\n'}
-            We work with the following data processors, each under a data processing agreement:{'\n\n'}
-            • <Bold>Supabase Inc.</Bold> (USA, with EU Standard Contractual Clauses) — our database
-            and authentication provider. Stores account data, reviews, and photos on our behalf.{'\n\n'}
-            • <Bold>Google LLC</Bold> — Google Maps SDK and Places API are used for the map display
-            and address lookup. Location queries sent to Google are anonymised (rounded coordinates).
-            Google's privacy policy applies to these requests: policies.google.com/privacy{'\n\n'}
-            • <Bold>Stripe Inc.</Bold> (if you purchase a Premium subscription) — processes payment
-            card data. PlayPlanner never sees or stores your card number. Stripe's privacy policy
-            applies: stripe.com/gb/privacy{'\n\n'}
-            • <Bold>Expo / EAS</Bold> — used to build and deliver the app to your device. No personal
-            data is shared with Expo beyond what is standard for app delivery.{'\n\n'}
+            Most of the companies below only handle data on our instructions, under a data processing
+            agreement. <Bold>Google is different</Bold> — for maps it acts as its own data controller,
+            deciding for itself how it uses what it receives, so Google's own privacy policy governs
+            that use rather than ours.{'\n\n'}
+            • <Bold>Supabase</Bold> — our database and authentication provider. Stores account data,
+            reviews and photos on our behalf. Our database is hosted in <Bold>London, United
+            Kingdom</Bold>. Some of Supabase's own support and infrastructure providers operate
+            outside the UK, under UK-approved data transfer safeguards.{'\n\n'}
+            • <Bold>Google LLC</Bold> — the Google Maps SDK provides the map. Google's own Maps terms
+            state that it collects search terms, IP addresses and latitude/longitude coordinates, and
+            uses them for its own purposes. <Bold>When you turn location on and open the map, the
+            Google Maps SDK receives your device's location directly from your phone's operating
+            system</Bold> — the rounding we apply elsewhere does not apply to it. On Android,
+            PlayPlanner only ever requests <Bold>approximate</Bold> location, so the map cannot hand
+            Google anything more precise than that. On iOS, the permission you grant may allow more
+            precise positioning unless you have turned off "Precise Location" for PlayPlanner in your
+            device's Settings. If you would rather not share location with Google at all, decline the
+            location permission: the map still works from a default location. Google's privacy policy
+            applies: policies.google.com/privacy{'\n\n'}
+            • <Bold>Open-Meteo</Bold> — provides the weather shown in the app. If you have turned
+            location on, we send <Bold>your own approximate location, rounded to about 11 km</Bold>,
+            so the weather matches roughly where you are. If you have not, a general Great Britain
+            default is sent instead. No account details, name or device identifier is ever included.
+            {'\n\n'}
+            • <Bold>Stripe</Bold> — used for the venue-owner business subscription (paid listing
+            upgrades). If you are a venue owner and purchase a paid listing, Stripe processes your
+            payment card data; PlayPlanner never sees or stores your card number. Paid subscriptions
+            for regular user accounts are not currently live. Stripe also acts as its own controller
+            for fraud prevention and anti-money-laundering checks it is legally required to carry
+            out. Stripe's privacy policy applies: stripe.com/gb/privacy{'\n\n'}
+            • <Bold>Expo (650 Industries, Inc.)</Bold> — builds and delivers the app, and
+            <Bold> only if you switch push notifications on</Bold>, relays those notifications. For
+            delivery, Expo receives your device's push token and the notification's content, which can
+            include the name of a venue you reviewed. Expo passes this on through Google's and Apple's
+            push systems to reach your phone. Expo states that it stores push tokens to send
+            notifications and does not store notification content beyond the time needed to deliver it
+            — that is Expo's stated practice, not something we can independently guarantee.
+            Expo's privacy policy applies: expo.dev/privacy{'\n\n'}
             We may share data if required to do so by law, a court order, or a regulatory authority.
             We will tell you if this happens unless legally prohibited from doing so.
           </Section>
 
           <Section title="7. International data transfers">
-            Supabase stores data on servers in the European Union. Where any transfer outside the UK
-            or EEA is required, we ensure appropriate safeguards are in place, such as the UK
-            International Data Transfer Agreement (IDTA) or EU Standard Contractual Clauses.
+            Our database, authentication and file storage (Supabase) are hosted in <Bold>London,
+            United Kingdom</Bold> — for that data there is no international transfer at all. Some of
+            our other providers (see section 6) are based outside the UK, including in the United
+            States. Where a transfer outside the UK is required, we rely on appropriate safeguards
+            such as UK-approved Standard Contractual Clauses, the UK International Data Transfer
+            Addendum, or a provider's Data Privacy Framework certification, depending on the provider.
           </Section>
 
           <Section title="8. How long we keep your data">
-            • <Bold>Account data</Bold> — kept for as long as your account is active. Deleted within
-            30 days of account deletion, except where legal retention obligations apply.{'\n'}
+            • <Bold>Account data</Bold> — kept for as long as your account is active. Deleting your
+            account in the app removes it immediately; if you request deletion by email instead, we
+            action it within 30 days. Some records are retained beyond deletion where a legal
+            retention obligation applies (see below).{'\n'}
             • <Bold>Reviews, facility votes, favourites and notification settings</Bold> — kept
             until you delete them, or until your account is deleted, whichever comes first. Deleting
             your account removes all of these immediately.{'\n'}
@@ -186,15 +246,22 @@ export default function PrivacyScreen() {
             in-progress automation as above.{'\n'}
             • <Bold>Payment records</Bold> — Stripe retains transaction records in line with their
             legal obligations (typically 7 years for financial records).{'\n\n'}
-            You can download all data we hold about you at any time in Profile &gt; Download my data.
-            You can delete your account and all associated data in Profile &gt; Delete account.
+            You can download a copy of the personal data we hold about you — including your
+            profile, reviews, favourites, submitted venues, and location-consent history — at any
+            time in Profile &gt; Download my data. A small number of records (such as individual
+            facility votes and uploaded photos) are not yet included in that automated export; email
+            us if you would like a copy of those specifically. You can delete your account, and the
+            personal data linked to it, in Profile &gt; Delete account — see section 9 for exactly
+            what happens to each type of data.
           </Section>
 
           <Section title="9. Your rights under UK GDPR">
             You have the following rights. To exercise any of them, contact privacy@playplanner.app
             or use the in-app controls in Profile &gt; Privacy Settings.{'\n\n'}
-            • <Bold>Right of access (Article 15)</Bold> — request a copy of all data we hold about
-            you. Use the "Download my data" feature in the app for an instant export.{'\n\n'}
+            • <Bold>Right of access (Article 15)</Bold> — request a copy of the personal data we
+            hold about you. Use the "Download my data" feature in the app for an instant export
+            covering most of it (see section 8 for what's included); email us for anything not yet
+            covered by that export.{'\n\n'}
             • <Bold>Right to rectification (Article 16)</Bold> — correct inaccurate data in Profile
             &gt; Edit Profile, or contact us.{'\n\n'}
             • <Bold>Right to erasure (Article 17)</Bold> — delete your account in Profile &gt;
@@ -209,7 +276,7 @@ export default function PrivacyScreen() {
             — Photos already approved and visible in the app are anonymised: the link to you is
             permanently removed, leaving only an anonymous image of the venue.{'\n'}
             You can also request erasure by emailing privacy@playplanner.app — we will complete
-            it within 30 days (one calendar month).{'\n\n'}
+            it within 30 days.{'\n\n'}
             • <Bold>Right to withdraw consent (Article 7(3)</Bold> — withdraw location consent or
             marketing consent at any time in Profile &gt; Privacy Settings. Withdrawal does not
             affect the lawfulness of processing before withdrawal.{'\n\n'}
@@ -219,17 +286,29 @@ export default function PrivacyScreen() {
             machine-readable format. Use the "Download my data" feature, which exports JSON.{'\n\n'}
             • <Bold>Right to object (Article 21)</Bold> — object to processing based on legitimate
             interests.{'\n\n'}
-            • <Bold>Right to complain to the ICO</Bold> — if you believe we have mishandled your
-            data, you can complain to the Information Commissioner's Office at ico.org.uk or by
-            calling 0303 123 1113. We would appreciate the chance to address your concerns first.{'\n\n'}
-            We will respond to rights requests within 30 days (one calendar month).
+            We aim to respond to rights requests without undue delay and within one month of
+            receipt. For complex or numerous requests, this may be extended by up to two further
+            months; if that applies, we will tell you within the first month and explain why.{'\n\n'}
+            • <Bold>Complaining to us directly</Bold> — if you're unhappy with how we've handled
+            your data, email privacy@playplanner.app with the subject line "Data Protection
+            Complaint." We will acknowledge your complaint within 30 days, investigate it
+            appropriately, keep you informed of progress where appropriate, and communicate the
+            outcome without undue delay. This 30-day figure is our acknowledgement commitment, not a
+            promise to fully resolve every complaint within that time — a complex complaint may
+            legitimately take longer to investigate properly.{'\n\n'}
+            • <Bold>Right to complain to the ICO</Bold> — you can complain to the Information
+            Commissioner's Office at any time, instead of or alongside contacting us directly:
+            ico.org.uk or 0303 123 1113. We would appreciate the chance to address your concerns
+            first, but this is your choice, not a requirement.
           </Section>
 
           <Section title="10. Cookies and local storage">
             The PlayPlanner app does not use tracking cookies.{'\n\n'}
-            We store a session token on your device (using iOS Keychain / Android Keystore via
-            expo-secure-store) solely to keep you logged in between sessions. This token contains no
-            personal data and is deleted when you sign out.
+            We store authentication/session tokens securely on your device (using iOS Keychain /
+            Android Keystore via expo-secure-store) so you can remain signed in between sessions.
+            These tokens contain authentication and account-identifying information and are
+            protected using the device's secure storage. They are removed from your device when you
+            sign out.
           </Section>
 
           <Section title="11. Security">
@@ -254,7 +333,9 @@ export default function PrivacyScreen() {
             Data controller: Liam Evanson trading as PlayPlanner{'\n'}
             Email: privacy@playplanner.app{'\n\n'}
             For urgent data protection concerns or to exercise your rights, email us with the subject
-            line "Data Rights Request" and we will respond within 30 days.{'\n\n'}
+            line "Data Rights Request" and we will respond without undue delay and within one month.
+            For data-protection complaints, see section 9 — the acknowledgement timing is different
+            from the rights-request timing.{'\n\n'}
             This Privacy Policy is also available at:{'\n'}
             lennons-space.github.io/playplanner/privacy.html
           </Section>

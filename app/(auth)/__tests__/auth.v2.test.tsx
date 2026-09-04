@@ -476,7 +476,7 @@ describe('Privacy/Terms — single header + exact Last updated line', () => {
   it('PrivacyScreen renders exactly one "Privacy Policy" header and the exact Last updated line', () => {
     render(<PrivacyScreen />);
     expect(screen.getAllByText('Privacy Policy')).toHaveLength(1);
-    expect(screen.getByText('Last updated: June 2026')).toBeTruthy();
+    expect(screen.getByText('Last updated: September 2026')).toBeTruthy();
   });
 
   it('TermsScreen renders exactly one "Terms of Service" header and the exact Last updated line', () => {
